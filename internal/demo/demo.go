@@ -13,6 +13,7 @@ package demo
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"math/rand"
@@ -29,16 +30,52 @@ type Result struct {
 	Sensors int `json:"sensors"`
 	// Samples is how many probe results it invented.
 	Samples int `json:"samples"`
+	// Sites is how many places it created. Zero on a second run, and zero for a
+	// place somebody had already made: an existing site is left exactly as it is.
+	Sites int `json:"sites"`
 }
 
-// sensor is one entry of the demo dataset: a real, reachable target plus the
-// shape of its synthetic history. The numbers are deliberately boring — the
-// point is a dashboard that looks like a homelab, not a benchmark.
+// site is a place the dataset puts sensors. Coordinates are real places rather
+// than 0/0, because a pin in the Gulf of Guinea is the one thing on the map that
+// would look like a bug.
+type site struct {
+	name      string
+	kind      model.SiteKind
+	lat, lon  float64
+	sortOrder int
+}
+
+var sites = []site{
+	{name: "Homelab", kind: model.SiteLocal, lat: 52.5200, lon: 13.4050, sortOrder: 1},
+	{name: "Rented server", kind: model.SiteExternal, lat: 50.4761, lon: 12.3706, sortOrder: 2},
+}
+
+// sensor is one entry of the demo dataset: a target plus the shape of its
+// synthetic history. The numbers are deliberately boring — the point is a
+// dashboard that looks like a homelab, not a benchmark.
+//
+// Two rules decide what may go in this table, and both come from the fact that
+// these sensors are real rows the scheduler really probes:
+//
+//   - An enabled entry's target has to answer from here, always. The dashboard is
+//     seeded with a week of green history, and a sensor that started failing a
+//     minute after it was seeded would contradict the very history printed above
+//     it. This is why every enabled target below is a public service.
+//   - A homelab's own addresses — a NAS, a router, a printer — are therefore
+//     disabled. They are what belongs at the two sites, and they are what gives
+//     the map something to draw, but 192.168.1.10 does not answer on anybody
+//     else's network. Paused, they place the pins without claiming anything about
+//     a network this installation cannot see. Turning one on is a click.
 type sensor struct {
 	name       string
 	sensorType model.SensorType
 	target     string
 	group      string
+	// site is the name of the place this sensor belongs to, empty for the ones that
+	// are simply somewhere on the internet.
+	site string
+	// paused is for the entries a fresh installation cannot reach. See above.
+	paused     bool
 	tags       []string
 	baseMS     float64
 	jitterMS   float64
@@ -79,7 +116,7 @@ var sensors = []sensor{
 		},
 	},
 	{
-		name: "Gateway ping", sensorType: model.SensorPing, target: "1.1.1.1",
+		name: "Internet ping", sensorType: model.SensorPing, target: "1.1.1.1",
 		group: "Network", tags: []string{"latency"},
 		baseMS: 11, jitterMS: 5, intervalS: 30,
 		options:    model.Options{"count": 3},
@@ -104,6 +141,86 @@ var sensors = []sensor{
 		baseMS: 162, jitterMS: 52, intervalS: 300,
 		options:    model.Options{"server_name": "example.org", "cert_warn_days": 14},
 		successMsg: "TLS 1.3 · certificate valid for 82 day(s)", failMsg: "TLS certificate expires in 6 day(s)",
+		outages: []outage{},
+	},
+	{
+		name: "Package mirror", sensorType: model.SensorHTTP, target: "https://deb.debian.org",
+		group: "Internet", tags: []string{"web", "public"},
+		baseMS: 121, jitterMS: 38, intervalS: 300,
+		options:    model.Options{"expected_status": "200-399", "body_contains": "Debian"},
+		successMsg: "HTTP 200 OK", failMsg: "body does not contain \"Debian\"",
+		outages: []outage{
+			{startHoursAgo: 128, minutes: 12, cause: "HTTP 502 Bad Gateway"},
+		},
+	},
+	{
+		name: "DNS over TLS", sensorType: model.SensorTLS, target: "1.1.1.1:853",
+		group: "Internet", tags: []string{"tls", "dns"},
+		baseMS: 44, jitterMS: 14, intervalS: 600,
+		options:    model.Options{"server_name": "cloudflare-dns.com", "cert_warn_days": 21},
+		successMsg: "TLS 1.3 · certificate valid for 61 day(s)", failMsg: "TLS handshake failed",
+		outages: []outage{},
+	},
+
+	// The homelab itself. Disabled — see the note on the sensor type.
+	{
+		name: "Router: ping", sensorType: model.SensorPing, target: "192.168.1.1",
+		group: "Homelab", site: "Homelab", paused: true, tags: []string{"latency"},
+		baseMS: 2, jitterMS: 1, intervalS: 30,
+		options:    model.Options{"count": 3},
+		successMsg: "3/3 replies, 0% loss", failMsg: "100% packet loss",
+		outages: []outage{
+			{startHoursAgo: 71, minutes: 9, cause: "100% packet loss"},
+		},
+	},
+	{
+		name: "NAS: SSH", sensorType: model.SensorTCP, target: "192.168.1.10:22",
+		group: "Homelab", site: "Homelab", paused: true, tags: []string{"ssh", "storage"},
+		baseMS: 4, jitterMS: 2, intervalS: 120,
+		successMsg: "connected in 4ms", failMsg: "connection refused",
+		outages: []outage{
+			{startHoursAgo: 150, minutes: 42, cause: "connection refused"},
+		},
+	},
+	{
+		name: "NAS: web interface", sensorType: model.SensorHTTP, target: "http://192.168.1.10",
+		group: "Homelab", site: "Homelab", paused: true, tags: []string{"web", "storage"},
+		baseMS: 38, jitterMS: 12, intervalS: 300,
+		options:    model.Options{"expected_status": "200-399"},
+		successMsg: "HTTP 200 OK", failMsg: "dial tcp: i/o timeout",
+		outages: []outage{},
+	},
+	{
+		name: "Printer: ink level", sensorType: model.SensorSNMP, target: "192.168.1.20",
+		group: "Homelab", site: "Homelab", paused: true, tags: []string{"snmp"},
+		baseMS: 17, jitterMS: 6, intervalS: 900,
+		options: model.Options{
+			"oid":       "1.3.6.1.2.1.43.11.1.1.9.1.1",
+			"community": "public",
+			"min":       10,
+		},
+		successMsg: "42", failMsg: "no such object",
+		outages: []outage{
+			{startHoursAgo: 210, minutes: 60, cause: "request timeout"},
+		},
+	},
+
+	// A rented box somewhere else, which is the other reason to put sensors on a map.
+	{
+		name: "Rented server: SSH", sensorType: model.SensorTCP, target: "vps.example.net:22",
+		group: "Rented server", site: "Rented server", paused: true, tags: []string{"ssh"},
+		baseMS: 26, jitterMS: 8, intervalS: 120,
+		successMsg: "connected in 26ms", failMsg: "no such host",
+		outages: []outage{
+			{startHoursAgo: 36, minutes: 15, cause: "connection timed out"},
+		},
+	},
+	{
+		name: "Rented server: web", sensorType: model.SensorHTTP, target: "https://vps.example.net",
+		group: "Rented server", site: "Rented server", paused: true, tags: []string{"web"},
+		baseMS: 174, jitterMS: 44, intervalS: 300,
+		options:    model.Options{"expected_status": "200-399", "cert_warn_days": 21},
+		successMsg: "HTTP 200 OK", failMsg: "no such host",
 		outages: []outage{},
 	},
 }
@@ -133,8 +250,9 @@ func (d sensor) model() model.Sensor {
 		Interval: d.intervalS,
 		Timeout:  10,
 		Retries:  1,
-		Enabled:  true,
+		Enabled:  !d.paused,
 		Group:    d.group,
+		Site:     d.site,
 		Tags:     d.tags,
 		Options:  opts,
 		// The same marker the setup screen writes. Anything invented — here or
@@ -153,6 +271,14 @@ func (d sensor) model() model.Sensor {
 // That is what makes the Settings button safe to press again.
 func Seed(ctx context.Context, st *store.Store, days int) (Result, error) {
 	now := time.Now().UTC().Truncate(time.Minute)
+
+	// The places come first. sensors.site is a foreign key, so a sensor pointing at
+	// a site that does not exist yet is refused by the database rather than
+	// silently stored without one.
+	made, err := ensureSites(ctx, st)
+	if err != nil {
+		return Result{}, err
+	}
 
 	created, err := st.CreateMissingSensors(ctx, Sensors())
 	if err != nil {
@@ -184,7 +310,44 @@ func Seed(ctx context.Context, st *store.Store, days int) (Result, error) {
 			return Result{}, fmt.Errorf("roll up seeded history: %w", err)
 		}
 	}
-	return Result{Sensors: len(created), Samples: samples}, nil
+	return Result{Sensors: len(created), Samples: samples, Sites: made}, nil
+}
+
+// ensureSites creates the places the dataset needs and returns how many it made.
+//
+// A site that is already there is left exactly as it is, and that is the whole
+// contract: somebody who has moved the pin to where their house actually is, or
+// renamed the place, must not have it moved back by a button that says it restores
+// example data. The sensors then point at their site, which is the right outcome —
+// the example sensor is on the operator's own map.
+//
+// A place it creates carries the example marker like the sensors do, so that
+// removing the example data takes it along instead of leaving an empty pin behind.
+func ensureSites(ctx context.Context, st *store.Store) (int, error) {
+	made := 0
+	for _, d := range sites {
+		_, err := st.GetSite(ctx, d.name)
+		switch {
+		case err == nil:
+			continue
+		case !errors.Is(err, store.ErrNotFound):
+			return made, err
+		}
+		lat, lon := d.lat, d.lon
+		s := model.Site{
+			Name:      d.name,
+			Kind:      d.kind,
+			Lat:       &lat,
+			Lon:       &lon,
+			SortOrder: d.sortOrder,
+			Origin:    model.OriginExample,
+		}
+		if err := st.CreateSite(ctx, &s); err != nil {
+			return made, err
+		}
+		made++
+	}
+	return made, nil
 }
 
 // synthesise writes probe history for one sensor and records the matching

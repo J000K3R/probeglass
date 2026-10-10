@@ -52,6 +52,9 @@ func seed(args []string) error {
 
 	fmt.Printf("seeded %d new sensor(s), %d historical probes over %d day(s)\n",
 		res.Sensors, res.Samples, *days)
+	if res.Sites > 0 {
+		fmt.Printf("created %d site(s) for them, so the map has something to draw\n", res.Sites)
+	}
 	fmt.Printf("database: %s\n", cfg.DBPath)
 	fmt.Println("start the daemon and open the dashboard to see them")
 	return nil

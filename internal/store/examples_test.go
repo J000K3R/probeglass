@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 
@@ -162,5 +163,136 @@ func TestCreateMissingSensorsSerialisesConcurrentCalls(t *testing.T) {
 	}
 	if len(all) != len(names) {
 		t.Errorf("the table holds %d sensor(s), want %d", len(all), len(names))
+	}
+}
+
+// TestDeleteExampleDataTakesTheInventedPlacesWithIt covers the reason sites grew
+// an origin column: the example dataset invents places for its sensors, and the
+// button that removes the example data must not leave those places behind as
+// empty rows nobody can account for.
+func TestDeleteExampleDataTakesTheInventedPlacesWithIt(t *testing.T) {
+	ctx := context.Background()
+	st := newTestStore(t)
+
+	lat, lon := 52.52, 13.405
+	invented := model.Site{Name: "Homelab", Kind: model.SiteLocal,
+		Lat: &lat, Lon: &lon, Origin: model.OriginExample}
+	if err := st.CreateSite(ctx, &invented); err != nil {
+		t.Fatalf("create the invented site: %v", err)
+	}
+	// A place the operator made. It has no example sensor on it and is none of the
+	// removal's business.
+	mine := model.Site{Name: "Office", Kind: model.SiteLocal}
+	if err := st.CreateSite(ctx, &mine); err != nil {
+		t.Fatalf("create the operator's site: %v", err)
+	}
+
+	sensors := exampleSensorSet("Example website")
+	sensors[0].Site = "Homelab"
+	if _, err := st.CreateMissingSensors(ctx, sensors); err != nil {
+		t.Fatalf("create the example sensor: %v", err)
+	}
+
+	removed, err := st.DeleteExampleData(ctx)
+	if err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	if removed.Sites != 1 {
+		t.Errorf("removed %d site(s), want 1: only the invented one", removed.Sites)
+	}
+	if _, err := st.GetSite(ctx, "Homelab"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("the invented site survived the removal of its sensors: %v", err)
+	}
+	if _, err := st.GetSite(ctx, "Office"); err != nil {
+		t.Errorf("the operator's own empty site was removed: %v", err)
+	}
+}
+
+// TestDeleteExampleDataKeepsAPlaceSomebodyElseUses is the other half of that
+// promise, and the failure it prevents is worse than a leftover row: an example
+// site the operator has since filed their own sensor under is a place somebody is
+// using, and deleting it would either fail on the foreign key or take their
+// sensor's place away from it.
+func TestDeleteExampleDataKeepsAPlaceSomebodyElseUses(t *testing.T) {
+	ctx := context.Background()
+	st := newTestStore(t)
+
+	site := model.Site{Name: "Homelab", Kind: model.SiteLocal, Origin: model.OriginExample}
+	if err := st.CreateSite(ctx, &site); err != nil {
+		t.Fatalf("create the site: %v", err)
+	}
+	example := exampleSensorSet("Example website")
+	example[0].Site = "Homelab"
+	if _, err := st.CreateMissingSensors(ctx, example); err != nil {
+		t.Fatalf("create the example sensor: %v", err)
+	}
+	mine := model.Sensor{Name: "My own NAS", Type: model.SensorTCP,
+		Target: "192.168.1.10:22", Interval: 60, Timeout: 10, Enabled: true,
+		Site: "Homelab"}
+	if err := st.CreateSensor(ctx, &mine); err != nil {
+		t.Fatalf("create the operator's sensor: %v", err)
+	}
+
+	// The button reports what it would take before it takes it, and the number it
+	// reports has to be the number of places it actually removes.
+	before, err := st.CountExampleData(ctx)
+	if err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if before.Sites != 0 {
+		t.Errorf("count says %d site(s) would go, but one of them is in use", before.Sites)
+	}
+
+	removed, err := st.DeleteExampleData(ctx)
+	if err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	if removed.Sites != 0 {
+		t.Errorf("removed %d site(s), want 0: the place is still in use", removed.Sites)
+	}
+	if _, err := st.GetSite(ctx, "Homelab"); err != nil {
+		t.Fatalf("the site the operator's own sensor sits at was removed: %v", err)
+	}
+	found, err := st.GetSensorByName(ctx, "My own NAS")
+	if err != nil {
+		t.Fatalf("the operator's sensor did not survive: %v", err)
+	}
+	if found.Site != "Homelab" {
+		t.Errorf("the operator's sensor now points at %q", found.Site)
+	}
+}
+
+// TestSiteOriginSurvivesAnEdit pins the reason updateSite takes origin from the
+// existing row rather than from the argument it was handed. A save from the
+// dashboard builds a fresh Site with no origin on it, and a site that lost its
+// marker that way would quietly stop being example data — which is to say, it
+// would be left behind by the removal button.
+func TestSiteOriginSurvivesAnEdit(t *testing.T) {
+	ctx := context.Background()
+	st := newTestStore(t)
+
+	start := model.Site{Name: "Homelab", Kind: model.SiteLocal, Origin: model.OriginExample}
+	if err := st.CreateSite(ctx, &start); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	lat, lon := 52.52, 13.405
+	edited := model.Site{Name: "Homelab", Kind: model.SiteLocal, Lat: &lat, Lon: &lon}
+	if err := st.UpdateSite(ctx, "Homelab", &edited); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	if edited.Origin != model.OriginExample {
+		t.Errorf("the site came back with origin %q; the caller answers with this value",
+			edited.Origin)
+	}
+	stored, err := st.GetSite(ctx, "Homelab")
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if stored.Origin != model.OriginExample {
+		t.Errorf("an edit cleared the example marker: origin is now %q", stored.Origin)
+	}
+	if !stored.Placed() {
+		t.Error("the edit did not stick: the coordinates are gone")
 	}
 }

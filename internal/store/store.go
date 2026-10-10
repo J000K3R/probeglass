@@ -469,6 +469,21 @@ ALTER TABLE sensors ADD COLUMN site TEXT
 CREATE INDEX IF NOT EXISTS idx_sensors_site ON sensors(site);
 `,
 	},
+	{
+		version: 4,
+		name:    "site-origin",
+		sql: `
+-- The example dataset needs places to put its sensors, and "remove the example
+-- data" must not leave those places behind as empty rows. Sensors have carried
+-- this marker since the setup screen existed; sites did not, because until the
+-- example data started creating them there was nothing to invent one.
+--
+-- NOT NULL DEFAULT '' is allowed here, unlike on the sensors.site column above:
+-- that restriction applies to ADD COLUMN with a REFERENCES clause, and this
+-- column references nothing. The empty string is the ordinary "made by hand".
+ALTER TABLE sites ADD COLUMN origin TEXT NOT NULL DEFAULT '';
+`,
+	},
 }
 
 func (s *Store) migrate(ctx context.Context) error {

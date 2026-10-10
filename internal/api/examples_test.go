@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/j000k3r/weatherglass/internal/config"
+	"github.com/j000k3r/weatherglass/internal/demo"
 	"github.com/j000k3r/weatherglass/internal/model"
 	"github.com/j000k3r/weatherglass/internal/store"
 )
@@ -57,10 +58,13 @@ func TestRestoreExampleDataBringsBackHistory(t *testing.T) {
 		t.Fatalf("restore: status = %d, want 200", status)
 	}
 
-	// Five, not four: the button loads the rich dataset. That difference is the
-	// user's decision and is pinned here so the two paths cannot quietly merge.
-	if restored.Sensors != 5 {
-		t.Errorf("restored %d sensor(s), want the five of the rich dataset", restored.Sensors)
+	// More than four: the button loads the rich dataset, the setup step writes the
+	// lean one. That difference is the user's decision and is pinned here so the two
+	// paths cannot quietly merge. The count comes from the dataset rather than from
+	// a number written down here, because the number is the thing that changes.
+	if want := len(demo.Sensors()); restored.Sensors != want {
+		t.Errorf("restored %d sensor(s), want the %d of the rich dataset",
+			restored.Sensors, want)
 	}
 	if restored.Results == 0 {
 		t.Error("the restored sensors have no probe history; the dataset is supposed " +
@@ -102,9 +106,9 @@ func TestRestoreExampleDataIsIdempotent(t *testing.T) {
 // TestRestoreExampleDataLeavesAnOccupiedNameAlone is the UNIQUE constraint
 // showing through the handler.
 //
-// Somebody with their own sensor called "Example website" must get the four they
-// are missing, not a 500 — and their sensor must come back untouched, above all
-// not marked as example data, which would put it in front of the removal button.
+// Somebody with their own sensor called "Example website" must get the rest of the
+// dataset, not a 500 — and their sensor must come back untouched, above all not
+// marked as example data, which would put it in front of the removal button.
 func TestRestoreExampleDataLeavesAnOccupiedNameAlone(t *testing.T) {
 	h := newHarness(t)
 	h.setup()
@@ -125,9 +129,9 @@ func TestRestoreExampleDataLeavesAnOccupiedNameAlone(t *testing.T) {
 		t.Fatalf("restore: status = %d, want 200 — a taken name must not fail the "+
 			"whole request", status)
 	}
-	if restored.Sensors != 4 {
-		t.Errorf("restored %d sensor(s), want the four whose names were free",
-			restored.Sensors)
+	if want := len(demo.Sensors()) - 1; restored.Sensors != want {
+		t.Errorf("restored %d sensor(s), want the %d whose names were free",
+			restored.Sensors, want)
 	}
 
 	resp = h.do(http.MethodGet, "/api/sensors", nil, nil)

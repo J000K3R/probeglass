@@ -12,6 +12,10 @@ type ExampleData struct {
 	Sensors   int `json:"sensors"`
 	Results   int `json:"results"`
 	Incidents int `json:"incidents"`
+	// Sites is how many invented places went with them. It is usually smaller than
+	// Sensors and often zero, because a place the operator has meanwhile put a
+	// sensor of their own at stays.
+	Sites int `json:"sites"`
 }
 
 // CountExampleData reports how much example data there is.
@@ -30,8 +34,11 @@ func (s *Store) CountExampleData(ctx context.Context) (ExampleData, error) {
 			(SELECT id FROM sensors WHERE origin = ?)`},
 		{&out.Incidents, `SELECT COUNT(*) FROM incidents WHERE sensor_id IN
 			(SELECT id FROM sensors WHERE origin = ?)`},
+		{&out.Sites, `SELECT COUNT(*) FROM sites WHERE origin = ? AND NOT EXISTS
+			(SELECT 1 FROM sensors WHERE sensors.site = sites.name AND sensors.origin <> ?)`},
 	} {
-		if err := s.db.QueryRowContext(ctx, q.sql, model.OriginExample).Scan(q.dst); err != nil {
+		if err := s.db.QueryRowContext(ctx, q.sql,
+			model.OriginExample, model.OriginExample).Scan(q.dst); err != nil {
 			return ExampleData{}, err
 		}
 	}
@@ -47,6 +54,14 @@ func (s *Store) CountExampleData(ctx context.Context) (ExampleData, error) {
 // to "Public DNS" has not thereby asked for it to be kept forever, and somebody who
 // puts their own router in a group called "Examples" has not asked for it to be
 // deleted.
+//
+// Places go too, on the same marker, but only the ones this leaves empty. An
+// example site the operator has since put a sensor of their own at is a place
+// somebody is using, and deleting their sensor's site would be the removal
+// reaching beyond what it was asked to remove. The site count is therefore taken
+// with the same "no sensor that stays behind" test before anything is deleted,
+// which is also what CountExampleData reports, so the number on the button and the
+// number in the answer agree.
 func (s *Store) DeleteExampleData(ctx context.Context) (ExampleData, error) {
 	var removed ExampleData
 	err := s.tx(ctx, func(tx *sql.Tx) error {
@@ -55,12 +70,16 @@ func (s *Store) DeleteExampleData(ctx context.Context) (ExampleData, error) {
 			(SELECT COUNT(*) FROM results WHERE sensor_id IN
 				(SELECT id FROM sensors WHERE origin = ?)),
 			(SELECT COUNT(*) FROM incidents WHERE sensor_id IN
-				(SELECT id FROM sensors WHERE origin = ?))`,
-			model.OriginExample, model.OriginExample, model.OriginExample)
-		if err := row.Scan(&removed.Sensors, &removed.Results, &removed.Incidents); err != nil {
+				(SELECT id FROM sensors WHERE origin = ?)),
+			(SELECT COUNT(*) FROM sites WHERE origin = ? AND NOT EXISTS
+				(SELECT 1 FROM sensors WHERE sensors.site = sites.name AND sensors.origin <> ?))`,
+			model.OriginExample, model.OriginExample, model.OriginExample,
+			model.OriginExample, model.OriginExample)
+		if err := row.Scan(&removed.Sensors, &removed.Results, &removed.Incidents,
+			&removed.Sites); err != nil {
 			return err
 		}
-		if removed.Sensors == 0 {
+		if removed.Sensors == 0 && removed.Sites == 0 {
 			return nil
 		}
 
@@ -74,7 +93,16 @@ func (s *Store) DeleteExampleData(ctx context.Context) (ExampleData, error) {
 				return err
 			}
 		}
-		_, err := tx.ExecContext(ctx, `DELETE FROM sensors WHERE origin = ?`, model.OriginExample)
+		if _, err := tx.ExecContext(ctx,
+			`DELETE FROM sensors WHERE origin = ?`, model.OriginExample); err != nil {
+			return err
+		}
+		// After the sensors, so the NOT EXISTS above is evaluated against the state
+		// it was counted in and the two cannot disagree.
+		_, err := tx.ExecContext(ctx,
+			`DELETE FROM sites WHERE origin = ? AND NOT EXISTS
+				(SELECT 1 FROM sensors WHERE sensors.site = sites.name)`,
+			model.OriginExample)
 		return err
 	})
 	return removed, err

@@ -156,12 +156,19 @@ func (k SiteKind) Valid() bool {
 // pointers because 0/0 is a real coordinate in the Gulf of Guinea, and a zero
 // value therefore cannot be made to mean "not placed".
 type Site struct {
-	Name      string    `json:"name"`
-	Kind      SiteKind  `json:"kind"`
-	Lat       *float64  `json:"lat,omitempty"`
-	Lon       *float64  `json:"lon,omitempty"`
-	SortOrder int       `json:"sort_order"`
-	Managed   bool      `json:"managed"` // declared in the config file, read-only in the UI
+	Name      string   `json:"name"`
+	Kind      SiteKind `json:"kind"`
+	Lat       *float64 `json:"lat,omitempty"`
+	Lon       *float64 `json:"lon,omitempty"`
+	SortOrder int      `json:"sort_order"`
+	Managed   bool     `json:"managed"` // declared in the config file, read-only in the UI
+	// Origin records that the site was invented rather than made by hand. It is
+	// the same marker Sensor carries, and it is here for the same reason: the
+	// example sensors need somewhere to live, and "remove the example data" has to
+	// be able to tell a place it created from a place the operator made. Without
+	// it that button leaves the invented sites behind as empty rows nobody can
+	// account for.
+	Origin    string    `json:"origin,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 

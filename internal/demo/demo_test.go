@@ -4,7 +4,10 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"net"
+	"net/url"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/j000k3r/weatherglass/internal/model"
@@ -123,4 +126,166 @@ func TestSeedCreatesSensorsAndHistory(t *testing.T) {
 	if again.Sensors != 0 || again.Samples != 0 {
 		t.Errorf("the second run wrote %+v; it has to write nothing", again)
 	}
+}
+
+// TestSeedPlacesItsSensorsOnTheMap is about the half of the dataset that is not a
+// sensor. The example checks need somewhere to live, and the map draws places —
+// without a placed site the map is an empty rectangle no matter how many sensors
+// were invented, which is exactly what the dashboard looked like before this.
+func TestSeedPlacesItsSensorsOnTheMap(t *testing.T) {
+	ctx := context.Background()
+	st := testStore(t)
+
+	res, err := Seed(ctx, st, 3)
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if res.Sites != len(sites) {
+		t.Errorf("created %d site(s), want %d", res.Sites, len(sites))
+	}
+
+	list, err := st.ListSites(ctx)
+	if err != nil {
+		t.Fatalf("list sites: %v", err)
+	}
+	placed := 0
+	for _, s := range list {
+		if !s.Placed() {
+			t.Errorf("site %q has no coordinates, so the map cannot draw it", s.Name)
+			continue
+		}
+		if *s.Lat < -90 || *s.Lat > 90 || *s.Lon < -180 || *s.Lon > 180 {
+			t.Errorf("site %q is off the planet: %g,%g", s.Name, *s.Lat, *s.Lon)
+		}
+		placed++
+	}
+	if placed == 0 {
+		t.Fatal("no site is placed; the map would be empty")
+	}
+
+	// A sensor whose site does not exist is refused by the foreign key, so this is
+	// also the check that the places were written before the sensors that point at
+	// them.
+	for _, c := range Sensors() {
+		if c.Site == "" {
+			continue
+		}
+		if _, err := st.GetSite(ctx, c.Site); err != nil {
+			t.Errorf("sensor %q names the site %q, which was not created: %v", c.Name, c.Site, err)
+		}
+	}
+}
+
+// TestSeedLeavesAnExistingSiteAlone is the promise the Settings button makes when
+// it says it only restores what is missing. Somebody who has moved "Homelab" to
+// where their house actually is must not have it moved back.
+func TestSeedLeavesAnExistingSiteAlone(t *testing.T) {
+	ctx := context.Background()
+	st := testStore(t)
+
+	lat, lon := 48.1372, 11.5756 // Munich, which is where this operator lives.
+	theirs := model.Site{Name: "Homelab", Kind: model.SiteExternal, Lat: &lat, Lon: &lon}
+	if err := st.CreateSite(ctx, &theirs); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	res, err := Seed(ctx, st, 3)
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if res.Sites != len(sites)-1 {
+		t.Errorf("created %d site(s); the one that already existed is not one of them", res.Sites)
+	}
+	after, err := st.GetSite(ctx, "Homelab")
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if after.Kind != model.SiteExternal || *after.Lat != lat {
+		t.Errorf("the seed overwrote a site somebody made: %+v", after)
+	}
+	if after.Origin == model.OriginExample {
+		t.Error("a site the operator made came back marked as example data, " +
+			"so the removal button would take it")
+	}
+}
+
+// TestSeedRemovalTakesItsPlacesBack is the pair to the store-level test, through
+// the dataset that actually ships: seed, remove, and the installation is back to
+// where it started rather than holding two empty pins.
+func TestSeedRemovalTakesItsPlacesBack(t *testing.T) {
+	ctx := context.Background()
+	st := testStore(t)
+
+	if _, err := Seed(ctx, st, 3); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	removed, err := st.DeleteExampleData(ctx)
+	if err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	if removed.Sites != len(sites) {
+		t.Errorf("removed %d site(s), want %d", removed.Sites, len(sites))
+	}
+	left, err := st.ListSites(ctx)
+	if err != nil {
+		t.Fatalf("list sites: %v", err)
+	}
+	if len(left) != 0 {
+		t.Errorf("%d site(s) outlived the example data: %+v", len(left), left)
+	}
+}
+
+// TestPrivateTargetsArePaused is the rule that keeps a seeded dashboard honest a
+// minute after it was seeded. Every enabled example sensor is probed for real, so
+// its target has to answer from wherever this runs — otherwise the week of green
+// history printed above it is contradicted by a red sensor.
+//
+// A homelab's own addresses are what belongs at the two example sites, and none of
+// them answers on anybody else's network. So they are paused: they place the pins
+// without claiming anything about a network this installation cannot see, and the
+// sensor list shows them as paused, which is the truth.
+func TestPrivateTargetsArePaused(t *testing.T) {
+	placed := 0
+	for _, d := range sensors {
+		if !d.paused {
+			if privateTarget(t, d.target) {
+				t.Errorf("%q is enabled and points at %q, which cannot answer from here; "+
+					"it would contradict its own invented history within a minute",
+					d.name, d.target)
+			}
+			continue
+		}
+		if d.site == "" {
+			t.Errorf("%q is paused and belongs to no site, so it is a grey row "+
+				"that shows nothing", d.name)
+		}
+		placed++
+	}
+	if placed == 0 {
+		t.Error("nothing in the dataset is placed, so the map has nothing to draw")
+	}
+}
+
+// privateTarget reports whether a target names an address that only exists inside
+// somebody's own network.
+//
+// A name counts when it is obviously local (.local, .lan) or has no dot at all.
+// vps.example.net is deliberately not one of these: it does not resolve, but that
+// is a different failure, and treating an unresolvable public name as private
+// would let a genuine mistake through the check above.
+func privateTarget(t *testing.T, target string) bool {
+	t.Helper()
+	host := target
+	if u, err := url.Parse(target); err == nil && u.Host != "" {
+		host = u.Host
+	}
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return !strings.Contains(host, ".") ||
+			strings.HasSuffix(host, ".local") || strings.HasSuffix(host, ".lan")
+	}
+	return ip.IsPrivate() || ip.IsLoopback() || ip.IsUnspecified() || ip.IsLinkLocalUnicast()
 }
