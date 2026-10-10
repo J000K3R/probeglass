@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -857,5 +858,51 @@ func TestManagedSensorTakesOverARowThatAlreadyExists(t *testing.T) {
 	}
 	if !again.Managed {
 		t.Error("an ordinary save set a managed sensor free")
+	}
+}
+
+// TestOpenNamesTheCauseWhenTheDirectoryIsNotWritable covers the failure a first
+// install in a container actually hits: the image runs as uid 65532, the bind mount on
+// the host is owned by whoever created it, and the database cannot be created inside it.
+// SQLite calls that "unable to open database file (14)" and says nothing else.
+//
+// Root ignores directory permissions altogether, so on a run as root there is no way to
+// arrange the failure at all — the test skips rather than pretend otherwise.
+func TestOpenNamesTheCauseWhenTheDirectoryIsNotWritable(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("root writes into a directory that has no write bit set")
+	}
+
+	dir := filepath.Join(t.TempDir(), "data")
+	if err := os.Mkdir(dir, 0o500); err != nil {
+		t.Fatalf("make a directory with no write bit: %v", err)
+	}
+	// t.TempDir's cleanup has to be able to take it away again.
+	t.Cleanup(func() { os.Chmod(dir, 0o700) })
+
+	_, err := Open(filepath.Join(dir, "weatherglass.db"), discardLog())
+	if err == nil {
+		t.Fatal("opening a database in a directory with no write bit succeeded")
+	}
+	if !strings.Contains(err.Error(), "not writable by uid") {
+		t.Errorf("the error leaves the reader with SQLite's number and no cause: %v", err)
+	}
+	// Naming the uid is the point: it is what a person compares against the folder's
+	// owner to see the mismatch for themselves.
+	if want := fmt.Sprintf("uid %d", os.Getuid()); !strings.Contains(err.Error(), want) {
+		t.Errorf("the error does not name %q, the uid that has to be able to write: %v", want, err)
+	}
+	if !strings.Contains(err.Error(), "chown -R") {
+		t.Errorf("the error names the cause but not the fix: %v", err)
+	}
+}
+
+// The other half of that promise, and the reason the probe exists at all: when
+// permissions are not the problem, the message is left exactly as SQLite worded it.
+// A hint that is wrong half the time teaches people to ignore it, and this one sits on
+// the path of every start.
+func TestUnwritableHintStaysQuietWhenTheDirectoryIsWritable(t *testing.T) {
+	if got := unwritableHint(t.TempDir()); got != "" {
+		t.Errorf("unwritableHint on a writable directory = %q, want nothing", got)
 	}
 }

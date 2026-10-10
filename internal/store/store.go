@@ -84,7 +84,7 @@ func Open(path string, log *slog.Logger) (*Store, error) {
 	defer cancel()
 	if err := db.PingContext(ctx); err != nil {
 		db.Close()
-		return nil, fmt.Errorf("ping database %s: %w", path, err)
+		return nil, fmt.Errorf("ping database %s: %w%s", path, err, unwritableHint(filepath.Dir(path)))
 	}
 
 	s := newStore(db, log)
@@ -93,6 +93,42 @@ func Open(path string, log *slog.Logger) (*Store, error) {
 		return nil, err
 	}
 	return s, nil
+}
+
+// unwritableHint explains a failed open that was caused by permissions, and says
+// nothing at all when it was not.
+//
+// SQLite reports every reason it cannot open a file as "unable to open database
+// file (14)". A missing directory, a read-only file, a full disk and a directory the
+// process does not own all read exactly the same, which is no help to somebody
+// staring at a container that exits two seconds after it starts.
+//
+// The one that actually happens is the last: the image runs as uid 65532, and a bind
+// mount brings the *host* folder's ownership along with it. On a NAS the folder is
+// usually created by whoever handles the install, as root, so the process that has to
+// create the database inside it cannot — and nothing in the message says so.
+//
+// Hence the probe rather than a guess: if a file can be created in the directory, the
+// failure is something else entirely, and this returns nothing so that the message
+// stays as SQLite worded it. A hint that is wrong half the time is worse than none.
+//
+// The uid is printed rather than the image's 65532 written out, because the same
+// message has to be true when the binary runs straight on a host — where the answer is
+// that user's own uid, and telling somebody to chown their own folder to 65532 would be
+// nonsense. Inside the image the two are the same number, and it is the one the
+// container documentation quotes.
+func unwritableHint(dir string) string {
+	f, err := os.CreateTemp(dir, ".weatherglass-write-test-*")
+	if err == nil {
+		name := f.Name()
+		f.Close()
+		os.Remove(name)
+		return ""
+	}
+	return fmt.Sprintf("; %s is not writable by uid %d, the user this process runs as."+
+		" A bind mount keeps the ownership of the host folder rather than taking the"+
+		" image's, so hand that folder to it once and start again: chown -R %d:%d <host folder>",
+		dir, os.Getuid(), os.Getuid(), os.Getuid())
 }
 
 // OpenReadOnly opens an existing database for reading.
