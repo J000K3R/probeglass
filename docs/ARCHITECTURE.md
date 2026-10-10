@@ -429,7 +429,7 @@ with no changes elsewhere, because the markup never contains user-facing strings
 build cross-compiles rather than emulating: the arm64 image for a Pi builds at
 native speed. The runtime stage is
 `gcr.io/distroless/static-debian12:nonroot` — no shell, no package manager, uid
-65532. Because there is no shell, the image's `HEALTHCHECK` runs the binary
+500. Because there is no shell, the image's `HEALTHCHECK` runs the binary
 itself (`weatherglass healthcheck`), which makes a `GET /healthz` and exits
 non-zero on failure.
 

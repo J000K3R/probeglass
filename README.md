@@ -167,7 +167,7 @@ docker run -d \
   -p 8080:8080 \
   -v weatherglass-data:/data \
   --cap-add NET_RAW \
-  j000k3r/weatherglass:latest
+  ghcr.io/j000k3r/weatherglass:dev
 ```
 
 `NET_RAW` is only needed for ICMP ping sensors. Without it, Weatherglass falls
@@ -193,9 +193,9 @@ make test         # runs the test suite
 
 ```bash
 docker run --rm -p 8080:8080 -v weatherglass-demo:/data \
-  j000k3r/weatherglass:latest seed --demo --days 7
+  ghcr.io/j000k3r/weatherglass:dev seed --demo --days 7
 docker run --rm -p 8080:8080 -v weatherglass-demo:/data \
-  j000k3r/weatherglass:latest serve --listen :8080
+  ghcr.io/j000k3r/weatherglass:dev serve --listen :8080
 ```
 
 The demo set creates five sensors covering all four types, a week of plausible
@@ -439,8 +439,8 @@ together, [CONTRIBUTING.md](CONTRIBUTING.md) for how to send a patch, and
 
 The user-facing documentation lives in its own repository and is published from
 there: **<https://j000k3r.github.io/weatherglass-docs/>**. This repository keeps
-the documents that belong with the code. [DOCKERHUB.md](DOCKERHUB.md) is the
-description of the Docker Hub page, and is pushed there by the release workflow.
+the documents that belong with the code. The container image is published to the
+GitHub Container Registry, `ghcr.io/j000k3r/weatherglass`, by the release workflow.
 
 ## Status
 

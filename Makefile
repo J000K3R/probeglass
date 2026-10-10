@@ -20,7 +20,7 @@ LDFLAGS     := -s -w \
                -X $(PKG)/internal/model.Commit=$(COMMIT) \
                -X $(PKG)/internal/model.BuildDate=$(BUILD_DATE)
 
-IMAGE       ?= j000k3r/weatherglass
+IMAGE       ?= ghcr.io/j000k3r/weatherglass
 TAG         ?= dev
 GO          ?= go
 

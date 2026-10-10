@@ -103,7 +103,7 @@ func Open(path string, log *slog.Logger) (*Store, error) {
 // process does not own all read exactly the same, which is no help to somebody
 // staring at a container that exits two seconds after it starts.
 //
-// The one that actually happens is the last: the image runs as uid 65532, and a bind
+// The one that actually happens is the last: the image runs as uid 500, and a bind
 // mount brings the *host* folder's ownership along with it. On a NAS the folder is
 // usually created by whoever handles the install, as root, so the process that has to
 // create the database inside it cannot — and nothing in the message says so.
@@ -112,9 +112,9 @@ func Open(path string, log *slog.Logger) (*Store, error) {
 // failure is something else entirely, and this returns nothing so that the message
 // stays as SQLite worded it. A hint that is wrong half the time is worse than none.
 //
-// The uid is printed rather than the image's 65532 written out, because the same
-// message has to be true when the binary runs straight on a host — where the answer is
-// that user's own uid, and telling somebody to chown their own folder to 65532 would be
+// The uid is printed rather than the image's 500 written out, because the same message
+// has to be true when the binary runs straight on a host — where the answer is that
+// user's own uid, and telling somebody to chown their own folder to 500 would be
 // nonsense. Inside the image the two are the same number, and it is the one the
 // container documentation quotes.
 func unwritableHint(dir string) string {

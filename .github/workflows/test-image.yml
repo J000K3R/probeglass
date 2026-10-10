@@ -3,19 +3,20 @@ name: Test image
 # A container image for the people trying this out before it is released, and for
 # nobody else.
 #
-# It goes to the GitHub Container Registry rather than to Docker Hub, and that is not
-# a preference. A *private* Docker Hub repository allows no collaborators at all on the
-# free plan, so the testers could not pull it; Docker Pro allows exactly one, which is
-# no better for a handful of people. A package on ghcr.io is private as well, but it
-# inherits this repository's own access list — whoever is invited to the repository can
-# pull the image, and nobody else can. That is also what makes the invitations the only
-# thing to manage: there is no second list to keep in step.
+# It goes to the GitHub Container Registry, which is where the released image goes
+# too, so there is one registry to reason about and no second set of credentials.
+# A package on ghcr.io inherits this repository's own access list: whoever can see
+# the repository can pull the image. That is also what makes the repository the only
+# thing to manage — there is no second list to keep in step.
+#
+# The package is public, so pulling it needs no account and no login. Should it ever
+# be made private again, that access list is what decides who can still pull.
 #
 # No secrets are involved: GitHub Actions pushes with the GITHUB_TOKEN it is already
 # given, which is why `permissions` below is the whole of the authorisation.
 #
 # None of this is a release. The version stays 0.1.0-dev and the tag is `dev`; the `v*`
-# tags belong to release.yml, which is what publishes to Docker Hub.
+# tags belong to release.yml, which is what produces the versioned tags.
 
 on:
   # A button, for handing the testers a build on purpose.

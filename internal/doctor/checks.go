@@ -106,11 +106,12 @@ func (r *run) checkDataDir() {
 	if err != nil {
 		// The uid is printed because the answer depends on who is asking. Doctor
 		// tests writability as its own user, so run as root against a volume
-		// owned by 65532 this passes while the daemon still cannot write; the
+		// owned by 500 this passes while the daemon still cannot write; the
 		// visible uid is what lets a person spot that mismatch.
 		r.addHint(Fail, "data dir",
 			fmt.Sprintf("%s is not writable by uid %d: %v", probe, uid, err),
-			"in the container the daemon runs as uid 65532; the volume has to be writable by it")
+			"in the container the daemon runs as uid 500; the volume has to be writable by it,"+
+				" or the container has to run as whoever owns it (user: in compose, --user for docker run)")
 		return
 	}
 	name := f.Name()
