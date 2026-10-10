@@ -288,6 +288,18 @@ func (h *harness) abandonAfter(d time.Duration, method, path string, body any) {
 	}
 }
 
+// abandonedWriteDeadline is how long the tests below wait for work that a handler
+// does after its client has gone. It is deliberately far longer than that work
+// takes on a laptop.
+//
+// The number to beat is bcrypt, not the database. A password change compares the
+// old password and hashes the new one, so it pays that cost twice; at cost 12 that
+// is half a second here, but the CI runner is slower and runs the whole suite under
+// the race detector, and there the same handler was measured at 10.7 seconds. A
+// ten-second limit was a coin toss on CI, and when it lost the flip it blamed the
+// product for discarding a password it had in fact stored.
+const abandonedWriteDeadline = 60 * time.Second
+
 // waitForUser polls until an account exists, or gives up.
 //
 // Polling rather than sleeping a fixed amount: the handler carries on after the
@@ -295,7 +307,7 @@ func (h *harness) abandonAfter(d time.Duration, method, path string, body any) {
 // be either flaky or needlessly slow.
 func (h *harness) waitForUser() bool {
 	h.t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(abandonedWriteDeadline)
 	for time.Now().Before(deadline) {
 		if n, err := h.store.CountUsers(context.Background()); err == nil && n > 0 {
 			return true
@@ -330,25 +342,54 @@ func TestSetupSurvivesAClientThatGaveUp(t *testing.T) {
 	}
 }
 
+// accountHash reads the stored password hash of the test account, or fails.
+//
+// bcrypt salts every hash, so a changed password is always a changed hash — which
+// makes "did the write land?" a string comparison instead of a bcrypt run. Doing
+// this with bcrypt in the polling loop below would spend one hash per attempt, the
+// very cost the deadline is there to accommodate.
+func (h *harness) accountHash() string {
+	h.t.Helper()
+	u, err := h.store.GetUserByName(context.Background(), testUser)
+	if err != nil {
+		h.t.Fatalf("read the test account: %v", err)
+	}
+	return u.PasswordHash
+}
+
+// The same abandonment as in the setup test, on the other handler that hashes. It
+// is the more expensive of the two: it compares the old password and hashes the
+// new one, so it pays the bcrypt cost twice.
 func TestChangePasswordSurvivesAClientThatGaveUp(t *testing.T) {
 	h := newHarness(t)
 	h.setup()
 
+	before := h.accountHash()
+
 	h.abandonAfter(50*time.Millisecond, http.MethodPut, "/api/password",
 		map[string]string{"current_password": testPassword, "new_password": "a-new-password"})
 
-	deadline := time.Now().Add(10 * time.Second)
-	for {
-		resp := h.login(testUser, "a-new-password")
-		status := resp.StatusCode
-		resp.Body.Close()
-		if status == http.StatusOK {
-			return
-		}
+	// Watching the store rather than the sign-in endpoint, for two reasons: the
+	// stored hash is the thing the handler writes, and polling /api/login would
+	// spend failed sign-ins against the login limiter, which locks a client out for
+	// a minute once five of them have piled up. That second reason is not
+	// hypothetical — it is what the old version of this test did, and on CI the
+	// lockout outlived the deadline and was reported as a discarded password.
+	deadline := time.Now().Add(abandonedWriteDeadline)
+	for h.accountHash() == before {
 		if time.Now().After(deadline) {
-			t.Fatal("the new password was discarded when the client disconnected")
+			t.Fatal("the new password was discarded when the client disconnected; " +
+				"a reload during hashing must not undo the one thing the user explicitly asked for")
 		}
 		time.Sleep(20 * time.Millisecond)
+	}
+
+	// Stored is not enough: it has to be the password that was typed, and the next
+	// sign-in is what proves it.
+	resp := h.login(testUser, "a-new-password")
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("login with the new password = %d, want 200: the change did not store what was typed", resp.StatusCode)
 	}
 }
 

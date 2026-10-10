@@ -115,16 +115,30 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - uses: golangci/golangci-lint-action@v6
+      - uses: golangci/golangci-lint-action@v9
         with:
-          version: latest
+          # Pinned, and — the important part — compiled here by the Go that
+          # setup-go installed rather than downloaded as a prebuilt binary.
+          #
+          # `version: latest` used to hand this job golangci-lint v1.64.8, which
+          # was built with go1.24 and refuses to read a go.mod that says 1.27.1:
+          #
+          #     can't load config: the Go language version (go1.24) used to build
+          #     golangci-lint is lower than the targeted Go version (1.27.1)
+          #
+          # so the job failed before it linted a single line. A pinned version
+          # cannot drift back to that, and building it from source means the
+          # toolchain match is settled here instead of by whoever cut the release.
+          install-mode: goinstall
+          version: v2.14.0
           args: --timeout=5m
 
       # The e2e module is nested, so `./...` here does not reach it. It gets its
       # own run rather than being left as the one unlinted corner of the tree.
-      - uses: golangci/golangci-lint-action@v6
+      - uses: golangci/golangci-lint-action@v9
         with:
-          version: latest
+          install-mode: goinstall
+          version: v2.14.0
           working-directory: e2e
           args: --timeout=5m
 
