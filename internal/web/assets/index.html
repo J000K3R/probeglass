@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="en" data-theme="auto" data-accent="azure" data-density="comfortable">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<meta name="description" content="Weatherglass — a small, self-hosted watchdog for your homelab.">
+<title>Weatherglass</title>
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+
+<!-- Shown until the session is known, so the app never flashes a login form at
+     an already-authenticated user. -->
+<div id="boot" class="boot">
+  <div class="spinner" aria-hidden="true"></div>
+  <p data-i18n="boot.loading">Loading…</p>
+  <!-- watchdog.js replaces the spinner with a real message if the dashboard has
+       not finished booting by then. It is only ever seen on a failure. -->
+</div>
+
+<!-- ------------------------------------------------------------------ auth -->
+<section id="auth" class="auth-view" hidden>
+  <form id="auth-form" class="auth-card" autocomplete="on">
+    <div class="brand brand-lg">
+      <img src="/assets/favicon.svg" alt="" width="34" height="34">
+      <span>Weatherglass</span>
+    </div>
+    <p id="auth-hint" class="muted"></p>
+
+    <!-- Step one: who you are and the password. The strength meter informs
+         without policing — the server's eight-character floor is the only rule.
+         The name field is above the password in both modes: it is the first
+         thing a sign-in asks for everywhere else, and the setup screen has to
+         ask it too, since the account it creates needs a name. -->
+    <div id="auth-password-step" class="auth-step">
+      <label for="auth-username" data-i18n="auth.username">Username</label>
+      <input id="auth-username" name="username" type="text" required
+             autocomplete="username" maxlength="64" autocapitalize="none"
+             autocorrect="off" spellcheck="false">
+
+      <label for="auth-password" data-i18n="auth.password">Password</label>
+      <input id="auth-password" name="password" type="password" required
+             autocomplete="current-password" minlength="8">
+      <div id="auth-meter"></div>
+
+      <div id="auth-confirm-row" hidden>
+        <label for="auth-confirm" data-i18n="auth.confirm">Repeat password</label>
+        <input id="auth-confirm" name="confirm" type="password"
+               autocomplete="new-password" minlength="8">
+      </div>
+    </div>
+
+    <!-- Step two, sign-in only: the code from the authenticator app. It stays
+         hidden until the server says the password was right and a second factor
+         is set — so a browser without one never sees a field it cannot fill. -->
+    <div id="auth-totp-step" class="auth-step" hidden>
+      <p class="muted small" data-i18n="auth.totpHint"></p>
+      <label for="auth-code" data-i18n="auth.totpCode">Code</label>
+      <input id="auth-code" name="code" type="text" inputmode="numeric"
+             autocomplete="one-time-code" maxlength="32" spellcheck="false">
+    </div>
+
+    <!-- Step three, setup only: how much of the interface to show first. -->
+    <fieldset id="auth-mode-step" class="auth-step mode-pick" hidden>
+      <legend data-i18n="auth.modeTitle">How much do you want to see?</legend>
+      <label class="mode-card">
+        <input type="radio" name="ui-mode" value="simple">
+        <span class="mode-name" data-i18n="auth.mode.simple">Simple</span>
+        <span class="mode-body" data-i18n="auth.mode.simpleBody"></span>
+      </label>
+      <label class="mode-card">
+        <input type="radio" name="ui-mode" value="advanced">
+        <span class="mode-name" data-i18n="auth.mode.advanced">Advanced</span>
+        <span class="mode-body" data-i18n="auth.mode.advancedBody"></span>
+      </label>
+      <p class="muted small" data-i18n="auth.modeHint"></p>
+    </fieldset>
+
+    <div class="auth-actions">
+      <button class="btn" type="button" id="auth-back" data-i18n="auth.back" hidden>Back</button>
+      <button class="btn btn-primary btn-block" type="submit" id="auth-submit"
+              data-i18n="auth.signIn">Sign in</button>
+    </div>
+    <p id="auth-error" class="form-error" role="alert"></p>
+  </form>
+</section>
+
+<!-- ------------------------------------------------------------------- app -->
+<div id="app" hidden>
+  <header class="topbar">
+    <!-- The bar is three columns — brand and tabs, the search field, the buttons —
+         so that the search field sits in the middle of the window rather than at
+         the end of whatever the buttons happen to measure today. The two sides
+         are wrapped rather than left loose because the middle column is `auto`:
+         a field of fixed width only stays centred if the columns beside it are
+         given equal shares of what is left over. -->
+    <div class="topbar-side">
+      <div class="brand">
+        <img src="/assets/favicon.svg" alt="" width="24" height="24">
+        <span class="brand-name">Weatherglass</span>
+      </div>
+
+      <!-- Every tab carries an icon beside its word, and both of them mean the
+           same thing. That is not decoration: below the widths the bar can hold
+           words at, the words go and the icons stay, so each one has to be able
+           to stand alone. The label moves onto the button itself for that reason
+           — a hidden word is not read out, and an icon alone has no name. -->
+      <nav class="tabs" id="tabs" role="tablist">
+        <button class="tab" role="tab" data-route="dashboard" data-i18n-aria="nav.dashboard" data-i18n-title="nav.dashboard" aria-label="Dashboard" title="Dashboard">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.8 12.2a6.4 6.4 0 1 1 12.4 0"/><path d="M8 12.2 11.4 8"/></svg>
+          <span data-i18n="nav.dashboard">Dashboard</span>
+        </button>
+        <button class="tab" role="tab" data-route="incidents" data-i18n-aria="nav.incidents" data-i18n-title="nav.incidents" aria-label="Incidents" title="Incidents">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.2 1.5 13.4h13L8 2.2Z"/><path d="M8 6.4v3.2M8 11.8v.1"/></svg>
+          <span data-i18n="nav.incidents">Incidents</span>
+        </button>
+        <button class="tab" role="tab" data-route="channels" data-i18n-aria="nav.channels" data-i18n-title="nav.channels" aria-label="Alerts" title="Alerts">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11.2V7a4 4 0 0 1 8 0v4.2l1.2 1.8H2.8L4 11.2Z"/><path d="M6.3 12.9a1.8 1.8 0 0 0 3.4 0"/></svg>
+          <span data-i18n="nav.channels">Alerts</span>
+        </button>
+        <button class="tab" role="tab" data-route="settings" data-i18n-aria="nav.settings" data-i18n-title="nav.settings" aria-label="Settings" title="Settings">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="2.4"/><path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M12.6 3.4l-1.4 1.4M4.8 11.2l-1.4 1.4"/></svg>
+          <span data-i18n="nav.settings">Settings</span>
+        </button>
+      </nav>
+    </div>
+
+    <!-- One field, and it looks in everything. What it finds, and what it
+         deliberately never looks at, is decided by the server: see
+         internal/store/search.go. -->
+    <div class="search">
+      <input id="search" type="search" data-i18n-placeholder="nav.search"
+             data-i18n-aria="nav.search" placeholder="Search" aria-label="Search"
+             autocomplete="off" role="combobox"
+             aria-expanded="false" aria-controls="search-results">
+      <div class="search-results" id="search-results" hidden></div>
+    </div>
+
+    <div class="topbar-side topbar-actions">
+      <!-- Below ~1133px the four controls in here cannot be held on one line with
+           everything else, and the bar wraps — three rows of buttons at 600px, four
+           at 440. Rather than give up a line, they give up the row: the same
+           elements are laid out as a panel behind the ⋮ beside them, by style.css
+           alone. Nothing is moved, rebuilt or copied, so every listener, every
+           aria-label and every bit of state a control carries goes on working
+           unchanged — and a control that is `display: none` is not in the tab order
+           and not read out, which is what a folded-away button has to be. -->
+      <div class="topbar-extra" id="topbar-extra">
+        <!-- The layout switcher only means anything on the dashboard, so it is only
+             on screen there. It is filled from model.Layouts' counterpart in app.js
+             and shown or hidden by the router, not by CSS — a control that is
+             merely invisible still takes focus and is still read out. -->
+        <div class="segmented" id="layout-switcher" role="group"
+             data-i18n-aria="nav.layout" aria-label="Dashboard layout" hidden></div>
+
+        <!-- Arranging the header, beside the switcher for the layout underneath it:
+             both are about how this dashboard is put together, so they live
+             together. The buttons are drawn by widgets.js; the container is empty
+             here because which of them there are depends on whether the strip is
+             being arranged. It is a sibling of the strip and not a child of it on
+             purpose: what is read back as the widget list is
+             `#summary > [data-widget]`, and a button with a place in that list
+             would be saved as a widget that does not exist. -->
+        <div class="widgets-tools" id="widgets-tools" hidden></div>
+
+        <!-- The one action in the bar that makes something, so it keeps the accent
+             colour at every width. Below the word-fitting ones it is the plus and a
+             title, like everything else here — the word "New sensor" is 92 pixels,
+             which is a whole tab. -->
+        <button class="btn btn-primary" id="new-sensor" data-i18n-aria="sensor.new" data-i18n-title="sensor.new" aria-label="New sensor" title="New sensor">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><path d="M8 3.2v9.6M3.2 8h9.6"/></svg>
+          <span data-i18n="sensor.new">New sensor</span>
+        </button>
+
+        <!-- Whether the dashboard is following the probes as they happen, and
+             whether the stream carrying them is still up. It used to be that a
+             dropped connection looked exactly like a system where nothing had
+             gone wrong; this is the one place that tells the two apart, and the
+             switch that stops the traffic altogether. The dot is an <i> on
+             purpose: the word beside it is what syncLiveChip writes, and a
+             data-i18n on the button would put textContent over the dot. -->
+        <button class="live-chip" id="live-chip" type="button" data-live="waiting"
+                aria-pressed="false" data-i18n-aria="live.label" aria-label="Live updates">
+          <i class="live-dot" aria-hidden="true"></i>
+          <span class="live-word"></span>
+        </button>
+      </div><!-- /#topbar-extra -->
+
+      <!-- The search field's own place, once the bar is too narrow to hold the field
+           itself. It is not a row of the ⋮: the field is a thing the bar keeps at
+           every width, and folding it away with the buttons would be saying that a
+           phone cannot search. A magnifier in the row stands in for it, and pressing
+           it lays the field over the bar at the full width of it — which is the only
+           shape a search field is worth having on a phone. Above ~620px there is no
+           magnifier, because the field is right there in the row; see the media
+           queries in style.css. -->
+      <button class="bar-icon-btn" type="button" id="topbar-search"
+              data-i18n-aria="nav.search" data-i18n-title="nav.search"
+              aria-label="Search" title="Search">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="7.2" cy="7.2" r="4.4"/><path d="M10.6 10.6 14 14"/></svg>
+      </button>
+
+      <!-- The ⋮ that stands in for the row above whenever the bar cannot hold it.
+           It carries the `hidden` attribute nowhere: CSS is what shows and hides
+           it, at the same breakpoint that unfolds the panel, so the two can never
+           disagree about which of them is on screen. -->
+      <button class="bar-icon-btn" id="topbar-more" type="button" aria-haspopup="true"
+              aria-expanded="false" aria-controls="topbar-extra"
+              data-i18n-aria="nav.more" data-i18n-title="nav.more"
+              aria-label="More" title="More">
+        <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><circle cx="8" cy="3.2" r="1.4"/><circle cx="8" cy="8" r="1.4"/><circle cx="8" cy="12.8" r="1.4"/></svg>
+      </button>
+
+      <!-- Who is signed in, top right, where it is looked for. The menu itself is
+           built and placed by user.js on open; this holds the button and the
+           anchor it hangs from. -->
+      <div class="user-area">
+        <button class="user-chip" id="user-menu-toggle" type="button"
+                aria-haspopup="true" aria-expanded="false">
+          <span class="avatar" id="user-avatar" aria-hidden="true"></span>
+          <span class="user-chip-name" id="user-chip-name"></span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main id="main">
+    <!-- dashboard -->
+    <section id="view-dashboard" class="view">
+      <!-- The header. It is a strip of widgets rather than a fixed row: which
+           ones are on it, and in what order, is stored per account and arranged
+           by dragging the tiles. The container keeps its id because the tour and
+           the tests ring it; only the class changed, from the one fixed strip to
+           the grid the tiles now sit in. -->
+      <div id="summary" class="widgets"></div>
+      <div id="groups" class="groups"></div>
+      <div id="dashboard-empty" class="empty" hidden>
+        <h2 data-i18n="empty.title">No sensors yet</h2>
+        <p class="muted" data-i18n="empty.body">Add your first sensor to start monitoring.</p>
+        <button class="btn btn-primary" id="dashboard-new-sensor" data-action="new-sensor" data-i18n="sensor.new">New sensor</button>
+      </div>
+    </section>
+
+    <!-- incidents -->
+    <section id="view-incidents" class="view" hidden>
+      <div class="view-head view-head-filters">
+        <h1 data-i18n="incidents.title">Incidents</h1>
+
+        <!-- The filter line, on its own row under the heading. It is built from
+             the same three parts as the rest of the page — a segmented switch, a
+             select and period chips like the sensor detail window — plus one text
+             field, so that narrowing the list needs nothing learned. The chips are
+             filled in from a table in app.js, the way the detail window does it. -->
+        <div class="filter-bar" id="incident-filters">
+          <div class="segmented" id="incident-status" role="group"
+               data-i18n-aria="filter.status" aria-label="Status">
+            <button class="seg-btn" type="button" data-state="" aria-pressed="true"
+                    data-i18n="filter.all">All</button>
+            <button class="seg-btn" type="button" data-state="open" aria-pressed="false"
+                    data-i18n="filter.open">Open</button>
+            <button class="seg-btn" type="button" data-state="resolved" aria-pressed="false"
+                    data-i18n="filter.resolved">Resolved</button>
+          </div>
+
+          <select id="incident-sensor" data-i18n-aria="filter.sensor"
+                  aria-label="Sensor"></select>
+
+          <div class="range-picker" id="incident-range" role="group"
+               data-i18n-aria="filter.period" aria-label="Period"></div>
+
+          <input type="search" id="incident-query"
+                 data-i18n-placeholder="filter.placeholder"
+                 placeholder="Cause, sensor or note" aria-label="Search">
+
+          <button class="btn btn-ghost btn-small" id="incident-reset" hidden
+                  data-i18n="filter.reset">Reset filter</button>
+        </div>
+      </div>
+      <div id="incident-list" class="table-wrap"></div>
+      <div id="incidents-empty" class="empty" hidden>
+        <h2 data-i18n="incidents.empty">No incidents</h2>
+        <p class="muted" id="incidents-empty-body"
+           data-i18n="incidents.emptyBody">Nothing has failed in this window. Keep it that way.</p>
+        <!-- When the filter is what emptied the list, saying "nothing has failed"
+             would be a lie about the installation. This second line says where the
+             emptiness comes from instead, and offers the way back out. -->
+        <p class="muted" id="incidents-empty-filtered" hidden
+           data-i18n="incidents.emptyFiltered">The filter is hiding everything. Try a wider period, another sensor, or reset it.</p>
+      </div>
+    </section>
+
+    <!-- alert channels -->
+    <section id="view-channels" class="view" hidden>
+      <div class="view-head">
+        <h1 data-i18n="channels.title">Alert channels</h1>
+        <button class="btn btn-primary" id="new-channel" data-i18n="channels.new">New channel</button>
+      </div>
+      <div id="channel-list" class="cards"></div>
+      <div id="channels-empty" class="empty" hidden>
+        <h2 data-i18n="channels.empty">No channels</h2>
+        <p class="muted" data-i18n="channels.emptyBody">Add Telegram, Discord, Matrix, ntfy, Slack or a webhook to be told when something breaks.</p>
+      </div>
+    </section>
+
+    <!-- settings -->
+    <section id="view-settings" class="view" hidden>
+      <h1 data-i18n="settings.title">Settings</h1>
+      <div id="settings-body"></div>
+    </section>
+  </main>
+</div>
+
+<!-- ----------------------------------------------------------- detail view -->
+<dialog id="detail" class="sheet" tabindex="-1" aria-labelledby="detail-title">
+  <div class="sheet-head">
+    <h2 id="detail-title"></h2>
+    <!-- The pill follows the sensor while the window is open, and only the pill:
+         redrawing the body would rescale the latency curve under whoever is
+         reading it. The notice below says how much has happened since. -->
+    <span id="detail-status" class="pill"></span>
+    <button class="icon-btn" data-close aria-label="Close">&times;</button>
+  </div>
+  <div class="sheet-actions" id="detail-actions"></div>
+  <button type="button" id="detail-notice" class="detail-notice" hidden></button>
+  <div id="detail-body"></div>
+</dialog>
+
+<!-- ----------------------------------------------------------------- modal -->
+<dialog id="modal" class="sheet">
+  <form id="modal-form" method="dialog">
+    <div class="sheet-head">
+      <h2 id="modal-title"></h2>
+      <button class="icon-btn" id="modal-x" type="button" data-close aria-label="Close">&times;</button>
+    </div>
+    <div id="modal-body" class="sheet-body"></div>
+    <p id="modal-error" class="form-error" role="alert"></p>
+    <div class="sheet-foot">
+      <button class="btn" type="button" id="modal-cancel" data-close data-i18n="common.cancel">Cancel</button>
+      <button class="btn btn-ghost" type="button" id="modal-test" data-i18n="sensor.test">Test</button>
+      <button class="btn btn-primary" type="submit" id="modal-save" data-i18n="common.save">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- --------------------------------------------------------- widget picker -->
+<!-- What else there is to put in the header. It is a window of its own rather
+     than dashed tiles inside the strip: the strip is what the dashboard looks
+     like, and an offer of things it does not contain should not be drawn as a
+     row of broken tiles in the middle of it. The rows are built by widgets.js
+     from the same registry the strip is built from, so a widget cannot be
+     listed here and be missing there. Choosing one adds it at the end; the
+     arrows in the tile and the list in Settings are what put it in place. -->
+<dialog id="widget-picker" class="sheet sheet-narrow" tabindex="-1"
+        aria-labelledby="widget-picker-title">
+  <div class="sheet-head">
+    <h2 id="widget-picker-title" data-i18n="widgets.add">Add a widget</h2>
+    <button class="icon-btn" type="button" data-close data-i18n-aria="common.close" aria-label="Close">&times;</button>
+  </div>
+  <p class="sheet-note muted small" data-i18n="widgets.addHint"></p>
+  <ul class="widget-picks" id="widget-picker-list"></ul>
+</dialog>
+
+<div id="toasts" class="toasts" aria-live="polite"></div>
+
+<!-- Loaded first and on its own: if app.js or anything it imports fails to parse
+     or to load, this is the only code left running, and it is what turns the
+     spinner into an explanation. -->
+<script type="module" src="/assets/watchdog.js"></script>
+<script type="module" src="/assets/app.js"></script>
+</body>
+</html>

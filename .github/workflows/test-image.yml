@@ -1,0 +1,92 @@
+name: Test image
+
+# A container image for the people trying this out before it is released, and for
+# nobody else.
+#
+# It goes to the GitHub Container Registry rather than to Docker Hub, and that is not
+# a preference. A *private* Docker Hub repository allows no collaborators at all on the
+# free plan, so the testers could not pull it; Docker Pro allows exactly one, which is
+# no better for a handful of people. A package on ghcr.io is private as well, but it
+# inherits this repository's own access list — whoever is invited to the repository can
+# pull the image, and nobody else can. That is also what makes the invitations the only
+# thing to manage: there is no second list to keep in step.
+#
+# No secrets are involved: GitHub Actions pushes with the GITHUB_TOKEN it is already
+# given, which is why `permissions` below is the whole of the authorisation.
+#
+# None of this is a release. The version stays 0.1.0-dev and the tag is `dev`; the `v*`
+# tags belong to release.yml, which is what publishes to Docker Hub.
+
+on:
+  # A button, for handing the testers a build on purpose.
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  packages: write   # to push the image
+
+# One image at a time. Two pushes in quick succession would otherwise race to write
+# the same `dev` tag, and the loser's image would be the one left standing.
+concurrency:
+  group: test-image
+  cancel-in-progress: true
+
+env:
+  GOTOOLCHAIN: local
+  # The image is spelled out in full, and in lower case, rather than built from
+  # `github.repository`: that would be "J000K3R/weatherglass", and a registry refuses a
+  # repository name containing capitals. release.yml derives the same name from
+  # IMAGE_NAMESPACE for the same reason.
+  IMAGE: ghcr.io/j000k3r/weatherglass
+
+jobs:
+  image:
+    name: Build and push :dev
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to the GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # `github.event.head_commit.timestamp` is empty when this runs from the button,
+      # and a version string without a date is a version string nobody can place. The
+      # clock is read here instead, which is right on both paths.
+      - name: Note the build time
+        id: stamp
+        run: echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+      # Two tags: `dev` for whoever just wants the newest build, and the commit for
+      # whoever has to say exactly which one broke.
+      - name: Derive tags and labels
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=raw,value=dev
+            type=sha,format=short
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64,linux/arm/v7
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=0.1.0-dev
+            COMMIT=${{ github.sha }}
+            BUILD_DATE=${{ steps.stamp.outputs.date }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

@@ -1,0 +1,152 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GOTOOLCHAIN: local
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # A go.mod that is not tidy breaks everyone else's build, so it is a
+      # failure here rather than a surprise later. The e2e module is checked
+      # too: `go test ./...` in the root skips a nested module silently, so
+      # nothing else would ever notice that its go.sum had gone stale.
+      - name: Verify go.mod is tidy
+        run: |
+          go mod tidy
+          (cd e2e && go mod tidy)
+          git diff --exit-code -- go.mod go.sum e2e/go.mod e2e/go.sum
+
+      - name: Sensor formatting
+        run: |
+          unformatted=$(gofmt -l . | tee /dev/stderr)
+          test -z "$unformatted"
+
+      - name: Vet
+        run: go vet ./...
+
+      # The scheduler runs one goroutine per sensor and the API serves SSE from
+      # another; a race here would corrupt sensor state silently.
+      - name: Test with the race detector
+        run: go test ./... -count=1 -race -coverprofile=coverage.out -covermode=atomic
+
+      - name: Coverage summary
+        run: go tool cover -func=coverage.out | tail -1
+
+      - name: Build every supported platform
+        run: |
+          for target in linux/amd64 linux/arm64 linux/arm darwin/amd64 darwin/arm64 windows/amd64 freebsd/amd64; do
+            GOOS=${target%/*} GOARCH=${target#*/} CGO_ENABLED=0 \
+              go build -trimpath -o /dev/null ./cmd/weatherglass
+            echo "ok ${target}"
+          done
+
+  browser:
+    name: Browser test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # Pinned rather than the runner's preinstalled Chrome, so that a browser
+      # update cannot change the result of this job without anyone noticing.
+      - uses: browser-actions/setup-chrome@v1
+        id: chrome
+        with:
+          chrome-version: stable
+
+      # This is the only job that renders a page. Everything else here talks to
+      # the API, and the API was answering 200 the whole time the dashboard was
+      # showing a spinner over a page that had loaded perfectly. A CSS rule that
+      # outranks the hidden attribute is invisible to a check that never lays
+      # anything out, so it has to be looked at.
+      - name: Dashboard renders in a real browser
+        env:
+          WEATHERGLASS_E2E_BROWSER: ${{ steps.chrome.outputs.chrome }}
+          # Without this the test would skip when no browser is found, and a
+          # skipped test in a green job reads exactly like a passing one.
+          WEATHERGLASS_E2E_REQUIRE_BROWSER: "1"
+          WEATHERGLASS_E2E_ARTIFACTS: ${{ runner.temp }}/e2e-artifacts
+        run: cd e2e && go test ./... -count=1 -v -timeout=10m
+
+      # Worth more than the stack trace when the failure is "the spinner is
+      # still on screen", which is hard to picture and easy to misread.
+      - name: Upload screenshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-screenshots
+          path: ${{ runner.temp }}/e2e-artifacts
+          if-no-files-found: ignore
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          args: --timeout=5m
+
+      # The e2e module is nested, so `./...` here does not reach it. It gets its
+      # own run rather than being left as the one unlinted corner of the tree.
+      - uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          working-directory: e2e
+          args: --timeout=5m
+
+  docker:
+    name: Docker image builds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      # Built for both architectures but never pushed: this job only proves the
+      # Dockerfile works, including the arm64 cross-build that runs on a Pi.
+      - name: Build (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            VERSION=ci-${{ github.sha }}
+            COMMIT=${{ github.sha }}

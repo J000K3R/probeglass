@@ -1,0 +1,101 @@
+name: Bug report
+description: Report a problem with Weatherglass
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug report. Please fill in as much
+        detail as you can, and redact any secrets before posting.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: A clear and concise description of the bug.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: How can we reproduce the problem?
+      placeholder: |
+        1. Configure a check with ...
+        2. Wait for ...
+        3. See error ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What actually happened?
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Weatherglass version
+      description: "Run `docker run --rm j000k3r/weatherglass version` to find out."
+      placeholder: e.g. 0.1.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: How is Weatherglass deployed?
+      options:
+        - Docker Compose
+        - docker run
+        - Kubernetes
+        - Binary
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: sensor-type
+    attributes:
+      label: Sensor type involved
+      description: Which sensor type is affected, if any?
+      options:
+        - http
+        - tcp
+        - ping
+        - dns
+        - Other / not applicable
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Paste any relevant log output. Redact secrets, API keys, and credentials.
+      render: shell
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: confirmation
+    attributes:
+      label: Confirmation
+      options:
+        - label: I have searched existing issues and this is not a duplicate.
+          required: true
+        - label: I have redacted any secrets, API keys, and credentials from this report.
+          required: true

@@ -1,0 +1,95 @@
+# Weatherglass — developer tasks.
+#
+# The Go toolchain is the only hard requirement: the frontend is plain ES
+# modules embedded with //go:embed, so there is nothing to install and no build
+# step between editing a .js file and reloading the page.
+
+BINARY      := weatherglass
+PKG         := github.com/j000k3r/weatherglass
+CMD         := ./cmd/weatherglass
+VERSION     ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo 0.1.0-dev)
+COMMIT      ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
+BUILD_DATE  ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+LDFLAGS     := -s -w \
+               -X $(PKG)/internal/model.Version=$(VERSION) \
+               -X $(PKG)/internal/model.Commit=$(COMMIT) \
+               -X $(PKG)/internal/model.BuildDate=$(BUILD_DATE)
+
+IMAGE       ?= j000k3r/weatherglass
+TAG         ?= dev
+GO          ?= go
+
+.DEFAULT_GOAL := help
+.PHONY: help build run dev test test-race test-browser cover vet fmt lint tidy seed docker docker-run clean rename check
+
+help: ## Show this help
+	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
+	  | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
+
+build: ## Build the binary into bin/
+	@mkdir -p bin
+	CGO_ENABLED=0 $(GO) build -trimpath -ldflags "$(LDFLAGS)" -o bin/$(BINARY) $(CMD)
+	@echo "built bin/$(BINARY) $(VERSION)"
+
+run: build ## Build and run on :8080
+	./bin/$(BINARY) serve --listen :8080 --data ./data
+
+dev: ## Run straight from source with debug logging
+	$(GO) run $(CMD) serve --listen :8080 --data ./data --log-level debug
+
+test: ## Run the test suite
+	$(GO) test ./... -count=1
+
+test-race: ## Run the test suite under the race detector
+	$(GO) test ./... -count=1 -race
+
+# Its own module, so it is not covered by `go test ./...` above and has to be
+# named separately. It needs a Chromium-based browser and skips without one.
+test-browser: ## Render the dashboard in a real browser (needs Chrome or Chromium)
+	cd e2e && $(GO) test ./... -count=1 -v
+
+cover: ## Write a coverage report to coverage.out and print the total
+	$(GO) test ./... -count=1 -coverprofile=coverage.out -covermode=atomic
+	@$(GO) tool cover -func=coverage.out | tail -1
+
+vet: ## Run go vet
+	$(GO) vet ./...
+
+fmt: ## Format the Go sources
+	$(GO) fmt ./...
+
+lint: ## Run golangci-lint (must be installed)
+	golangci-lint run
+
+tidy: ## Tidy go.mod / go.sum
+	$(GO) mod tidy
+
+check: fmt vet test ## What CI runs before building
+
+seed: build ## Fill ./data with demo sensors and a week of history
+	./bin/$(BINARY) seed --demo --days 7 --data ./data
+
+docker: ## Build the container image as $(IMAGE):$(TAG)
+	docker build \
+	  --build-arg VERSION=$(VERSION) \
+	  --build-arg COMMIT=$(COMMIT) \
+	  --build-arg BUILD_DATE=$(BUILD_DATE) \
+	  -t $(IMAGE):$(TAG) .
+	@echo "built $(IMAGE):$(TAG) — the image is multi-arch capable, use buildx to publish"
+
+docker-run: docker ## Run the built image on :8080 with a throwaway volume
+	docker run --rm -p 8080:8080 --cap-add NET_RAW \
+	  -v weatherglass-dev:/data $(IMAGE):$(TAG)
+
+clean: ## Remove build output and local data
+	rm -rf bin coverage.out
+	@echo "kept ./data — remove it by hand if you want the demo history gone"
+
+rename: ## Rewrite the module path: make rename MODULE=github.com/you/weatherglass
+	@test -n "$(MODULE)" || { echo "usage: make rename MODULE=github.com/you/weatherglass"; exit 1; }
+	$(GO) mod edit -module $(MODULE)
+	grep -rl '$(PKG)' --include='*.go' --include='*.md' --include='*.yml' . \
+	  | xargs sed -i.bak 's|$(PKG)|$(MODULE)|g'
+	find . -name '*.bak' -delete
+	$(GO) mod tidy
+	@echo "module path is now $(MODULE)"

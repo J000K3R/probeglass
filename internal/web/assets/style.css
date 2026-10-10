@@ -1,0 +1,2184 @@
+/* Weatherglass dashboard styles.
+ *
+ * One stylesheet, no preprocessor. Everything themes through custom properties
+ * so the dashboard can switch appearance (theme, accent, density, layout)
+ * without re-rendering anything, and so the SVG charts — which use classes, not
+ * colours — re-colour themselves for free.
+ *
+ * Layout is driven by data attributes on <html>:
+ *   data-theme   auto | dark | light
+ *   data-accent  azure | violet | emerald | amber | rose | slate
+ *   data-density comfortable | compact
+ *   data-layout  grid | list
+ */
+
+/* ------------------------------------------------------------------ tokens */
+
+:root {
+  color-scheme: dark;
+
+  --bg: #0e1116;
+  --surface: #151a21;
+  --surface-2: #1c232c;
+  --surface-3: #232c37;
+  --border: #262e3a;
+  --border-strong: #38424f;
+  --text: #e6ebf2;
+  --text-dim: #9aa7b8;
+  --text-faint: #6b7889;
+  --shadow: 0 10px 30px rgb(0 0 0 / 35%);
+
+  --ok: #22c55e;
+  --warn: #f59e0b;
+  --bad: #fb923c;
+  --crit: #ef4444;
+  --unknown: #64748b;
+  --paused: #7d8899;
+
+  --accent: #60a5fa;
+  --accent-ink: #0b1220;
+
+  --radius: 12px;
+  --radius-sm: 8px;
+  --pad: 16px;
+  --pad-sm: 12px;
+  --gap: 16px;
+  --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+
+[data-accent='azure'] { --accent: #60a5fa; }
+[data-accent='violet'] { --accent: #a78bfa; }
+[data-accent='emerald'] { --accent: #34d399; }
+[data-accent='amber'] { --accent: #fbbf24; --accent-ink: #1a1206; }
+[data-accent='rose'] { --accent: #fb7185; --accent-ink: #23060c; }
+[data-accent='slate'] { --accent: #94a3b8; }
+
+/* "auto" follows the operating system; "light" forces it regardless. The two
+   blocks hold the same palette because one is a media query and the other is an
+   attribute selector. */
+@media (prefers-color-scheme: light) {
+  :root[data-theme='auto'] {
+    color-scheme: light;
+    --bg: #f5f7fb;
+    --surface: #ffffff;
+    --surface-2: #eef2f7;
+    --surface-3: #e6ebf3;
+    --border: #dce3ec;
+    --border-strong: #c2cddb;
+    --text: #131922;
+    --text-dim: #5a6a7e;
+    --text-faint: #8296ab;
+    --shadow: 0 10px 28px rgb(15 23 42 / 10%);
+
+    --ok: #16a34a;
+    --warn: #d97706;
+    --bad: #ea580c;
+    --crit: #dc2626;
+    --unknown: #94a3b8;
+    --paused: #94a3b8;
+
+    --accent: #2563eb;
+    --accent-ink: #ffffff;
+  }
+
+  :root[data-theme='auto'][data-accent='azure'] { --accent: #2563eb; }
+  :root[data-theme='auto'][data-accent='violet'] { --accent: #7c3aed; }
+  :root[data-theme='auto'][data-accent='emerald'] { --accent: #059669; }
+  :root[data-theme='auto'][data-accent='amber'] { --accent: #b45309; --accent-ink: #ffffff; }
+  :root[data-theme='auto'][data-accent='rose'] { --accent: #e11d48; --accent-ink: #ffffff; }
+  :root[data-theme='auto'][data-accent='slate'] { --accent: #475569; --accent-ink: #ffffff; }
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+  --bg: #f5f7fb;
+  --surface: #ffffff;
+  --surface-2: #eef2f7;
+  --surface-3: #e6ebf3;
+  --border: #dce3ec;
+  --border-strong: #c2cddb;
+  --text: #131922;
+  --text-dim: #5a6a7e;
+  --text-faint: #8296ab;
+  --shadow: 0 10px 28px rgb(15 23 42 / 10%);
+
+  --ok: #16a34a;
+  --warn: #d97706;
+  --bad: #ea580c;
+  --crit: #dc2626;
+  --unknown: #94a3b8;
+  --paused: #94a3b8;
+
+  --accent: #2563eb;
+  --accent-ink: #ffffff;
+}
+
+:root[data-theme='light'][data-accent='azure'] { --accent: #2563eb; }
+:root[data-theme='light'][data-accent='violet'] { --accent: #7c3aed; }
+:root[data-theme='light'][data-accent='emerald'] { --accent: #059669; }
+:root[data-theme='light'][data-accent='amber'] { --accent: #b45309; --accent-ink: #ffffff; }
+:root[data-theme='light'][data-accent='rose'] { --accent: #e11d48; --accent-ink: #ffffff; }
+:root[data-theme='light'][data-accent='slate'] { --accent: #475569; --accent-ink: #ffffff; }
+
+:root[data-density='compact'] {
+  --pad: 12px;
+  --pad-sm: 8px;
+  --gap: 10px;
+  --radius: 10px;
+}
+
+/* ------------------------------------------------------------------- reset */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+/* The `hidden` attribute is how the dashboard switches between the boot
+ * spinner, the auth card and the shell. It has to win over any display the
+ * element's own class asks for, and by default it does not: `[hidden]` is a
+ * user-agent rule, so a `.boot { display: grid }` in this file overrides it.
+ * Without this line, `$('#boot').hidden = true` sets an attribute and changes
+ * nothing — the spinner stays on screen, full height, over a dashboard that is
+ * loading perfectly behind it. That failure looks exactly like a hang and is
+ * invisible to any check that does not render CSS.
+ *
+ * !important is the point of the rule rather than a shortcut: the whole job is
+ * to outrank the more specific selectors below, whatever they say. */
+[hidden] { display: none !important; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.5 var(--font);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3 { margin: 0; font-weight: 600; line-height: 1.25; }
+h1 { font-size: 1.35rem; }
+h2 { font-size: 1.05rem; }
+h3 { font-size: 0.95rem; }
+p { margin: 0; }
+a { color: var(--accent); }
+
+.muted { color: var(--text-dim); }
+.small { font-size: 0.85rem; }
+.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+}
+
+/* -------------------------------------------------------------- boot/login */
+
+.boot {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 14px;
+  min-height: 100vh;
+  color: var(--text-dim);
+}
+
+/* Failure panel shown on the boot screen by app.js or watchdog.js. */
+.boot-error {
+  display: grid;
+  justify-items: start;
+  gap: 12px;
+  max-width: 46rem;
+  padding: 24px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+}
+
+.boot-error h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.boot-error p {
+  margin: 0;
+}
+
+/* The raw error, only worth showing when there is one. */
+.boot-detail {
+  max-width: 100%;
+  max-height: 12rem;
+  margin: 0;
+  overflow: auto;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text-dim);
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.spinner {
+  width: 28px;
+  height: 28px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.auth-view {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  padding: 20px;
+}
+
+.auth-card {
+  width: min(400px, 100%);
+  display: grid;
+  gap: 14px;
+  padding: 28px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.brand-lg { font-size: 1.15rem; }
+
+/* ------------------------------------------------------------------ topbar */
+
+/* Three columns: brand and tabs, the search field, the buttons. The two outer
+   columns take equal shares of the leftover width, which is the only reason the
+   search field in the middle is centred on the window rather than on whatever the
+   buttons happen to measure.
+   The middle column is a fixed 240px rather than `auto`, and that is not
+   decoration: an `auto` track is only ever as wide as its min-content once the two
+   `1fr` tracks have taken the free space, so the field would sit at 189px in a wide
+   window and at 189px in a narrow one — the same width, but not the one intended,
+   and it would start shrinking the sides by surprise. Underneath the breakpoints
+   below, the bar falls back to wrapping with the search field on a line of its own.
+   The side columns cannot shrink past their content, so if the three together want
+   more room than there is, the sides end up underneath the field and the buttons
+   stop taking clicks. That is what the two width breakpoints below are for, and
+   the numbers in them are measured, not guessed. */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: grid;
+  grid-template-columns: 1fr 240px 1fr;
+  align-items: center;
+  gap: 18px;
+  padding: 10px 20px;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--border);
+}
+
+.topbar-side { display: flex; align-items: center; gap: 18px; min-width: 0; }
+
+.tabs { display: flex; gap: 4px; }
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 13px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-dim);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.tab svg { width: 16px; height: 16px; flex: none; }
+
+.tab:hover { background: var(--surface-2); color: var(--text); }
+.tab.active { background: var(--surface-3); color: var(--text); }
+
+/* `flex-wrap` is a guard rather than a design: the side columns cannot shrink past
+   their content, so if the three columns together ever want more room than the bar
+   has, the buttons would slide underneath the search field and stop taking clicks.
+   Wrapping them inside their own column costs a taller bar instead, which is a
+   visible nuisance rather than a silent one. The two breakpoints below are meant to
+   keep it from ever coming to that. */
+.topbar-actions { justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
+
+/* The row of working controls, and the two things that can stand in for it.
+   At every width above 1133 the row is the row: `.topbar-extra` is a plain flex
+   container inside `.topbar-actions`, `#topbar-more` is nowhere, and nothing below
+   this line has any effect on the bar. The media queries further down are what
+   make them a panel and a button. */
+/* The gap is the one `.topbar-actions` used to put between these same controls.
+   Nesting them in a container is what makes the row and the panel two layouts of
+   one set, and a wider gap here would be a wider row than the bar had before —
+   which at 1600px is the difference between one line and two. */
+.topbar-extra { display: flex; align-items: center; gap: 10px; min-width: 0; }
+
+/* The two icon buttons the bar keeps in its row: the ⋮ and, below the width where
+   the search field leaves the bar, the magnifier that brings the field back. The
+   class is its own rather than `.icon-btn`, which is the small square button the
+   dialogs and the widget tiles already use, and which this is not: these are 34px
+   and carry a border, because they are controls that have to look like ones at the
+   end of a row of controls.
+   Each is shown only by the query that gives it its place, so a button and the
+   thing it stands in for can never disagree about which of them is on screen. */
+.bar-icon-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.bar-icon-btn:hover { border-color: var(--border-strong); background: var(--surface-2); color: var(--text); }
+.bar-icon-btn[aria-expanded='true'] { border-color: var(--accent); color: var(--text); }
+.bar-icon-btn svg { width: 16px; height: 16px; }
+
+/* The live indicator. It carries the same three states in the dot and in the
+   word, so it reads the same to somebody who cannot tell the colours apart: the
+   word is what changes state, the colour only agrees with it. Off is drawn like
+   a control that is off — flat, quiet — rather than like a fault, because turning
+   the stream off is something somebody asked for. */
+.live-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 11px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.live-chip:hover { background: var(--surface-2); color: var(--text); }
+
+.live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: none;
+}
+
+.live-chip[data-live="on"] { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 38%, transparent); }
+.live-chip[data-live="waiting"] { color: var(--paused); border-color: color-mix(in srgb, var(--paused) 38%, transparent); }
+.live-chip[data-live="off"] { color: var(--text-faint); }
+
+/* A pulse while the stream is up, and only then: the point of the animation is to
+   say "this is working right now". It lives here rather than in the reduced-motion
+   block below so that the global rule that zeroes the durations reaches it too. */
+.live-chip[data-live="on"] .live-dot { animation: live-pulse 2.4s ease-in-out infinite; }
+
+@keyframes live-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+/* Two collapses, and the bar gives up words in the order it can spare them.
+   Both are measured in a browser rather than guessed, with the example sensors on
+   the dashboard and the twelve-character user name the tests sign in with — the
+   longest thing in the bar that is not a fixed size, and so the one it has to hold.
+   What the two sides ask for: on the left 594 with the tab names and the brand,
+   222 without them. On the right, on the dashboard, 875 with the labels of the two
+   segmented controls, 626 without those labels (they are 249, most of them the five
+   of the layout switcher), 409 with no words at all, and 237 with no words while
+   the header is being arranged — that last is narrower because the switcher stands
+   down and the tools pill takes on the button that replaces it, which is where the
+   width to rearrange a header at all comes from. The settings page is narrower
+   everywhere (360 and 143) since it has neither control. The field in the middle is
+   a fixed 240px.
+   A grid column is half of what is left over, so the bar holds one line at twice
+   the wider side plus the 240px field, the two 18px gaps and the 40px of padding:
+   2066 with every word, 1568 with the segmented labels gone, 1134 with all of them
+   gone.
+   So the words go in two steps. First the segmented labels, which say the same
+   thing as the icon beside them and are the cheapest to lose: below 2066. That step
+   is not cosmetic — at 1800 the dashboard asked for 2066, and a right column that
+   cannot have the width it wants wraps inside itself, which is a second row of
+   buttons in a bar that is supposed to have one. Then every other word: the tab
+   names, the brand, and the four that belong to a button — New sensor, the live
+   indicator, the account — below 1568. Each of those carries its name as a title and
+   as an aria-label, because a `display: none` word is not in the accessibility tree
+   and an icon alone has no name. */
+@media (max-width: 2065px) {
+  .seg-btn span { display: none; }
+}
+
+@media (max-width: 1567px) {
+  /* The segmented labels are already gone from the rule above; these are the ones it
+     does not reach. The brand word goes with them: the mark beside it says the same
+     thing in one glyph, and the bar keeps that. */
+  .brand-name,
+  #tabs .tab > span,
+  #new-sensor > span,
+  .live-word,
+  .user-chip-name { display: none; }
+}
+
+@media (max-width: 1133px) {
+  /* One line still, but the four working controls are no longer on it: they fold
+     into the ⋮ beside them, and the search field takes the room they gave back.
+     Wrapping is what this replaces. A wrapping bar does not stay a bar: below
+     1133 the two sides each took a line of their own, and from 600px down each
+     also broke inside itself — three rows at 600, four at 440. `nowrap` here is
+     the whole point: the row cannot come apart, because there is nothing left in
+     it that is wider than the space it has. */
+  .topbar { display: flex; flex-wrap: nowrap; gap: 10px; }
+  .topbar-side { flex: 0 1 auto; flex-wrap: nowrap; gap: 10px; min-width: 0; }
+  .topbar-actions { flex: 0 0 auto; }
+  .brand { flex: none; }
+  .tabs { overflow-x: auto; }
+  .search { flex: 1 1 120px; min-width: 0; }
+  /* One class more specific than the rule hiding it, and inside the query that
+     folds the row away: the two cannot come apart, because there is no width at
+     which one applies and the other does not. */
+  .topbar-actions > #topbar-more { display: inline-flex; }
+  .topbar-extra { display: none; }
+
+  /* The same controls, as a panel. They are not rebuilt for this and there is
+     only ever one copy of each: the row and the panel are two layouts of one set
+     of elements, which is why a switcher repainted by the router, a tools pill
+     emptied and refilled by widgets.js and a live chip rewritten on every event
+     all keep working here without knowing this exists.
+     The panel hangs off the bar, so it is `absolute` — the bar is `sticky` and is
+     therefore already a containing block, and the panel stays with it as the page
+     scrolls underneath. */
+  .topbar.menu-open .topbar-extra {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 2px;
+    position: absolute;
+    z-index: 30;
+    top: calc(100% - 4px);
+    right: 10px;
+    min-width: 236px;
+    max-width: calc(100vw - 20px);
+    /* It is anchored under the bar and cannot go above it, so on a short window —
+       a phone held sideways — it would otherwise run off the bottom and take its
+       last rows with it. */
+    max-height: calc(100vh - 76px);
+    overflow-y: auto;
+    padding: 8px;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    background: var(--surface-2);
+    box-shadow: var(--shadow);
+  }
+
+  /* A segmented control is a row of buttons in a pill; in a panel it is a list of
+     rows, so it loses the pill and stacks. The words come back with it — they are
+     `display: none` above 2065 and 1567 to buy the bar a line, and a panel has no
+     line to buy. An icon with no word in a menu is a menu nobody can read. */
+  .topbar.menu-open .topbar-extra .segmented {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+  }
+  .topbar.menu-open .topbar-extra .seg-btn {
+    width: 100%;
+    justify-content: flex-start;
+    gap: 10px;
+    padding: 9px 11px;
+    border-radius: var(--radius-sm);
+    font-size: 0.9rem;
+  }
+  .topbar.menu-open .topbar-extra .seg-btn[aria-pressed='true'] {
+    background: var(--surface-3);
+    box-shadow: none;
+  }
+  .topbar.menu-open .topbar-extra .seg-btn span,
+  .topbar.menu-open .topbar-extra #new-sensor > span,
+  .topbar.menu-open .topbar-extra .live-word { display: inline; }
+  .topbar.menu-open .topbar-extra .seg-btn svg { width: 16px; height: 16px; }
+
+  /* The two buttons that were in the row become rows as well, and the accent
+     goes: a menu with one loud row in it reads as a broken menu, and the row
+     says what it does in words here, which is what the colour was standing in
+     for when it was a plus and a title. */
+  .topbar.menu-open .topbar-extra #new-sensor,
+  .topbar.menu-open .topbar-extra .live-chip {
+    width: 100%;
+    justify-content: flex-start;
+    gap: 10px;
+    margin-top: 6px;
+    padding: 9px 11px;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text);
+    font-size: 0.9rem;
+  }
+  .topbar.menu-open .topbar-extra #new-sensor:hover,
+  .topbar.menu-open .topbar-extra .live-chip:hover { background: var(--surface-3); }
+  .topbar.menu-open .topbar-extra #new-sensor svg { width: 16px; height: 16px; }
+  .topbar.menu-open .topbar-extra .live-chip[data-live='on'] { color: var(--ok); }
+  .topbar.menu-open .topbar-extra .live-chip[data-live='waiting'] { color: var(--paused); }
+  .topbar.menu-open .topbar-extra .live-chip[data-live='off'] { color: var(--text-faint); }
+}
+
+/* The search field leaves the bar before the four controls do.
+   A field that fits on the remaining room at 500px is a stub seven characters
+   wide, and a stub is worse than no field at all: it is in the way of the tabs and
+   it cannot be searched in. Below this width the field is not in the row — and
+   nothing is put in the ⋮ in its place, because the field is not a thing that gets
+   folded away: a magnifier takes its place in the row, and pressing it brings the
+   field back over the bar at the full width of it, which is the only shape a search
+   field is worth having on a phone. `inset: 0` is the padding box of the bar, so the
+   field lands exactly where the bar's contents were and the bar's own padding stays
+   around it. */
+@media (max-width: 619px) {
+  .topbar { padding: 10px 12px; }
+  .search { display: none; }
+  .topbar.search-open .topbar-side,
+  .topbar.search-open .topbar-actions { display: none; }
+  .topbar.search-open .search {
+    display: flex;
+    align-items: center;
+    position: absolute;
+    inset: 0;
+    background: var(--bg);
+  }
+  .topbar.search-open .search input { width: 100%; }
+  .topbar-actions > #topbar-search { display: inline-flex; }
+}
+
+/* The tab is an icon-only control at every width below 1567, and 26px of side
+   padding on a 42px button is most of the button — padding that was sized to sit
+   around a word. Below 380 it goes back to hugging its icon, which is 32 pixels of
+   the row bought back for the two things beside it that are still words if you open
+   them: at 375 the row is the mark and the four tabs on the left — 24 and 10 and
+   148 — the two icon buttons with the account on the right, 126, and the ten and
+   the 24 either side of them, which is 342 of 375. Above 380 there is room for the
+   wider tab — 374 of 380 is the arithmetic — so the room goes to the tab. */
+@media (max-width: 379px) {
+  .tab { padding: 7px 9px; }
+}
+
+/* And in the last stretch the mark goes with it. The four tabs and the two icon
+   buttons and the account are 320 of the 320 of the narrowest phone still in use
+   once the tabs have hugged their icons; the mark and the ten pixels beside it are
+   the only thing left that says nothing the first tab does not already say, and the
+   first tab is the way home. Nothing is lost with it: it is `alt=""` and it is not a
+   control. */
+@media (max-width: 359px) {
+  .brand { display: none; }
+}
+
+.search { position: relative; }
+
+.search input {
+  width: 100%;
+  padding: 7px 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+
+.search input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* The result list hangs under the field rather than beside it: it belongs to the
+   field, and a search box that pushes the page down every time somebody types is
+   a search box people stop using. Absolutely placed, so the top bar never grows. */
+.search-results {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(420px, calc(100vw - 32px));
+  max-height: min(60vh, 520px);
+  overflow-y: auto;
+  z-index: 30;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: 0 18px 40px color-mix(in srgb, #000 25%, transparent);
+}
+
+.search-group + .search-group { margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--border); }
+
+.search-group-head {
+  margin: 4px 8px 2px;
+  font-size: 0.72rem;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.search-hit {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.search-hit.is-active { background: var(--surface-3); }
+
+.search-hit-main { display: flex; flex-direction: column; min-width: 0; }
+
+.search-hit-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.search-hit-sub { font-size: 0.82rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.search-hit-side { display: flex; align-items: center; gap: 8px; flex: none; }
+
+.search-note { margin: 8px; color: var(--text-dim); font-size: 0.88rem; }
+
+.pill.st-muted { color: var(--text-dim); background: var(--surface-2); }
+
+main { padding: 20px; max-width: 1500px; margin: 0 auto; }
+.view { display: grid; gap: 18px; }
+
+.view-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+
+/* A view head that carries a filter line under its title. Wrapping is what puts
+   the line on its own row: the bar asks for the whole width, so it cannot share
+   one with the heading, and the heading keeps the left edge either way. */
+.view-head-filters { flex-wrap: wrap; }
+
+.filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+}
+
+/* The bar is a row of small controls, not a form: every field in it is set to the
+   height of a chip, which is what the global `width: 100%` and 8px of padding
+   would otherwise overrule. They stay flexible so that a narrow window stacks
+   them instead of pushing the last one off the edge. */
+.filter-bar > select,
+.filter-bar > input[type='search'] {
+  width: auto;
+  flex: 1 1 150px;
+  min-width: 0;
+  max-width: 260px;
+  padding: 5px 10px;
+  font-size: 0.82rem;
+}
+
+.filter-bar > input[type='search'] { flex-basis: 190px; }
+
+/* ---------------------------------------------------------------- widgets */
+
+/* The header, as a grid of tiles. Twelve columns, fixed, and the tiles are sized
+   in columns out of those twelve — the sizes are in widgets.js, beside the widget
+   they belong to.
+   Twelve, and fixed, rather than `auto-fit`, which is what this was first: with
+   `auto-fit` the strip grew a column whenever the window was wide enough for one
+   more, so the same five tiles were 193px wide in one window and 161px in the
+   next, and never matched the cards below them. With a fixed count a tile is the
+   same width everywhere, and the three sizes add up: the ring takes four, a figure
+   two, everything with a list in it four, so the header a fresh account starts
+   with is four plus four times two — exactly one row, no half-filled line, and no
+   tile stretched to fill one.
+   The tile is the grid item and brings no surface of its own: each widget's own
+   markup keeps the look it had when it stood directly in the header — a `.stat`, a
+   `.summary-card`, a `.widget-card` — so the default set is the header that was
+   always there, and only the arrangement is new. */
+.widgets {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: var(--gap);
+  align-items: stretch;
+}
+
+.widget { display: grid; min-width: 0; }
+
+/* How much of the row a tile takes, named for what is inside it rather than for
+   how big it is: a hero is the one tile whose whole job is to be looked at first,
+   a figure is a number and a label, and everything else is a list, a map or a row
+   of buttons. */
+.widget-hero { grid-column: span 4; }
+.widget-wide { grid-column: span 4; }
+.widget-fig { grid-column: span 2; }
+
+/* A tile is as tall as its neighbours, so the row has one baseline rather than
+   four. The body is what stretches; the widget inside it keeps its own padding. */
+.widget-body { display: grid; min-width: 0; }
+.widget-body > .stat,
+.widget-body > .summary-card,
+.widget-body > .widget-card,
+.widget-body > .widget-clock { height: 100%; }
+
+/* A figure sits at the top of its tile, not in the middle of it. The row of tiles
+   is read across, and a number is looked for where the number before it was — so
+   the labels have to be on one line. Centred, they are not: the tiles are the same
+   height and the contents are not, so a tile with a curve under its number starts
+   its label a few pixels lower than one without, and the header stops reading as a
+   row and starts reading as five boxes that happen to be near each other. The rest
+   of the header does not need this — a list fills its tile top-down anyway — and the
+   same figures stand in the sensor window, where a card is as tall as its contents
+   and the two readings are the same. */
+.widget-body > .stat { align-content: start; }
+
+/* Every tile has the same surface, the clock included. It used to be the one tile
+   without one, which made it read as a hole in the header rather than as a tile
+   that happens to hold a time. */
+.summary-card,
+.stat,
+.widget-clock,
+.panel,
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.summary-card {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: var(--pad);
+}
+
+.summary-ring { flex: 0 0 auto; }
+.summary-counts { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; }
+.summary-counts .count { color: var(--text-dim); font-size: 0.95rem; }
+.summary-counts .count-n { color: var(--text); font-weight: 650; font-variant-numeric: tabular-nums; }
+.count.s-ok .count-n { color: var(--ok); }
+.count.s-crit .count-n { color: var(--crit); }
+.count.s-paused .count-n { color: var(--paused); }
+
+.stat { display: grid; align-content: center; gap: 4px; padding: var(--pad); }
+.stat-label { color: var(--text-dim); font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.04em; }
+.stat-value { font-size: 1.5rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.stat-value.small { font-size: 0.95rem; font-weight: 500; }
+
+/* The two things under the number: what it usually is, and which way it has been
+   going. The comparison is quieter than the number — it is the context for the
+   figure, not a second figure — and the curve is as wide as the tile, because a
+   shape is the one thing here that is worth all the width it can get. */
+.stat-sub { font-size: 0.8rem; }
+.stat-spark { display: block; margin-top: 2px; }
+.stat-spark svg { display: block; width: 100%; height: 24px; }
+
+/* The tiles that are not a figure: a list, a clock, a map, a row of buttons. */
+.widget-card {
+  display: grid;
+  align-content: start;
+  gap: 9px;
+  padding: var(--pad);
+}
+
+.widget-head {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.widget-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+
+.widget-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  padding: 4px 6px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 0.9rem;
+  text-align: left;
+}
+
+button.widget-row { cursor: pointer; }
+button.widget-row:hover { background: var(--surface-2); }
+.widget-row-main { display: grid; min-width: 0; flex: 1; }
+.widget-row-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.widget-row-sub { font-size: 0.8rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.widget-row-side { flex: none; font-variant-numeric: tabular-nums; }
+
+.widget-clock { display: grid; align-content: center; gap: 2px; padding: var(--pad); }
+.clock-time { font-size: 2rem; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.clock-date { font-size: 0.9rem; }
+
+/* The map in a header: a picture, not a control. Its own chrome is hidden here
+   rather than in map.js, because map.js draws the full view, where all of it is
+   wanted. */
+.widget-map-card { gap: 8px; }
+.widget-map { position: relative; height: 150px; border-radius: var(--radius-sm); overflow: hidden; }
+.widget-map .map-controls,
+.widget-map .map-legend,
+.widget-map .map-attribution { display: none; }
+/* The line naming the sites that could not be drawn is put beside the host by
+   map.js. In the full view that is the right place for it; in a header tile it
+   is a paragraph about the map sitting inside the map. */
+.widget-map-card .map-unplaced { display: none; }
+.widget-map canvas { pointer-events: none; }
+
+.widget-links { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.widget-empty { margin: 0; padding: var(--pad); }
+
+/* The same list as a checklist, on the settings page: the name spelled out, a
+   box to switch it on, two arrows to move it. The arrows keep their place when
+   they are disabled, so the rows do not jump as widgets come and go. */
+.widget-picks { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+
+.widget-pick {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px;
+  border-radius: var(--radius-sm);
+}
+
+.widget-pick:hover { background: var(--surface-2); }
+.widget-pick-label { display: flex; align-items: center; gap: 9px; flex: 1; min-width: 0; cursor: pointer; font-size: 0.9rem; }
+/* The same row in the picker window, where it is a button rather than a label:
+   choosing a widget there is an action, not a switch to be ticked. It is spelled
+   out as a button so it keeps the label's looks instead of the browser's. */
+button.widget-pick-label {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 0.9rem;
+  text-align: left;
+}
+
+.widget-pick-icon { display: inline-flex; width: 16px; height: 16px; color: var(--text-dim); }
+.widget-pick-icon svg { width: 100%; height: 100%; }
+.widget-pick .icon-btn { padding: 2px 6px; font-size: 0.75rem; }
+
+/* --------------------------------------------------- arranging the widgets */
+
+/* The top bar has one line, and the buttons that arrange the header are drawn as
+   the same segmented control as the layout switcher beside them — see drawTools in
+   widgets.js. Nothing else is needed here: the switcher's own rules already give
+   the pill, the pressed state and the icon size. */
+.widgets-tools { display: flex; align-items: center; }
+
+/* The dashed frame is what says "this can be moved", and it is the only thing
+   that marks the tiles while the strip is being arranged — there is no second
+   copy of the header to drag from. */
+.widget.is-editing {
+  outline: 1px dashed var(--border-strong);
+  outline-offset: 3px;
+  border-radius: var(--radius);
+}
+
+.widget-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px;
+  color: var(--text-dim);
+  font-size: 0.8rem;
+}
+
+.widget-grip { cursor: grab; letter-spacing: -1px; }
+.widget-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.widget-bar-space { flex: 1; }
+.widget-bar .icon-btn { padding: 2px 5px; font-size: 0.75rem; }
+
+.widget.is-dragging { opacity: 0.6; }
+.widget.is-dragging .widget-grip { cursor: grabbing; }
+
+
+/* ------------------------------------------------------------------- cards */
+
+.groups { display: grid; gap: 22px; }
+.group-title { color: var(--text-dim); font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.06em; }
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: var(--gap);
+}
+
+.card {
+  position: relative;
+  padding: var(--pad);
+  display: grid;
+  gap: 8px;
+  cursor: pointer;
+  transition: border-color 0.15s, transform 0.15s;
+}
+
+.card:hover { border-color: var(--border-strong); transform: translateY(-1px); }
+
+/* A status stripe on the leading edge: readable at a glance, and it survives
+   being looked at by someone who cannot separate red from green. */
+.card::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  border-radius: var(--radius) 0 0 var(--radius);
+  background: var(--unknown);
+}
+
+.card.st-up::before { background: var(--ok); }
+.card.st-down::before { background: var(--crit); }
+.card.st-paused::before { background: var(--paused); }
+.card.is-down { border-color: color-mix(in srgb, var(--crit) 45%, var(--border)); }
+/* Example sensors get a quieter tint than a down card: the mark says where the
+   row came from, not that anything is wrong with it. */
+.card.is-example { border-color: color-mix(in srgb, var(--accent) 30%, var(--border)); }
+
+.card-head { display: flex; align-items: center; gap: 9px; }
+.card-name { font-size: 1rem; margin-right: auto; overflow-wrap: anywhere; }
+.card-target {
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.card-message { font-size: 0.85rem; color: var(--text-dim); overflow-wrap: anywhere; }
+.card-spark { margin: 2px 0; }
+.card-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+.card-meta { margin-left: auto; font-size: 0.8rem; }
+.card-stats { display: flex; gap: 10px; font-size: 0.78rem; color: var(--text-dim); }
+.card-stats b { color: var(--text); font-variant-numeric: tabular-nums; }
+.card-actions { display: flex; gap: 2px; }
+
+/* -------------------------------------------------------------- list layout */
+
+.sensors-table, .incidents-table, .results-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.sensors-table th, .incidents-table th, .results-table th {
+  text-align: left;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-dim);
+  font-weight: 600;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.sensors-table td, .incidents-table td, .results-table td {
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.sensors-table tbody tr, .incidents-table tbody tr { cursor: pointer; }
+.sensors-table tbody tr:hover, .incidents-table tbody tr:hover { background: var(--surface-2); }
+.cell-name { display: grid; }
+.cell-name .muted { font-family: var(--mono); font-size: 0.78rem; }
+
+.sensors-table tr.st-down { background: color-mix(in srgb, var(--crit) 6%, transparent); }
+.row-crit { background: color-mix(in srgb, var(--crit) 7%, transparent); }
+
+.table-wrap {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: auto;
+}
+
+/* ------------------------------------------------------------------- pills */
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px 3px 7px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--unknown);
+  background: color-mix(in srgb, var(--unknown) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--unknown) 35%, transparent);
+}
+
+.pill .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+/* The "Example" chip. Quieter than a status pill on purpose — it is a fact about
+   where the sensor came from, not a state that can change. */
+.pill.badge-example {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 34%, transparent);
+  font-weight: 500;
+}
+.pill.st-up { color: var(--ok); background: color-mix(in srgb, var(--ok) 15%, transparent); border-color: color-mix(in srgb, var(--ok) 38%, transparent); }
+.pill.st-down { color: var(--crit); background: color-mix(in srgb, var(--crit) 15%, transparent); border-color: color-mix(in srgb, var(--crit) 40%, transparent); }
+.pill.st-paused { color: var(--paused); background: color-mix(in srgb, var(--paused) 15%, transparent); }
+.pill.st-unknown { color: var(--unknown); }
+
+/* ------------------------------------------------------------------ charts */
+
+.chart { display: block; max-width: 100%; }
+.chart-empty, .strip-empty { padding: 22px; text-align: center; }
+
+.chart .grid { stroke: var(--border); stroke-width: 1; }
+.chart .axis { fill: var(--text-faint); font-size: 10.5px; font-family: var(--font); }
+.chart .line { fill: none; stroke: var(--accent); stroke-width: 1.8; stroke-linejoin: round; stroke-linecap: round; }
+.chart .band { fill: color-mix(in srgb, var(--accent) 20%, transparent); stroke: none; }
+.chart .dot { fill: var(--accent); }
+.chart .hit { fill: transparent; }
+.chart .hit:hover { fill: color-mix(in srgb, var(--accent) 12%, transparent); }
+
+.spark-line { fill: none; stroke: var(--accent); stroke-width: 1.5; stroke-linejoin: round; }
+.spark-dot { fill: var(--accent); }
+.spark-fail { stroke: var(--crit); stroke-width: 2; }
+.spark-empty { stroke: var(--border); stroke-width: 1; stroke-dasharray: 3 3; }
+
+.strip { width: 100%; }
+.bar { fill: var(--unknown); }
+.bar.u-ok { fill: var(--ok); }
+.bar.u-warn { fill: var(--warn); }
+.bar.u-bad { fill: var(--bad); }
+.bar.u-crit { fill: var(--crit); }
+.bar.u-empty { fill: var(--surface-3); }
+.bar-hit { fill: transparent; }
+.bar-hit:hover { fill: color-mix(in srgb, var(--text) 18%, transparent); }
+
+.donut-track { stroke: var(--surface-3); }
+.donut-seg.s-ok { stroke: var(--ok); }
+.donut-seg.s-crit { stroke: var(--crit); }
+.donut-seg.s-unknown { stroke: var(--unknown); }
+.donut-seg.s-paused { stroke: var(--paused); }
+
+/* ------------------------------------------------------------------ sheets */
+
+.sheet {
+  width: min(880px, calc(100vw - 32px));
+  max-height: calc(100vh - 60px);
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow);
+}
+
+.sheet::backdrop { background: rgb(6 10 16 / 62%); backdrop-filter: blur(2px); }
+
+/* A short list of one-line choices does not need the width a sensor's history
+   does, and a window that wide for eleven names is mostly empty. */
+.sheet-narrow { width: min(420px, calc(100vw - 32px)); }
+.sheet-note { margin: 14px 18px 0; }
+.sheet-narrow .widget-picks { padding: 10px 12px 16px; }
+
+/* The detail sheet is focused when it opens, on purpose — see openDetail. The ring
+   that :focus-visible would draw is a rounded accent rectangle around the whole
+   panel, which is not a cue anybody can act on; everything inside it that can
+   actually be pressed still gets one. */
+.sheet:focus-visible { outline: none; }
+
+.sheet-head {
+  position: sticky;
+  top: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  z-index: 2;
+}
+
+.sheet-head h2 { margin-right: auto; overflow-wrap: anywhere; }
+.sheet-body { padding: 18px; display: grid; gap: var(--gap); }
+.sheet-actions { padding: 12px 18px 0; }
+.sheet-foot {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  padding: 14px 18px;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+}
+
+#detail-body { padding: 18px; display: grid; gap: 12px; }
+.detail-sub { font-family: var(--mono); font-size: 0.82rem; }
+
+/* The offer to bring the open window up to date, which appears once a probe has
+   landed behind it. It is a button because pressing it is what redraws the body —
+   the window deliberately does not redraw itself, or the curve would rescale
+   under whoever is reading it. Full width and quiet, so that it reads as a note
+   that happens to be pressable rather than as the window's main action. */
+.detail-notice {
+  display: block;
+  width: calc(100% - 36px);
+  margin: 12px 18px 0;
+  padding: 8px 11px;
+  border: 1px solid color-mix(in srgb, var(--accent) 38%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.85rem;
+  text-align: center;
+  cursor: pointer;
+}
+
+.detail-notice:hover { background: color-mix(in srgb, var(--accent) 18%, transparent); }
+.detail-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: var(--gap);
+}
+.section-title {
+  margin-top: 8px;
+  color: var(--text-dim);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.banner {
+  padding: 9px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 0.88rem;
+}
+
+.banner.crit {
+  color: var(--crit);
+  background: color-mix(in srgb, var(--crit) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--crit) 38%, transparent);
+}
+
+.range-picker { display: flex; gap: 6px; flex-wrap: wrap; }
+
+.chip {
+  padding: 5px 11px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.chip:hover { color: var(--text); }
+.chip.active { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+
+/* ------------------------------------------------------------------- forms */
+
+label.field { display: grid; gap: 5px; align-content: start; }
+label.field > span { font-size: 0.85rem; color: var(--text-dim); font-weight: 500; }
+
+input[type='text'], input[type='password'], input[type='number'], input[type='search'], select, textarea {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+}
+
+textarea { font-family: var(--mono); font-size: 0.85rem; resize: vertical; }
+input:disabled, select:disabled { opacity: 0.55; }
+
+.hint { color: var(--text-faint); font-size: 0.78rem; line-height: 1.4; }
+
+.grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: var(--gap); }
+.grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: var(--gap); }
+
+/* The two fields that make a site, shown in the sensor form when the site being
+   chosen is one that does not exist yet. They are the last child of the form's
+   three-column row and claim the whole row rather than one of its columns: two
+   boxes squeezed into a third of the width would read as two more sensor fields,
+   and they belong to the site, not to the sensor. Hidden with the `hidden`
+   attribute like everything else — the fields are not merely invisible. */
+.new-site { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: var(--gap); padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); }
+
+.sensor-row { display: flex; align-items: center; gap: 8px; font-size: 0.88rem; }
+.sensor-row input { width: auto; }
+
+.channels-pick {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: var(--pad);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.channels-pick legend { padding: 0 6px; color: var(--text-dim); font-size: 0.85rem; }
+
+/* The recipe under a channel type's fields. It is not a fold and not a hint: it is
+   the part of the dialog that tells somebody who has never made a Telegram bot
+   where the token and the chat id come from, and they cannot know to open it. */
+.channel-setup {
+  margin-top: var(--pad);
+  padding: var(--pad-sm) var(--pad);
+  border-left: 2px solid var(--accent);
+  background: var(--surface-2);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+.channel-setup h4 { margin: 0 0 6px; font-size: 0.85rem; color: var(--text-dim); font-weight: 500; }
+.channel-setup ol { margin: 0; padding-left: 1.15em; display: grid; gap: 5px; }
+.channel-setup li { font-size: 0.82rem; line-height: 1.45; color: var(--text-dim); }
+
+.options { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: var(--pad-sm); }
+.options summary { cursor: pointer; font-size: 0.88rem; color: var(--text-dim); }
+.options > div { margin-top: var(--pad-sm); }
+
+.form-actions { display: flex; gap: 8px; align-items: end; }
+.form-error { color: var(--crit); font-size: 0.85rem; min-height: 1.1em; }
+
+.btn {
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn:hover { border-color: var(--border-strong); background: var(--surface-3); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn-primary:hover { background: color-mix(in srgb, var(--accent) 85%, var(--text)); }
+.btn-ghost { background: transparent; }
+.btn-danger { color: var(--crit); border-color: color-mix(in srgb, var(--crit) 40%, var(--border)); }
+.btn-danger:hover { background: color-mix(in srgb, var(--crit) 12%, transparent); }
+.btn-block { width: 100%; justify-content: center; }
+
+/* A button that carries an icon lays the two out side by side and keeps them
+   apart. Only a button that has one: the rest of the app is full of these, and
+   their plain box is what every other measurement in here is taken against. The
+   icon is what is left of such a button when the word goes, so it holds its size
+   and refuses to shrink. */
+.btn:has(svg) { display: inline-flex; align-items: center; gap: 7px; }
+.btn svg { width: 16px; height: 16px; flex: none; }
+
+.icon-btn {
+  width: 30px;
+  height: 30px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 0.95rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.icon-btn:hover { background: var(--surface-2); color: var(--text); border-color: var(--border); }
+.icon-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.switch { display: flex; align-items: center; gap: 7px; font-size: 0.88rem; color: var(--text-dim); }
+.switch input { width: auto; }
+
+/* ------------------------------------------------------------------ panels */
+
+#settings-body { display: grid; gap: var(--gap); }
+
+/* The settings page is divided into categories, and one of them is on screen at
+   a time. The tab that is switched off in simple mode because all of its panels
+   are folded away is hidden by the script, which is the only place that knows
+   both the mode and what each panel carries. Nothing here hides anything with
+   `!important`: the `hidden` attribute does that, and it is the one rule that
+   has to win. */
+
+/* The tabs. A row of buttons that switch rather than scroll, so the row is the
+   page's table of contents and its position marker at once. It scrolls sideways
+   rather than wrapping, so that it is the same height at every width. */
+.settings-tabs {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 5px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.tab-btn {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: none;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 0.88rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.tab-btn svg { width: 15px; height: 15px; }
+.tab-btn:hover { background: var(--surface-2); color: var(--text); }
+/* `aria-selected`, not `aria-pressed`: these are tabs, and a screen reader
+   announces that differently — "selected", in a set of five, rather than a
+   toggle that is on. The rule is written on the attribute the state is actually
+   in, so there is no second copy of it to drift. */
+.tab-btn[aria-selected='true'] { background: var(--surface-3); color: var(--text); }
+
+.panel { padding: var(--pad) calc(var(--pad) + 2px); display: grid; gap: 14px; }
+.panel h2 { color: var(--text-dim); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; }
+
+.kv { display: grid; grid-template-columns: max-content 1fr; gap: 6px 18px; margin: 0; font-size: 0.9rem; }
+.kv dt { color: var(--text-dim); }
+.kv dd { margin: 0; font-family: var(--mono); font-size: 0.85rem; overflow-wrap: anywhere; }
+
+.key-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.key-row code {
+  flex: 1 1 260px;
+  padding: 9px 11px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+
+.channel.is-paused { opacity: 0.7; }
+.channel .card-actions { justify-content: flex-end; }
+
+/* ------------------------------------------------------------------ toasts */
+
+.toasts {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 60;
+  display: grid;
+  gap: 8px;
+  max-width: min(380px, calc(100vw - 36px));
+}
+
+.toast {
+  padding: 11px 14px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  font-size: 0.88rem;
+  overflow-wrap: anywhere;
+}
+
+.toast-error { border-left-color: var(--crit); }
+.toast-out { opacity: 0; transition: opacity 0.4s; }
+
+/* --------------------------------------------------------- simple/advanced */
+
+/* The simple mode hides whole areas and fields. Doing it in CSS, at one
+   selector, is why no render function contains a mode check: a field marked
+   .adv-hide disappears the moment the attribute on <html> changes, whatever
+   re-drew it last. Nothing is switched off — the values stay in the form and the
+   API sees exactly what the advanced mode would send. */
+[data-mode='simple'] .adv-hide { display: none; }
+
+/* ------------------------------------------------------------- field help */
+
+.help-dot {
+  width: 15px;
+  height: 15px;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  background: var(--surface-2);
+  color: var(--text-dim);
+  font: 600 10px/1 var(--font);
+  cursor: help;
+  vertical-align: middle;
+}
+
+.help-dot:hover,
+.help-dot[aria-expanded='true'] { color: var(--text); border-color: var(--accent); }
+
+.help-pop {
+  position: fixed;
+  z-index: 90;
+  max-width: min(320px, calc(100vw - 24px));
+  display: grid;
+  gap: 7px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-3);
+  color: var(--text);
+  box-shadow: var(--shadow);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.help-body { margin: 0; }
+.help-eg { margin: 0; display: grid; gap: 3px; }
+.help-eg span { color: var(--text-dim); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; }
+.help-eg code {
+  display: block;
+  padding: 5px 7px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  overflow-wrap: anywhere;
+}
+
+/* --------------------------------------------------------- password meter */
+
+.pw-meter { display: grid; gap: 5px; margin-top: 6px; }
+
+.pw-bar { height: 5px; border-radius: 999px; background: var(--surface-3); overflow: hidden; }
+.pw-fill {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--crit);
+  transition: width 0.2s ease, background 0.2s ease;
+}
+
+.pw-line { display: flex; gap: 8px; align-items: baseline; font-size: 0.78rem; }
+.pw-word { font-weight: 600; color: var(--crit); }
+.pw-tip { color: var(--text-faint); }
+
+.pw-meter[data-level='1'] .pw-fill { background: var(--warn); }
+.pw-meter[data-level='1'] .pw-word { color: var(--warn); }
+.pw-meter[data-level='2'] .pw-fill { background: var(--accent); }
+.pw-meter[data-level='2'] .pw-word { color: var(--accent); }
+.pw-meter[data-level='3'] .pw-fill { background: var(--ok); }
+.pw-meter[data-level='3'] .pw-word { color: var(--ok); }
+
+/* ------------------------------------------------- setups's mode question */
+
+.auth-step { display: grid; gap: 14px; }
+.auth-actions { display: flex; align-items: center; gap: 8px; }
+
+.mode-pick { margin: 0; padding: 0; border: 0; display: grid; gap: 10px; }
+.mode-pick legend { padding: 0; color: var(--text-dim); font-size: 0.85rem; font-weight: 500; }
+
+.mode-card {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-areas: 'radio name' 'radio body';
+  gap: 2px 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  cursor: pointer;
+}
+
+.mode-card:hover { border-color: var(--border-strong); }
+.mode-card input { grid-area: radio; width: auto; align-self: start; margin-top: 3px; }
+.mode-card:has(input:checked) { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--surface-2)); }
+.mode-name { grid-area: name; font-weight: 600; }
+.mode-body { grid-area: body; color: var(--text-dim); font-size: 0.82rem; line-height: 1.4; }
+
+/* ------------------------------------------------------- acknowledgement */
+
+.pill.st-acked {
+  color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 16%, transparent);
+  border-color: color-mix(in srgb, var(--warn) 42%, transparent);
+}
+
+.card.is-acked { border-color: color-mix(in srgb, var(--warn) 40%, var(--border)); }
+.card.is-acked::before { background: var(--warn); }
+
+.ack-note { color: var(--warn); font-size: 0.82rem; }
+.incident-actions { white-space: nowrap; text-align: right; }
+.detail-ack { margin-top: 10px; }
+.btn-small { padding: 4px 9px; font-size: 0.8rem; }
+
+/* ------------------------------------------------------------ diagnostics */
+
+#doctor-result:empty { display: none; }
+
+.doctor-summary { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+.pill.lv-ok { color: var(--ok); background: color-mix(in srgb, var(--ok) 15%, transparent); border-color: color-mix(in srgb, var(--ok) 38%, transparent); }
+.pill.lv-warn { color: var(--warn); background: color-mix(in srgb, var(--warn) 15%, transparent); border-color: color-mix(in srgb, var(--warn) 38%, transparent); }
+.pill.lv-fail { color: var(--crit); background: color-mix(in srgb, var(--crit) 15%, transparent); border-color: color-mix(in srgb, var(--crit) 40%, transparent); }
+
+.findings { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.finding {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  gap: 4px 10px;
+  align-items: baseline;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  font-size: 0.86rem;
+}
+
+.finding-label { font-weight: 600; }
+.finding-detail { grid-column: 3; }
+.finding-hint { grid-column: 3; font-size: 0.8rem; }
+
+.doctor-text {
+  margin: 8px 0 0;
+  padding: 12px;
+  max-height: 24rem;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ------------------------------------------------------- the guided tour */
+
+/* The layer is a fixed sheet with three children: a click-catcher, the
+   highlight ring, and the card. The ring dims everything around its target with
+   one very large box-shadow — no SVG, no clip-path, nothing the CSP would have
+   to allow. */
+.tour-layer { position: fixed; inset: 0; z-index: 100; }
+.tour-block { position: absolute; inset: 0; z-index: 0; }
+
+.tour-ring {
+  position: absolute;
+  z-index: 1;
+  pointer-events: none;
+  border-radius: 10px;
+  box-shadow: 0 0 0 3px var(--accent), 0 0 0 9999px rgb(6 10 16 / 66%);
+  transition: left 0.18s ease, top 0.18s ease, width 0.18s ease, height 0.18s ease;
+}
+
+.tour-card {
+  position: absolute;
+  z-index: 2;
+  width: min(340px, calc(100vw - 28px));
+  display: grid;
+  gap: 8px;
+  padding: 16px 18px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow);
+}
+
+.tour-count { margin: 0; color: var(--text-faint); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; }
+.tour-title { margin: 0; }
+.tour-body { margin: 0; color: var(--text-dim); font-size: 0.88rem; line-height: 1.5; }
+/* The three-way offer at the end of the tour. It wraps rather than scrolls:
+   the card is narrow and a button nobody can see is not an offer. */
+.tour-choice { display: flex; flex-wrap: wrap; gap: 8px; }
+.tour-nav { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.tour-spacer { flex: 1; }
+
+/* --------------------------------------------------------- accounts and 2FA */
+
+/* The account table is the one place in the dashboard where a row carries more
+   than a status: a name, a role, a second factor and four actions. It gets its
+   own rules rather than reusing the sensor list's, which is built for a name and
+   a status and would wrap the buttons onto their own line. */
+.users-table td { vertical-align: middle; }
+.users-table .user-name { font-weight: 600; }
+.user-row.is-disabled { opacity: 0.55; }
+.row-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+
+/* The QR image comes out of the server in module units — a few hundred pixels
+   across — and is scaled down here. A whole-number multiple stays sharp, and
+   `pixelated` is what keeps the browser from smoothing the module edges into
+   something a phone camera has to guess at. */
+.qr-wrap { display: flex; justify-content: center; padding: 6px 0; }
+.qr {
+  width: 220px;
+  height: 220px;
+  image-rendering: pixelated;
+  background: #fff;
+  padding: 8px;
+  border-radius: var(--radius);
+}
+
+/* The key to type in by hand, for a camera that will not focus. It is long
+   enough that breaking it anywhere is better than overflowing the dialog. */
+.secret-key {
+  display: block;
+  padding: 10px 12px;
+  font-family: var(--mono);
+  font-size: 0.95rem;
+  letter-spacing: 0.08em;
+  word-break: break-all;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  user-select: all;
+}
+
+/* The recovery codes. Shown once, in a locked dialog, so they are spaced and
+   monospaced like something meant to be read off a screen and written down. */
+.recovery-codes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 18px;
+  margin: 0;
+  padding-left: 22px;
+}
+.recovery-codes code {
+  font-family: var(--mono);
+  font-size: 0.95rem;
+  letter-spacing: 0.06em;
+  user-select: all;
+}
+
+/* Holds a throw-away textarea for the clipboard fallback. Off-screen rather than
+   `display: none`: an element that is not rendered cannot be selected. */
+.offscreen {
+  position: fixed;
+  top: -1000px;
+  left: -1000px;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+@media (max-width: 520px) {
+  .recovery-codes { grid-template-columns: 1fr; }
+}
+
+/* ------------------------------------------------------- shell: switcher */
+
+/* The layout switcher. Five views of the same sensors have to be reachable
+   without a menu, so it is a segmented control: one press, and the choice is
+   visible on the control itself rather than hidden behind its own label. */
+.segmented {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+}
+
+.seg-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.seg-btn:hover { background: var(--surface-2); color: var(--text); }
+.seg-btn[aria-pressed='true'] {
+  background: var(--surface-3);
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+.seg-btn svg { width: 15px; height: 15px; }
+
+/* --------------------------------------------------------- shell: account */
+
+.user-area { position: relative; }
+
+.user-chip {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 4px 12px 4px 4px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.user-chip:hover { border-color: var(--border-strong); background: var(--surface-2); }
+.user-chip[aria-expanded='true'] { border-color: var(--accent); }
+
+.avatar {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.user-chip-name { font-size: 0.85rem; font-weight: 550; max-width: 120px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* The menu is appended to the open dialog, or to the body, by user.js, and
+   positioned from the chip's own rectangle — so it is `fixed` and knows nothing
+   about where in the document it happens to live. */
+.user-menu {
+  position: fixed;
+  z-index: 60;
+  min-width: 232px;
+  padding: 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  box-shadow: var(--shadow);
+}
+
+.user-menu-head {
+  padding: 8px 10px 10px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 6px;
+}
+
+.user-menu-name { font-weight: 650; }
+.user-menu-role { color: var(--text-dim); font-size: 0.8rem; }
+
+.user-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.9rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.user-menu-item:hover { background: var(--surface-3); }
+.user-menu-item.is-danger { color: var(--crit); }
+.user-menu-sep { height: 1px; margin: 6px 0; background: var(--border); }
+
+.user-menu-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 10px;
+  font-size: 0.88rem;
+  color: var(--text-dim);
+}
+
+.user-menu-field select {
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.85rem;
+}
+
+@media (max-width: 860px) {
+  .user-chip-name { display: none; }
+  .user-chip { padding: 4px; }
+}
+
+/* ------------------------------------------------------------- tree layout */
+
+/* Two levels, site then group, which is the shape of the thing being described:
+   a place holds groups, a group holds sensors. <details> is used rather than a
+   hand-rolled expander so that the keyboard, the screen reader and the browser's
+   own find-in-page all work without being taught. */
+.site-node { border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface); overflow: hidden; }
+
+.site-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 14px;
+  cursor: pointer;
+  list-style: none;
+  font-weight: 600;
+}
+
+.site-head::-webkit-details-marker { display: none; }
+.site-head:hover { background: var(--surface-2); }
+.site-node[open] > .site-head { border-bottom: 1px solid var(--border); }
+
+.site-caret { color: var(--text-faint); transition: transform 0.15s ease; }
+.site-node[open] > .site-head .site-caret { transform: rotate(90deg); }
+
+.site-count { margin-left: auto; color: var(--text-dim); font-weight: 400; font-size: 0.85rem; }
+
+.kind-tag {
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  border: 1px solid var(--border-strong);
+  color: var(--text-dim);
+}
+
+.kind-tag.k-external { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+
+.group-node { padding: 4px 0; }
+.group-label { padding: 7px 16px 3px; color: var(--text-faint); font-size: 0.75rem;
+  text-transform: uppercase; letter-spacing: 0.06em; }
+
+.tree-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) 120px 92px auto;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px 8px 26px;
+  border-top: 1px solid var(--border);
+}
+
+.site-body > .group-node:first-child .tree-row:first-child { border-top: 0; }
+.tree-row:hover { background: var(--surface-2); }
+.tree-row .row-name { font-weight: 550; }
+.tree-row .row-target { color: var(--text-dim); font-size: 0.82rem; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; }
+.tree-row .num { font-variant-numeric: tabular-nums; color: var(--text-dim); font-size: 0.85rem; }
+
+/* ------------------------------------------------------------- wall layout */
+
+/* One tile per sensor, sized to be scanned rather than read: the heartbeat is the
+   point, so the name and the marks are what the eye lands on. */
+.wall-group { margin-bottom: 22px; }
+.wall-head { display: flex; align-items: center; gap: 10px; margin: 0 0 10px;
+  color: var(--text-dim); font-size: 0.85rem; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.05em; }
+.wall-count { margin-left: auto; color: var(--text-faint); font-weight: 400;
+  text-transform: none; letter-spacing: 0; }
+
+.wall { display: grid; grid-template-columns: repeat(auto-fill, minmax(258px, 1fr)); gap: 12px; }
+
+.tile {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 13px 14px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--unknown);
+  border-radius: var(--radius);
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.tile:hover { background: var(--surface-2); border-color: var(--border-strong); }
+.tile.st-up { border-left-color: var(--ok); }
+.tile.st-down { border-left-color: var(--crit); }
+.tile.st-paused { border-left-color: var(--paused); }
+.tile.is-down { background: color-mix(in srgb, var(--crit) 7%, var(--surface)); }
+
+.tile-head { display: flex; align-items: center; gap: 8px; }
+.tile-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tile-meta { display: flex; justify-content: space-between; gap: 8px;
+  color: var(--text-dim); font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+
+/* The heartbeat. One mark per check, oldest on the left, so a run of failures
+   reads as a block — which is the thing the eye is looking for. The marks are an
+   SVG that stretches to the tile it is in: each check then gets an equal share
+   of whatever width there is, rather than a fixed 240 pixels of it. */
+.heartbeat { height: 22px; }
+.heartbeat svg { display: block; width: 100%; height: 22px; }
+.heartbeat .beat { fill: var(--ok); }
+.heartbeat .beat.h-fail { fill: var(--crit); }
+.heartbeat-empty { color: var(--text-faint); font-size: 0.8rem; }
+
+/* -------------------------------------------------------------- map layout */
+
+.map-host { position: relative; height: min(72vh, 660px); border: 1px solid var(--border);
+  border-radius: var(--radius); overflow: hidden; background: var(--surface-2); }
+
+/* The graticule under the tiles. It is what the map looks like when no tile can
+   be fetched, and it is the reason the markers still make sense there: a place
+   with nothing under it is a puzzle, a place on a grid is a map. */
+.map-canvas { position: absolute; inset: 0; cursor: grab;
+  background-color: var(--surface-2);
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--border) 70%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--border) 70%, transparent) 1px, transparent 1px);
+  background-size: 64px 64px;
+  touch-action: none;
+}
+.map-canvas.is-dragging { cursor: grabbing; }
+.map-tiles, .map-markers { position: absolute; inset: 0; }
+.map-tile { position: absolute; width: 256px; height: 256px; user-select: none;
+  pointer-events: none; }
+
+.site-marker {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  margin: -13px 0 0 -13px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+/* Local and external differ in shape as well as in colour. Colour is taken —
+   it belongs to the status ring — so the shape is what carries "in the house"
+   against "somewhere else", and it survives being printed in grey. */
+.site-marker::after {
+  content: '';
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  border: 2px solid var(--surface);
+}
+.site-marker.k-external::after { border-radius: 3px; transform: rotate(45deg); }
+.site-marker.st-up::after { background: var(--ok); }
+.site-marker.st-down::after { background: var(--crit); }
+.site-marker.st-unknown::after { background: var(--unknown); }
+.site-marker.st-paused::after { background: var(--paused); }
+
+.site-marker-label {
+  position: absolute;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 2px 7px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  color: var(--text);
+  font-size: 0.75rem;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.map-controls { position: absolute; top: 10px; right: 10px; display: flex;
+  flex-direction: column; gap: 5px; }
+.map-controls button { width: 32px; height: 32px; display: grid; place-items: center;
+  border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--surface) 92%, transparent); color: var(--text);
+  font: inherit; font-size: 1.05rem; line-height: 1; cursor: pointer; }
+.map-controls button:hover { background: var(--surface-3); }
+
+.map-attribution {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  padding: 3px 9px;
+  background: color-mix(in srgb, var(--bg) 78%, transparent);
+  color: var(--text-dim);
+  font-size: 0.72rem;
+  border-top-left-radius: var(--radius-sm);
+}
+.map-attribution a { color: inherit; }
+
+.map-legend { position: absolute; left: 10px; bottom: 10px; display: flex;
+  flex-wrap: wrap; gap: 12px; padding: 7px 12px; border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--bg) 80%, transparent); color: var(--text-dim);
+  font-size: 0.75rem; }
+.map-legend span { display: flex; align-items: center; gap: 6px; }
+.legend-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--text-dim);
+  flex: 0 0 auto; }
+.legend-dot.k-external { border-radius: 2px; transform: rotate(45deg); }
+.legend-dot.st-up { background: var(--ok); }
+.legend-dot.st-down { background: var(--crit); }
+.legend-dot.st-unknown { background: var(--unknown); }
+.legend-dot.st-paused { background: var(--paused); }
+
+/* Said plainly when it happens, because a blank map with no explanation is the
+   one thing an offline homelab cannot distinguish from a broken dashboard. */
+.map-note {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  max-width: min(420px, calc(100% - 80px));
+  padding: 8px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  color: var(--text-dim);
+  font-size: 0.82rem;
+}
+
+.map-unplaced { margin-top: 10px; padding: 10px 14px; border: 1px dashed var(--border-strong);
+  border-radius: var(--radius); color: var(--text-dim); font-size: 0.85rem; }
+
+/* What is at one place. A marker stands for a site, and a site is usually more
+   than one sensor, so this lists them rather than opening one at random. */
+.map-pop {
+  position: fixed;
+  z-index: 60;
+  min-width: 190px;
+  max-width: 300px;
+  padding: 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  box-shadow: var(--shadow);
+}
+.map-pop-head { padding: 4px 10px 8px; font-weight: 650; border-bottom: 1px solid var(--border);
+  margin-bottom: 4px; }
+.map-pop-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.88rem;
+  text-align: left;
+  cursor: pointer;
+}
+.map-pop-item:hover { background: var(--surface-3); }
+.map-pop-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+@media (max-width: 860px) {
+  .tree-row { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .tree-row .row-spark, .tree-row .num { display: none; }
+  .map-host { height: 60vh; }
+}
+
+/* -------------------------------------------------------------- sites list */
+
+.sites-table td { vertical-align: middle; }
+.site-kind-cell { display: flex; align-items: center; gap: 8px; }
+.coord { font-family: var(--mono); font-size: 0.82rem; color: var(--text-dim); }
+
+/* ------------------------------------------------------------ live updates */
+
+/* One class, put on a node that was just rebuilt because something about it
+   changed rather than merely aged, and taken off again a moment later. It moves
+   nothing: the colour fades, the sparkline and the heartbeat fade in, and no
+   element changes its size, because a card that grows on every probe would push
+   the whole grid around once a minute.
+   The global `prefers-reduced-motion` rule above already reduces both durations to
+   nothing, which is the right answer here — the value still arrives, it arrives
+   without the flourish. */
+@keyframes flash-tint {
+  from { background-color: color-mix(in srgb, var(--accent) 22%, transparent); }
+  to { background-color: transparent; }
+}
+
+@keyframes flash-in {
+  from { opacity: 0.25; }
+  to { opacity: 1; }
+}
+
+.is-flash { animation: flash-tint 900ms ease-out; }
+/* Whichever of the three shapes the row happens to be drawn in: a card's spark,
+   the wall's heartbeat, the tree's sparkline. All three are the part of the row
+   that shows what just happened, which is what fades in. */
+.is-flash .card-spark, .is-flash .heartbeat, .is-flash .row-spark { animation: flash-in 500ms ease-out; }
+
+/* A panel jumped to from a search result, so that the eye finds it after the
+   page has switched category underneath it. */
+.panel.is-flash { animation: flash-tint 1200ms ease-out; }
+
+/* A sentence that has to be read before a button is pressed, rather than after. */
+.warn-note {
+  padding: 9px 11px;
+  border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--warn) 12%, transparent);
+  color: var(--text);
+}
+
+/* -------------------------------------------------------------- responsive */
+
+@media (max-width: 1024px) {
+  /* Eight columns instead of twelve: the ring and everything with a list in it
+     take half the row, a figure a quarter. The default header then falls into two
+     rows — the ring and two figures, then two figures — which is what fits. */
+  .widgets { grid-template-columns: repeat(8, minmax(0, 1fr)); }
+}
+
+@media (max-width: 860px) {
+  main { padding: 14px; }
+}
+
+@media (max-width: 680px) {
+  .cards { grid-template-columns: 1fr; }
+  .wall { grid-template-columns: 1fr; }
+  /* Four columns, and a tile is at least half the row: at a quarter of a phone
+     screen a figure is one digit wide, and a figure nobody can read is not a
+     figure. The ring and the lists take the whole row. */
+  .widgets { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .widget-hero,
+  .widget-wide { grid-column: span 4; }
+}
+

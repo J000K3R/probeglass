@@ -1,0 +1,131 @@
+# golangci-lint configuration. The linter set is deliberately small: these are
+# the checks that catch real defects in this codebase, not a style contest.
+#
+# This file is in the v2 schema. `golangci-lint migrate` translates a v1 file,
+# but it drops every comment, so a change here has to be made by hand.
+
+version: "2"
+
+run:
+  tests: true
+
+linters:
+  enable:
+    - bodyclose     # an unclosed HTTP response body leaks a connection per probe
+    - errorlint     # errors.Is/As instead of == and type assertions
+    - exhaustive    # a missing switch case on an enum is a missing behaviour
+    - gosec
+    - misspell
+    - noctx         # every outbound request must carry a context
+    - rowserrcheck  # a missing rows.Err() turns a failed query into empty data
+    - sqlclosecheck
+    - unconvert
+    - wastedassign
+    # errcheck, govet, ineffassign, staticcheck and unused are not listed: they
+    # are part of v2's default linter set and are on unless disabled below.
+    # copylocks is not listed either — v2 folded it into govet, and enable-all
+    # below runs it.
+    #
+    # errcheck is the one that matters most — an ignored error is how alerts
+    # silently stop being sent — so it is configured with extra care below.
+  disable:
+    - depguard
+    - dupl
+
+  settings:
+    errcheck:
+      check-type-assertions: true
+      check-blank: false
+      exclude-functions:
+        - (io.Closer).Close
+        - (*database/sql.Rows).Close
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+
+    exhaustive:
+      default-signifies-exhaustive: true
+
+    gosec:
+      excludes:
+        - G404 # math/rand is used for demo data and jitter, never for secrets
+      config:
+        G306: "0640"
+
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment # struct order is chosen for readability here
+        # shadow fires on `if err := f(); err != nil` inside a function that
+        # already has an err, which is how Go is meant to be written. It is the
+        # one vet check the Go team itself does not consider ready, and it is
+        # off by default upstream for that reason.
+        - shadow
+
+    misspell:
+      # UK, because that is what this project is written in — the code, the
+      # comments, the dashboard strings and the documentation all use "colour",
+      # "behaviour", "cancelled" and "summarise". The setting was US, which is
+      # why the linter reported thirty-three misspellings that are not
+      # misspellings.
+      locale: UK
+
+    staticcheck:
+      checks:
+        - all
+
+  exclusions:
+    generated: lax
+    # These presets are what v1 applied implicitly (issues.exclude-use-default),
+    # so keeping them is what makes this file a translation rather than a
+    # tightening. The rules below are the ones this project adds on top.
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      # Tests are allowed to be less defensive about errors and to use weaker
+      # random sources; they must still pass the race detector.
+      - path: _test\.go
+        linters:
+          - bodyclose
+          - errcheck
+          - gosec
+          - noctx
+      # InsecureSkipVerify appears exactly twice, both times behind an explicit
+      # per-check opt-in, and both are commented where they appear.
+      - text: "G402"
+        linters:
+          - gosec
+      - text: "G101"
+        linters:
+          - gosec
+      # internal/store assembles SQL from constant fragments: column lists a
+      # helper builds from a fixed slice, table names chosen by an internal
+      # switch, and bucket expressions that are literals. No part of any of them
+      # comes from a request — values always travel as bound parameters — which
+      # is what G202's concatenation heuristic cannot see. It has to be excluded
+      # here rather than silenced with //nolint, because the line gosec reports
+      # sits inside a raw string literal, where a comment would become part of
+      # the query.
+      - path: internal/store/
+        linters:
+          - gosec
+        text: "G202"
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+formatters:
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

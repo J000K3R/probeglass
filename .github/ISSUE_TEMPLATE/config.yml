@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions and general discussion
+    url: https://github.com/j000k3r/weatherglass/discussions
+    about: Ask questions and discuss ideas in GitHub Discussions.

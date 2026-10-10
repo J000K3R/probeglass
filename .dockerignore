@@ -1,0 +1,37 @@
+# Nothing here belongs in the build context. The Go build only needs go.mod,
+# go.sum and the source tree.
+.git
+.gitignore
+.github
+.vscode
+.idea
+
+# Local build output and data
+bin/
+dist/
+data/
+*.db
+*.db-wal
+*.db-shm
+weatherglass
+
+# Docs and tooling that would only invalidate the layer cache
+docs/
+*.md
+LICENSE
+Makefile
+.golangci.yml
+docker-compose.yml
+Dockerfile
+.dockerignore
+
+# Test and coverage artefacts
+coverage.out
+*.test
+
+# The browser tests are a module of their own, and the image never builds them:
+# they need chromedp and a Chrome to run against, none of which is in here. Left
+# out, they would be copied into the builder stage on every build and would
+# invalidate its layer cache on every test edit, which is the most frequently
+# edited code in the repository.
+e2e/

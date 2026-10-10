@@ -1,0 +1,778 @@
+// Internationalisation.
+//
+// English ships first and is the reference catalogue: every key in every other
+// language must exist here. Adding a language means dropping a new dictionary
+// into `catalogues` and adding its code to `available` — nothing else in the
+// dashboard needs to change, because all text goes through t() or the
+// data-i18n attributes.
+//
+// Note for translators: keys are grouped by the view they appear in, and
+// {placeholders} are substituted at call time.
+
+const en = {
+  'boot.loading': 'Loading…',
+  'boot.failed': 'The dashboard could not start',
+  'boot.help': 'The server answered, but the dashboard could not use the answer. Reloading often helps; if it does not, this text is the detail to report.',
+  'boot.retry': 'Reload',
+
+  'auth.username': 'Username',
+  'auth.password': 'Password',
+  'auth.confirm': 'Repeat password',
+  'auth.signIn': 'Sign in',
+  'auth.continue': 'Continue',
+  'auth.finish': 'Finish setup',
+  'auth.back': 'Back',
+  'auth.setupTitle': 'Create the administrator account for this dashboard.',
+  'auth.setupHint': 'You can also set WEATHERGLASS_ADMIN_PASSWORD and skip this step.',
+  'auth.loginHint': 'Sign in to see your dashboard.',
+  'auth.mismatch': 'The two passwords do not match.',
+  'auth.tooShort': 'Use at least 8 characters.',
+  'auth.usernameTooShort': 'Choose a username: one to 64 characters, no spaces.',
+  'auth.working': 'Working…',
+  'auth.notSignedIn': 'The password was accepted, but the browser did not keep the session. Cookies have to be allowed for this site.',
+  'auth.totpTitle': 'Enter the code from your authenticator app.',
+  'auth.totpCode': 'Code',
+  'auth.totpHint': 'Lost the device? One of your recovery codes works here too.',
+  'auth.modeTitle': 'How much do you want to see?',
+  'auth.mode.simple': 'Simple',
+  'auth.mode.simpleBody': 'Sensors and their status, and nothing else. The advanced fields stay hidden — nothing is switched off, and you can change this in Settings whenever you like.',
+  'auth.mode.advanced': 'Advanced',
+  'auth.mode.advancedBody': 'Everything: retries, groups, tags, per-type probe options and alert channels, all on screen at once.',
+  'auth.modeHint': 'You can change this later in Settings.',
+
+  'nav.dashboard': 'Dashboard',
+  'nav.incidents': 'Incidents',
+  'nav.channels': 'Alerts',
+  'nav.settings': 'Settings',
+  'nav.search': 'Search',
+  'nav.layout': 'Dashboard layout',
+  // The ⋮ that stands in for the bar's controls when the window is too narrow to
+  // hold them on one line. It opens a panel, and a screen reader announcing it as
+  // "More" is announcing exactly what the three dots mean.
+  'nav.more': 'More',
+  'nav.signOut': 'Sign out',
+
+  // The live indicator beside the account. Three states, not two: on and
+  // connected, on and waiting to reconnect, and off. The waiting state is the
+  // reason the indicator exists — a stream that has dropped looks exactly like a
+  // system where nothing has gone wrong.
+  'live.on': 'Live: checks appear as they happen',
+  'live.waiting': 'Live: connection lost, retrying',
+  'live.off': 'Live updates are off',
+  'live.label': 'Live',
+  'live.labelOff': 'Live off',
+
+  // The global search. One field in the middle of the top bar that looks in
+  // everything, so the wording is the wording of a search and not of a filter:
+  // "no match" rather than "no sensors", and it says which part of the answer
+  // came from the server and is therefore still arriving.
+  'search.title': 'Search',
+  'search.empty': 'Nothing found for "{query}".',
+  'search.hint': 'Type at least {min} characters. Sensors, sites, channels, accounts and settings; incidents and probe messages as well.',
+  'search.more': 'More results than shown — narrow the search.',
+  'search.loading': 'Looking…',
+  'search.openSensor': 'Open sensor',
+  'search.group.sensor': 'Sensors',
+  'search.group.site': 'Sites',
+  'search.group.channel': 'Channels',
+  'search.group.incident': 'Incidents',
+  'search.group.result': 'Probe messages',
+  'search.group.user': 'Accounts',
+  // A settings hit is titled with the heading of the panel it opens — the words
+  // `settings.*`, `sites.title`, `users.title` and `examples.title` already carry
+  // — rather than with a second name for the same thing. What the row says is
+  // what the panel is called once the person gets there.
+
+  'status.up': 'Up',
+  'status.down': 'Down',
+  'status.paused': 'Paused',
+  'status.unknown': 'Pending',
+
+  'summary.up': 'up',
+  'summary.down': 'down',
+  'summary.paused': 'paused',
+  'summary.pending': 'pending',
+  'summary.uptime': 'Uptime 24h',
+  'summary.latency': 'Latency 24h',
+  'summary.probes': 'Probes 24h',
+  'summary.monitoringSince': 'Monitoring since',
+  // The comparison line under a figure in the header: the same measure over a
+  // week, so that "94 ms" has something to be read against. Short because it sits
+  // on one line in a tile, and matches the "7d" the sensor cards have used all
+  // along.
+  'summary.weekShort': '7d',
+
+  // The header is a strip of widgets the person arranges themselves, so every
+  // one of them needs a name: it is what the picker offers and what the tile
+  // says while the strip is being arranged.
+  'widgets.status': 'Status',
+  'widgets.uptime': 'Uptime 24h',
+  'widgets.latency': 'Latency',
+  'widgets.probes': 'Probes 24h',
+  'widgets.since': 'Monitoring since',
+  'widgets.clock': 'Clock',
+  'widgets.recent': 'Recent incidents',
+  'widgets.slowest': 'Slowest sensors',
+  'widgets.flakiest': 'Most outages',
+  'widgets.mini-map': 'Map',
+  'widgets.shortcuts': 'Shortcuts',
+  'widgets.customise': 'Customise',
+  'widgets.done': 'Done',
+  'widgets.add': 'Add a widget',
+  'widgets.addHint': 'Anything you add goes on at the end of the header. Settings → Monitoring has the same list with arrows, if you would rather put it in its place straight away.',
+  'widgets.allOn': 'Every widget is already in the header.',
+  'widgets.remove': 'Remove',
+  'widgets.moveLeft': 'Move left',
+  'widgets.moveRight': 'Move right',
+  'widgets.empty': 'No widgets. Press Customise to put some back.',
+  'widgets.waiting': 'Waiting for the first reading…',
+  'widgets.failed': 'This widget cannot be drawn.',
+  'widgets.noData': 'Nothing to rank yet.',
+  'widgets.noIncidents': 'No incidents recorded.',
+  'widgets.live': 'Live',
+  'widgets.reset': 'Reset to the default header',
+
+  'empty.title': 'No sensors yet',
+  'empty.body': 'Add your first sensor to start monitoring.',
+
+  'sensor.new': 'New sensor',
+  'sensor.edit': 'Edit sensor',
+  'sensor.name': 'Name',
+  'sensor.type': 'Type',
+  'sensor.target': 'Target',
+  'sensor.interval': 'Interval (s)',
+  'sensor.timeout': 'Timeout (s)',
+  'sensor.retries': 'Retries before down',
+  'sensor.group': 'Group',
+  'sensor.site': 'Site',
+  'sensor.tags': 'Tags',
+  'sensor.channels': 'Alert channels',
+  'sensor.reminder': 'Remind every (s)',
+  'sensor.enabled': 'Enabled',
+  'sensor.test': 'Test',
+  'sensor.testing': 'Testing…',
+  'sensor.testOk': 'Test passed',
+  'sensor.testFail': 'Test failed',
+  'sensor.runNow': 'Run now',
+  'sensor.running': 'Running…',
+  'sensor.delete': 'Delete',
+  'sensor.deleteConfirm': 'Delete the sensor "{name}" and all of its history?',
+  'sensor.managed': 'Managed by the configuration file',
+  'sensor.detail': 'Details',
+  'sensor.history': 'History',
+  'sensor.recent': 'Recent probes',
+  'sensor.none': 'No probes recorded in this window yet.',
+  'sensor.moveUp': 'Move up',
+  'sensor.moveDown': 'Move down',
+  'sensor.invalid': 'Please correct the highlighted fields.',
+
+  'field.time': 'Time',
+  'field.result': 'Result',
+  'field.latency': 'Latency',
+  'field.status': 'Status',
+  'field.message': 'Message',
+  'field.duration': 'Duration',
+  'field.sensor': 'Sensor',
+  'field.started': 'Started',
+  'field.resolved': 'Resolved',
+
+  'detail.uptime': 'Uptime',
+  'detail.avg': 'Average',
+  'detail.p95': 'Slowest',
+  'detail.incidents': 'Incidents in this window',
+  'detail.downtime': 'Total downtime',
+  'detail.openSince': 'Down since',
+  'detail.lastProbe': 'Last probe',
+  'detail.never': 'never',
+  'detail.averageShort': 'avg',
+  // The line that offers to catch the open window up. Two forms, because "1 new
+  // probes" reads as a program talking to itself.
+  'detail.newProbe': '1 new check — show it',
+  'detail.newProbes': '{count} new checks — show them',
+
+  'range.1h': '1 hour',
+  'range.24h': '24 hours',
+  'range.7d': '7 days',
+  'range.30d': '30 days',
+  'range.90d': '90 days',
+  'range.all': 'All time',
+
+  // The filter line above the incident list. "All" and "reset" are the two words
+  // that make the others undoable, which is why they are named rather than drawn
+  // as symbols.
+  'filter.status': 'Status',
+  'filter.sensor': 'Sensor',
+  'filter.period': 'Period',
+  'filter.all': 'All',
+  'filter.open': 'Open',
+  'filter.resolved': 'Resolved',
+  'filter.placeholder': 'Cause, sensor or note',
+  'filter.reset': 'Reset filter',
+  'filter.anySensor': 'All sensors',
+
+  'incidents.title': 'Incidents',
+  'incidents.empty': 'No incidents',
+  'incidents.emptyBody': 'Nothing has failed in this window. Keep it that way.',
+  'incidents.emptyFiltered': 'The filter is hiding everything. Widen the period, pick another sensor, or reset it.',
+  'incidents.ongoing': 'ongoing',
+  'incidents.resolved': 'resolved',
+  'incidents.loading': 'Loading…',
+
+  // Acknowledging an outage. Not the same as pausing: the sensor keeps being
+  // probed, and only the reminders stop.
+  'ack.action': 'Acknowledge',
+  'ack.undo': 'Undo acknowledgement',
+  'ack.short': 'acknowledged',
+  'ack.badge': 'This outage has been acknowledged; reminders are paused.',
+  'ack.title': 'Acknowledge this outage',
+  'ack.explain': 'Weatherglass keeps probing and stops repeating the reminder. The recovery message still arrives, so you will still hear when it is back.',
+  'ack.note': 'Note',
+  'ack.notePlaceholder': 'known reboot, on it',
+  'ack.done': 'Outage acknowledged',
+  'ack.undone': 'Acknowledgement removed',
+
+  // Password strength. The words describe; they do not forbid.
+  'password.level.weak': 'weak',
+  'password.level.fair': 'fair',
+  'password.level.good': 'good',
+  'password.level.strong': 'strong',
+  'password.tip.common': 'This one is in every list of common passwords. Pick something else.',
+  'password.tip.longer': 'Longer helps most — aim for twelve characters or more.',
+  'password.tip.mix': 'Mix in a digit or a symbol.',
+  'password.tip.more': 'Nearly there: a few more characters and it is strong.',
+  'password.tip.good': 'Good to go.',
+
+  'channels.templates': 'Message templates',
+  'channels.title': 'Alert channels',
+  'channels.new': 'New channel',
+  'channels.edit': 'Edit channel',
+  'channels.empty': 'No channels',
+  'channels.emptyBody': 'Add Telegram, Discord, Matrix, ntfy, Slack or a webhook to be told when something breaks.',
+  'channels.name': 'Name',
+  'channels.type': 'Type',
+  'channels.enabled': 'Enabled',
+  'channels.usedBy': 'Used by {n} sensor(s)',
+  'channels.unused': 'Not used by any sensor',
+  'channels.test': 'Send test',
+  'channels.testing': 'Sending…',
+  'channels.testOk': 'Test message delivered',
+  'channels.setup': 'Setting up {type}',
+  'channels.deleteConfirm': 'Delete the channel "{name}"?',
+  'channels.error': 'Last delivery failed',
+
+  'settings.title': 'Settings',
+  // The five categories the settings page is divided into, and the tabs above
+  // them. A panel heading stays a panel heading; these are the shelves the panels
+  // stand on, and only the chosen one is on screen.
+  'settings.group.look': 'Look',
+  'settings.group.monitor': 'Monitoring',
+  'settings.group.access': 'Access',
+  'settings.group.backup': 'Backup',
+  'settings.group.help': 'Help and maintenance',
+  'settings.tabsAria': 'Settings categories',
+  'settings.appearance': 'Appearance',
+  'settings.theme': 'Theme',
+  'settings.theme.auto': 'Match system',
+  'settings.theme.dark': 'Dark',
+  'settings.theme.light': 'Light',
+  'settings.accent': 'Accent',
+  'settings.accent.azure': 'Azure',
+  'settings.accent.violet': 'Violet',
+  'settings.accent.emerald': 'Emerald',
+  'settings.accent.amber': 'Amber',
+  'settings.accent.rose': 'Rose',
+  'settings.accent.slate': 'Slate',
+  'settings.density': 'Density',
+  'settings.density.compact': 'Compact',
+  'settings.density.comfortable': 'Comfortable',
+  'settings.layout': 'Layout',
+  'settings.layout.grid': 'Cards',
+  'settings.layout.list': 'List',
+  'settings.layout.tree': 'Tree',
+  'settings.layout.wall': 'Wall',
+  'settings.layout.map': 'Map',
+  'settings.language': 'Language',
+  'settings.mode': 'Interface mode',
+  'settings.mode.simple': 'Simple',
+  'settings.mode.advanced': 'Advanced',
+  'settings.modeHint': 'The simple mode hides the advanced fields and areas. Nothing is switched off — every sensor and setting keeps working exactly as before.',
+  'settings.help': 'Getting started',
+  'settings.tourHint': 'Walk through the dashboard again, one thing at a time.',
+  'settings.tourStart': 'Start the tour',
+  'settings.diagnostics': 'Diagnostics',
+  'settings.doctorHint': 'Run the same self-check the command line offers. It re-reads the database, checks the configuration and dials the health endpoint, and takes a few seconds.',
+  'settings.doctorRun': 'Run check',
+  'settings.doctorRunning': 'Running the check…',
+  'settings.doctorOk': 'ok',
+  'settings.doctorWarn': 'warn',
+  'settings.doctorFail': 'fail',
+  'settings.doctorOutput': 'Full command output',
+  'settings.dashboard': 'Dashboard defaults',
+  // The header of the dashboard is arranged on the dashboard itself; this panel
+  // is the same list, spelled out, for anybody who would rather see it as a list
+  // than drag tiles around.
+  'settings.widgets': 'Header widgets',
+  'settings.widgetsHint': 'What is shown at the top of the dashboard, and in what order. The same list is arranged by dragging the tiles themselves.',
+  'settings.retention': 'History retention',
+  'settings.retentionRaw': 'Raw probes',
+  'settings.retentionHourly': 'Hourly rollups',
+  'settings.retentionDaily': 'Daily rollups',
+  'settings.retentionDailyValue': 'kept forever',
+  'settings.security': 'Access',
+  'settings.password': 'Change password',
+  'settings.currentPassword': 'Current password',
+  'settings.newPassword': 'New password',
+  'settings.passwordChanged': 'Password changed. Other sessions were signed out.',
+  'settings.apiKey': 'API key',
+  'settings.apiKeyHint': 'Use it as the X-API-Key header, or as "Authorization: Bearer <key>".',
+  'settings.apiKeyNone': 'No API key yet.',
+  'settings.rotateKey': 'Generate new key',
+  'settings.deleteKey': 'Remove key',
+  'settings.copy': 'Copy',
+  'settings.copied': 'Copied',
+  'settings.copyManual': 'The browser would not copy for you. The text is selected — press Ctrl+C (⌘C on a Mac).',
+
+  // Backup and restore. The two scopes are spelled out as sentences rather than
+  // left as the words "config" and "history": what somebody needs to know before
+  // they choose is whether their outage log is in the file.
+  'settings.backup': 'Backup and restore',
+  'backup.hint': 'Write everything this installation knows into one file, or read such a file back. For a byte-exact copy of the whole installation, copy the database file itself — a backup stays a file copy; see the documentation.',
+  'backup.scope': 'What to include',
+  'backup.scope.config': 'Without history',
+  'backup.scope.history': 'With history',
+  'backup.scope.configHint': 'Sensors, sites, alert channels, accounts and settings. Outages and probe results are left out, and a restore leaves the ones already here untouched.',
+  'backup.scope.historyHint': 'All of the above, plus outages and the hourly and daily figures for the chosen period. The individual probe messages of the last few days are not included — the search will not find them after a restore.',
+  'backup.days': 'History of the last',
+  'backup.days.7': '7 days',
+  'backup.days.30': '30 days',
+  'backup.days.90': '90 days',
+  'backup.days.all': 'Everything kept',
+  'backup.download': 'Download backup',
+  'backup.downloaded': 'The backup was handed to your browser.',
+  'backup.restore': 'Restore from a file…',
+  'backup.confirmRestore': 'Restore from "{name}"? Everything in this installation — sensors, channels, accounts and settings — is replaced by what the file says.',
+  'backup.confirmRestoreAgain': 'This cannot be undone in the dashboard. A copy of the database is written to the data directory first, and that copy is the way back. Restore now?',
+  'backup.restored': 'Restored: {sensors} sensors, {channels} channels. Reloading…',
+  'backup.safetyCopy': 'The state from before is kept as {name}, next to the database.',
+  'backup.epochNotice': 'This file was written before some sessions were signed out, so those sign-ins are valid again.',
+  'backup.secretWarning': 'This file holds the password hashes, the two-factor secrets and the credentials of every alert channel in plain text. It is worth as much as the database itself — keep it somewhere you would keep the database.',
+  'backup.epochWarning': 'Sign-ins stay valid across a restore. Restoring an older file brings back sessions that were signed out after it was written.',
+  'settings.about': 'About',
+  'settings.storage': 'Storage',
+  'settings.sensors': 'Sensors',
+  'settings.channels': 'Channels',
+  'settings.probes': 'Stored probes',
+  'settings.openIncidents': 'Ongoing incidents',
+  'settings.oldest': 'Oldest sample',
+  'settings.newest': 'Newest sample',
+  'settings.dbSize': 'Database size',
+  'settings.baseUrl': 'Base URL',
+  'settings.dataDir': 'Data directory',
+  'settings.configFile': 'Configuration file',
+  'settings.uptime': 'Running for',
+  'settings.built': 'Built',
+  'settings.logLevel': 'Log level',
+  'settings.none': 'not set',
+
+  // ------------------------------------------------------------------ the map
+  'settings.map': 'Map',
+  'settings.tileUrl': 'Tile URL',
+  'settings.tileAttribution': 'Attribution',
+  'settings.tileHint': 'The template for one map tile. {z}, {x} and {y} are required; {s} is optional and is replaced by a, b or c in turn. The default is OpenStreetMap.',
+  'settings.tilePrivacy': 'Your browser fetches the tiles straight from this server, so it sees your IP address, your browser and roughly which part of the map you are looking at. That is fine for a homelab on your own network. For anything more sensitive, run a tile server of your own and put it here — nothing about the map needs the public internet.',
+  'settings.mapSaved': 'Map settings saved.',
+  'settings.tileExample': 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+
+  // ------------------------------------------------------------ the account menu
+  'user.menuAria': 'Account menu for {name}',
+  'user.unknown': 'Not signed in',
+  'user.settings': 'Settings',
+
+  // ------------------------------------------------------------------ the sites
+  'sites.title': 'Sites',
+  'sites.hint': 'A site is a place your sensors are: the rack in the cellar, the VPS at a hoster. It groups the dashboard, and with coordinates it is drawn on the map. A sensor without a site works exactly as before.',
+  'sites.new': 'New site',
+  'sites.newOption': 'New site…',
+  'sites.nameRequired': 'Enter a name for the new site.',
+  'sites.name': 'Name',
+  'sites.kind': 'Kind',
+  'sites.kind.local': 'Homelab',
+  'sites.kind.external': 'External',
+  'sites.latitude': 'Latitude',
+  'sites.longitude': 'Longitude',
+  'sites.coordsHint': 'Both coordinates or neither. They are optional: a site without them groups and shows, it just is not drawn on the map.',
+  'sites.none': 'No site',
+  'sites.sensorCount': '{count} sensor(s)',
+  'sites.sensorCountDown': '{count} sensor(s), {down} down',
+  'sites.empty': 'No sites yet',
+  'sites.emptyBody': 'Add one and the tree will group by place, and the map will have something to draw.',
+  'sites.managed': 'This site comes from the configuration file and cannot be changed here.',
+  'sites.inUse': 'This site still has {count} sensor(s) on it. Move them first, or delete it and leave them without a site.',
+  'sites.deleteConfirm': 'Delete the site "{name}"?',
+  'sites.deleteConfirmUnassign': 'Delete the site "{name}" and leave its {count} sensor(s) without a site?',
+  'sites.unassign': 'Delete and unassign',
+  'sites.created': 'Site added.',
+  'sites.updated': 'Site updated.',
+  'sites.deleted': 'Site removed.',
+  'sites.edit': 'Edit site',
+  'sites.nameHint': 'Up to 64 characters. No slashes — the name ends up in a URL.',
+
+  // ------------------------------------------------------------------- the map
+  'map.aria': 'Map of your sites',
+  'map.zoomIn': 'Zoom in',
+  'map.zoomOut': 'Zoom out',
+  'map.reset': 'Fit all sites',
+  'map.legend.local': 'Homelab',
+  'map.legend.external': 'External',
+  'map.offline': 'The tile server could not be reached. The places below are still in the right position relative to each other — only the map behind them is missing.',
+  'map.empty': 'No site has coordinates yet. Add them under Sites in Settings and they will be drawn here.',
+  'map.unplaced': 'Not drawn: {count} site(s).',
+  'map.unplacedHint': 'They have no coordinates yet.',
+  'map.noSensors': 'Nothing is being probed here yet.',
+
+  // --------------------------------------------------------------- the wall
+  'wall.heartbeat': 'Recent checks',
+  'heartbeat.ok': 'up',
+  'heartbeat.fail': 'down',
+  'heartbeat.none': 'No checks yet',
+  'heartbeat.check': 'Check {i} of {n}',
+
+
+  // ------------------------------------------------------------------ accounts
+  'users.title': 'Users',
+  'users.hint': 'Everyone with an account can sign in to this dashboard. A viewer reads everything and changes nothing, an operator can also pause sensors and acknowledge outages, and an administrator can change anything.',
+  'users.new': 'New user',
+  'users.edit': 'Edit user',
+  'users.username': 'Username',
+  'users.role': 'Role',
+  'users.role.admin': 'Administrator',
+  'users.role.operator': 'Operator',
+  'users.role.viewer': 'Viewer',
+  'users.role.adminHint': 'Can change everything: sensors, channels, settings, accounts and the API key.',
+  'users.role.operatorHint': 'Can pause and resume sensors, run a probe now, acknowledge an outage and take the acknowledgement back.',
+  'users.role.viewerHint': 'Can read everything and change nothing. The right role for a wall display.',
+  'users.twoFactor': 'Two-factor',
+  'users.twoFactorOn': 'on',
+  'users.twoFactorOff': 'off',
+  'users.lastLogin': 'Last sign-in',
+  'users.never': 'never',
+  'users.disabled': 'disabled',
+  'users.enable': 'Enable',
+  'users.disable': 'Disable',
+  'users.reset': 'Reset password',
+  'users.resetHint': 'Sets the password without knowing the old one, and signs that account out everywhere. Hand the new password over in person — nothing here sends a message.',
+  'users.resetDone': 'Password set. That account has been signed out everywhere.',
+  'users.created': 'Account created.',
+  'users.updated': 'Account updated.',
+  'users.deleted': 'Account removed.',
+  'users.deleteConfirm': 'Remove the account "{name}"? Its outages stay in the history.',
+  'users.you': 'this is you',
+  'users.password': 'Password',
+  'users.passwordHint': 'At least 8 characters.',
+  'users.usernameTaken': 'That name is already taken.',
+  'users.onlyOneAdmin': 'This is the last active administrator. Promote somebody else first.',
+
+  // --------------------------------------------------------------- two-factor
+  'totp.title': 'Two-factor authentication',
+  'totp.off': 'Off. A password alone gets in.',
+  'totp.on': 'On. A code from an authenticator app is required at sign-in.',
+  'totp.why': 'The dashboard usually runs over plain HTTP on a home network, where a password can be read off the wire. A code that changes every thirty seconds cannot.',
+  'totp.enable': 'Set up',
+  'totp.disable': 'Switch off',
+  'totp.renew': 'New recovery codes',
+  'totp.scan': 'Scan this with your authenticator app.',
+  'totp.orType': 'Or type the key in by hand:',
+  'totp.code': 'Code from the app',
+  'totp.confirm': 'Confirm',
+  'totp.confirmFailed': 'That code does not match. Check the clock on the device and try the next one.',
+  'totp.enabled': 'Two-factor authentication is on.',
+  'totp.disabled': 'Two-factor authentication is off.',
+  'totp.passwordPrompt': 'Your password, to confirm it is you:',
+  'totp.wrongPassword': 'Wrong password.',
+  'totp.codesLeft': '{n} recovery code(s) left',
+  'totp.codesTitle': 'Your recovery codes',
+  'totp.codesBody': 'Write these down now. Each one signs you in once, in place of the code from the app. This is the only time they are shown — if you lose them, make new ones from Settings.',
+  'totp.codesCopy': 'Copy all',
+  'totp.codesDone': 'I have written them down',
+  'totp.codesRenewed': 'New recovery codes created. The old ones no longer work.',
+
+  // ------------------------------------------------------------- example data
+  'examples.title': 'Example data',
+  'examples.hint': 'The sensors this dashboard started with are examples: they point at real hosts, but they are not chosen by you and they say nothing about your network.',
+  'examples.count': '{sensors} example sensor(s), {results} stored probe(s) and {incidents} incident(s).',
+  'examples.remove': 'Remove all example data',
+  'examples.confirm': 'Remove {sensors} example sensor(s) together with their stored history and incidents? This cannot be undone.',
+  'examples.removed': 'Example data removed: {sensors} sensor(s), {results} probe(s), {incidents} incident(s).',
+  'examples.none': 'No example data left. Everything on the dashboard was added by you.',
+  'examples.restore': 'Load example data',
+  'examples.confirmLoad': 'Load the example data? This adds five example sensors with a week of invented history. Nothing you created is touched.',
+  'examples.restored': 'Example data loaded: {sensors} sensor(s), {results} probe(s), {incidents} incident(s).',
+  'examples.badge': 'Example',
+  'examples.badgeHint': 'This sensor is example data, not one of yours. Settings can remove it.',
+
+  // Per-type probe options. An empty label would be a bug, so every option a
+  // prober reads has an entry here.
+  'opt.expected_status': 'Expected status',
+  'opt.method': 'HTTP method',
+  'opt.follow_redirects': 'Follow redirects',
+  'opt.body_contains': 'Body contains',
+  'opt.body_not_contains': 'Body must not contain',
+  'opt.body_regex': 'Body matches regex',
+  'opt.headers': 'Request headers',
+  'opt.expected_headers': 'Expected response headers',
+  'opt.cert_warn_days': 'Warn when certificate expires in (days)',
+  'opt.bearer_token': 'Bearer token',
+  'opt.basic_auth_user': 'Basic auth user',
+  'opt.basic_auth_pass': 'Basic auth password',
+  'opt.insecure_skip_verify': 'Skip TLS verification',
+  'opt.tls': 'Use TLS',
+  'opt.server_name': 'TLS server name (SNI)',
+  'opt.send': 'Send on connect',
+  'opt.expect': 'Expect in reply',
+  'opt.count': 'Pings per probe',
+  'opt.record_type': 'Record type',
+  'opt.resolver': 'Custom resolver',
+  'opt.expected': 'Expected answers',
+  'opt.expect_all': 'All expected answers must be present',
+  'opt.socket': 'Docker socket',
+  'opt.expect_running': 'Must be running',
+  'opt.expect_health': 'Expected health status',
+  'opt.expect_healthOff': 'only check that it runs',
+  'opt.max_restarts': 'Restart limit',
+  'opt.oid': 'Object (OID)',
+  'opt.community': 'Community',
+  'opt.version': 'SNMP version',
+  'opt.min': 'Minimum value',
+  'opt.max': 'Maximum value',
+
+  // Field help. These no longer sit under the form as paragraphs; they open
+  // from the "?" beside each label, with a real value to pattern-match against.
+  // The example for a key lives beside it as `<key>Example`.
+  'help.what': 'What is this?',
+  'help.example': 'Example',
+
+  'help.sensor.name': 'Shown on every screen and in alert messages. Two sensors cannot share a name.',
+  'help.sensor.nameExample': 'Living-room switch',
+  'help.sensor.type': 'What is probed. Changing it swaps the options below for that kind of sensor.',
+  'help.sensor.typeExample': 'http',
+  'help.sensor.target': 'The address the probe is aimed at. Its shape depends on the type: a URL for HTTP, host:port for TCP, a host for a certificate, a bare host for ping, and the name of a container for Docker.',
+  'help.sensor.targetExample': 'https://example.org/health',
+  'help.sensor.interval': 'Seconds between probes. Five is the shortest any sensor may use.',
+  'help.sensor.intervalExample': '60',
+  'help.sensor.timeout': 'Seconds a single probe may take before it counts as failed.',
+  'help.sensor.timeoutExample': '10',
+  'help.sensor.retries': 'How many probes in a row may fail before the sensor counts as down and the first alert goes out. One means an alert on the first failure.',
+  'help.sensor.retriesExample': '3',
+  'help.sensor.group': 'Optional. Sensors sharing a group are drawn under one heading on the dashboard.',
+  'help.sensor.site': 'Optional. The place this sensor is: a rack, a room, a server at a hoster. It groups the tree and the wall by place, and with coordinates it is drawn on the map. The list is managed under Sites in Settings.',
+  'help.sensor.groupExample': 'Network',
+  'help.sensor.tags': 'Comma-separated words you can search for, and that alert templates can use.',
+  'help.sensor.tagsExample': 'lan, critical',
+  'help.sensor.reminder': 'Seconds between repeat alerts while the sensor stays down. 0 turns reminders off, so only the first alert and the recovery message arrive.',
+  'help.sensor.reminderExample': '3600',
+  'help.sensor.channels': 'Where the alert goes when this sensor goes down. A sensor with no channel is still monitored and shown, and simply tells nobody.',
+  'help.sensor.channelsExample': 'Homelab Telegram',
+  'help.sensor.enabled': 'Untick to stop probing. A paused sensor keeps its history and shows grey. Pausing is not acknowledging: acknowledging keeps the probing and stops only the reminders.',
+  'help.sensor.enabledExample': 'ticked',
+
+  'help.opt.expected_status': 'Which HTTP status codes count as healthy: one code, a list, or a range.',
+  'help.opt.expected_statusExample': '200-299',
+  'help.opt.method': 'The HTTP method to use. HEAD asks for the headers only, which is cheaper when all you care about is that the page answers.',
+  'help.opt.methodExample': 'GET',
+  'help.opt.follow_redirects': 'Whether a redirect counts as success or as a failure. Leave it off to be told when a page starts redirecting and never arrives.',
+  'help.opt.follow_redirectsExample': 'true',
+  'help.opt.body_contains': 'Text that must appear in the response body — for checking an application is really up rather than merely answering.',
+  'help.opt.body_containsExample': '"status": "ok"',
+  'help.opt.body_not_contains': 'Text that must not appear. Catches an error page served with a 200.',
+  'help.opt.body_not_containsExample': 'Fatal error',
+  'help.opt.body_regex': 'A regular expression the body must match, for what a fixed string cannot express.',
+  'help.opt.body_regexExample': '"version":\\s*"1\\.',
+  'help.opt.headers': 'Extra request headers, one per line as Key: value. Leave empty to send none.',
+  'help.opt.headersExample': 'X-Api-Key: abc123',
+  'help.opt.expected_headers': 'Response headers that must be present, one per line as Key: value. Both the name and the value have to match.',
+  'help.opt.expected_headersExample': 'Content-Type: application/json',
+  'help.opt.cert_warn_days': 'Mark the sensor down when the TLS certificate has fewer days left than this. 0 switches the check off, but a certificate that has already expired is always a failure.',
+  'help.opt.cert_warn_daysExample': '14',
+  'help.opt.bearer_token': 'Sent as the Authorization: Bearer header.',
+  'help.opt.bearer_tokenExample': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9',
+  'help.opt.basic_auth_user': 'Username for HTTP basic authentication. Set it together with the password.',
+  'help.opt.basic_auth_userExample': 'monitor',
+  'help.opt.basic_auth_pass': 'Password for HTTP basic authentication.',
+  'help.opt.basic_auth_passExample': 's3cret',
+  'help.opt.insecure_skip_verify': 'Accept a self-signed or otherwise unverifiable certificate. Only for hosts on your own network.',
+  'help.opt.insecure_skip_verifyExample': 'false',
+  'help.opt.tls': 'Open the connection over TLS. Turn it off for a plain-text service such as a raw Redis or SMTP port.',
+  'help.opt.tlsExample': 'true',
+  'help.opt.server_name': 'The name to check the certificate against, when it differs from the host you connect to.',
+  'help.opt.server_nameExample': 'db.internal',
+  'help.opt.send': 'Text to write as soon as the connection opens. Escape sequences such as \\r\\n are honoured.',
+  'help.opt.sendExample': 'PING\\r\\n',
+  'help.opt.expect': 'Text the reply must contain for the probe to pass. Leave empty to accept any reply.',
+  'help.opt.expectExample': '+PONG',
+  'help.opt.count': 'How many pings one probe sends. More pings is a steadier latency reading and a slower probe.',
+  'help.opt.countExample': '3',
+  'help.opt.record_type': 'The DNS record to ask for. The answer has to be of this type.',
+  'help.opt.record_typeExample': 'A',
+  'help.opt.resolver': 'Ask this server instead of the system resolver, as host:port.',
+  'help.opt.resolverExample': '1.1.1.1:53',
+  'help.opt.expected': 'Answers that count as correct, comma separated. Empty means any answer passes.',
+  'help.opt.expectedExample': '93.184.215.14',
+  'help.opt.expect_all': 'Require every expected answer. Otherwise one match is enough.',
+  'help.opt.expect_allExample': 'false',
+  'help.opt.socket': 'Path to the Docker socket on the host that runs the daemon. Leave empty for /var/run/docker.sock. The socket has to be mounted into the Weatherglass container, which grants it far-reaching rights — see the security notes.',
+  'help.opt.socketExample': '/var/run/docker.sock',
+  'help.opt.expect_running': 'Fail the sensor when the container is not running. Set to No to watch a container that is supposed to be stopped: the sensor then alerts when it is up.',
+  'help.opt.expect_runningExample': 'true',
+  'help.opt.expect_health': 'The health status the container must report: healthy, starting or unhealthy. Most containers have no HEALTHCHECK and can never report healthy, so for those choose "only check that it runs" and the sensor watches whether the container is up instead.',
+  'help.opt.expect_healthExample': 'healthy',
+  'help.opt.max_restarts': 'Fail the sensor once the container has restarted more often than this. 0 switches the check off. The restart count is in the message either way.',
+  'help.opt.max_restartsExample': '3',
+  'help.opt.oid': 'The object to ask for, as a dotted number. A name such as sysUpTime.0 would need a MIB file, and Weatherglass does not guess at one.',
+  'help.opt.oidExample': '1.3.6.1.2.1.1.3.0',
+  'help.opt.community': 'The v2c community string: a shared password that travels unencrypted over the network on every request. It is stored on the server and shown as a marker here afterwards.',
+  'help.opt.communityExample': 'public',
+  'help.opt.version': '2c is what every device speaks. 1 is only for equipment old enough to refuse 2c. Version 3 is not supported.',
+  'help.opt.versionExample': '2c',
+  'help.opt.min': 'Fail the sensor when the value is below this. It needs a number: use an expected text for a value that is a string.',
+  'help.opt.minExample': '0',
+  'help.opt.max': 'Fail the sensor when the value is above this. Give min, max or an expected text — at least one, or the sensor has nothing to check the value against.',
+  'help.opt.maxExample': '80',
+
+  'help.ack.note': 'A word for whoever reads this later: what the outage was, who is on it, or which ticket covers it. Optional, and it stays with the outage.',
+  'help.ack.noteExample': 'Known reboot, ticket 4711',
+
+  // The guided tour. One entry per step; a step whose target is not on screen is
+  // shown centred instead, and a step may name the view it belongs to and the
+  // topic it answers, so this list can serve a simple dashboard and a full one
+  // alike.
+  'tour.aria': 'Guided tour',
+  'tour.skip': 'Skip',
+  'tour.back': 'Back',
+  'tour.next': 'Next',
+  'tour.finish': 'Done',
+  'tour.welcome.title': 'Welcome to Weatherglass',
+  'tour.welcome.body': 'This is the dashboard, in about a minute. Everything on it right now is sample data — no real machine is being watched. Skip at any time; you can start the tour again from Settings.',
+  // The same opening for an installation that has no sample data left, which is
+  // what a tour restarted from Settings months later will find. Saying "everything
+  // here is invented" over somebody's own sensors would be the one kind of wrong
+  // this product cannot afford.
+  'tour.welcome.bodyOwn': 'This is the dashboard, in about a minute. Skip at any time; you can start the tour again from Settings.',
+  'tour.summary.title': 'The summary',
+  'tour.summary.body': 'How many sensors are up, down or paused, plus uptime, average latency and probe count for the last day.',
+  'tour.exampleIntro.title': 'Let us take one apart',
+  'tour.exampleIntro.body': 'Take this card. It is invented, like the others the installation made: no real host was ever asked. It is shaped exactly like a real sensor, which is the point — here is what each part of it means.',
+  'tour.exampleIntro.bodyOwn': 'Take this card — one of your own, so everything in it is real. It is shaped exactly like a probe result, and here is what each part of it means.',
+  'tour.partName.title': 'Status and name',
+  'tour.partName.body': 'The coloured dot is the state from the last probe: green up, red down, grey paused. The name beside it is yours to choose, and it is what alerts and incident reports will call this sensor.',
+  'tour.partTarget.title': 'The target',
+  'tour.partTarget.body': 'What the probe actually talks to — a URL, a hostname, an address with a port. Weatherglass never guesses this from the name; it is the one thing a sensor cannot work without.',
+  'tour.partMessage.title': 'The last message',
+  'tour.partMessage.body': 'The raw answer from the last probe, kept verbatim: the HTTP status, the resolver answer, the number of replies. When something breaks, this is usually the sentence that says why.',
+  'tour.partSpark.title': 'Recent latency',
+  'tour.partSpark.body': 'The last few hours of response times as a sparkline. Flat and low is healthy; a step up or a gap is the shape of a problem starting, and it is often visible here before it turns red.',
+  'tour.partStats.title': 'Uptime at three ranges',
+  'tour.partStats.body': 'Availability over the last day, week and month, and the average response time. A number that is high on 24h and low on 30d means something happened weeks ago and has been quiet since.',
+  'tour.partActions.title': 'The buttons',
+  'tour.partActions.body': 'Pause the sensor, probe it right now, or edit it. Silencing one of these is what the bell is for when it is down. Buttons you are not allowed to use are greyed out with the reason, never hidden.',
+  'tour.detail.title': 'The full history',
+  'tour.detail.body': 'A click on the card opens the detail view: a range picker, the response-time curve, a band of uptime strips, and the table of individual results behind the numbers. Nothing here is aggregated away — you can always get back to the single probe.',
+  'tour.newSensor.title': 'Adding a sensor',
+  'tour.newSensor.body': 'Everything starts here. Choose a type, give it a target and an interval, and press Test before saving — it catches a typo before it becomes a monitored sensor.',
+  'tour.tabs.title': 'Four views',
+  'tour.tabs.body': 'Dashboard for the current state, Incidents for the outages, Alerts for where the messages go, and Settings for everything else.',
+  'tour.layout.title': 'Five ways to look at it',
+  'tour.layout.body': 'The same sensors, laid out as cards, as a list, as a tree you can fold away by place and group, as a wall of tiles with the last checks on each one, or on a map. It is one setting — it follows you to every device you sign in from.',
+  'tour.userMenu.title': 'You, and where you get out',
+  'tour.userMenu.body': 'Top right: who is signed in and with which role. The menu behind it holds the switches people change often — theme, density, language — a way into Settings, and Sign out, which used to be buried at the bottom of the settings page.',
+  'tour.settingsExamples.title': 'Removing the sample data',
+  'tour.settingsExamples.body': 'This is the one-click way out of the demo: it deletes the sensors that came with the install, together with their history and incidents. It is not reversible, and it only ever touches the sensors Weatherglass created itself — anything you added stays.',
+  'tour.settingsUsers.title': 'People and roles',
+  'tour.settingsUsers.body': 'One account per person, each with a role: a viewer may read everything and change nothing, an operator may also acknowledge outages and pause sensors, an admin may do everything. A second factor is set up per account, with single-use recovery codes for the day the phone is gone.',
+  'tour.choose.title': 'That is the tour',
+  'tour.choose.body': 'If you would like a little more on one of these, pick one. Otherwise carry on with Done.',
+  'tour.choose.sensors': 'Sensors',
+  'tour.choose.incidents': 'Incidents',
+  'tour.choose.alerts': 'Alerts',
+  'tour.topicSensors.title': 'Sensors are the unit of everything',
+  'tour.topicSensors.body': 'A sensor is one question asked of one target on a fixed interval. History, incidents and alerts all hang off it, and the answer to "is my homelab healthy?" is nothing more than the state of this list.',
+  'tour.topicSensorsAdd.title': 'Types worth knowing',
+  'tour.topicSensorsAdd.body': 'HTTP for a web page or an API, TCP for a bare port, Ping for reachability, DNS for name resolution — plus the options that go with them: expected status codes, certificate expiry warnings, record types, retries and timeouts.',
+  'tour.topicIncidents.title': 'Incidents',
+  'tour.topicIncidents.body': 'Every outage with when it began, how long it lasted and why. An ongoing one can be acknowledged, which silences the reminders without pretending it is fixed — and the incident keeps its note and the name of whoever acknowledged it.',
+  'tour.topicAlerts.title': 'Alert channels',
+  'tour.topicAlerts.body': 'Telegram, Discord, Matrix, ntfy, Slack or a webhook — one channel per place you want to hear about it. The page lists whether each channel last delivered successfully, so a broken notification path is visible rather than silent.',
+  'tour.topicAlertsAttach.title': 'Attaching a channel',
+  'tour.topicAlertsAttach.body': 'A channel does nothing until a sensor points at it. Add one here, then choose it while editing a sensor; several sensors may share it, and one sensor may use several, each with its own trigger.',
+  'tour.done.title': 'That is the whole thing',
+  'tour.done.body': 'Remember that all of this was sample data. When you are ready for real sensors, remove the four examples in Settings with one click and add your own — and enjoy the quiet.',
+
+  'common.save': 'Save',
+  'common.cancel': 'Cancel',
+  'common.close': 'Close',
+  'common.delete': 'Delete',
+  'common.retry': 'Retry',
+  'common.error': 'Something went wrong',
+  'common.timeout': 'The server did not answer in time. Check that Weatherglass is still running, then try again.',
+  'common.saved': 'Saved',
+  'common.optional': 'optional',
+  'common.required': 'required',
+  'common.edit': 'Edit',
+  'common.confirm': 'Confirm',
+  'common.none': 'None',
+  'common.all': 'All',
+  'common.seconds': 's',
+  'common.yes': 'Yes',
+  'common.no': 'No',
+  'common.needsRole': 'This needs the {role} role.',
+};
+
+const catalogues = { en };
+
+// `available` drives the language picker. Add a code here once its catalogue
+// above is complete.
+export const available = ['en'];
+
+let current = 'en';
+
+export function setLanguage(code) {
+  if (catalogues[code]) current = code;
+  document.documentElement.lang = current;
+}
+
+export function language() {
+  return current;
+}
+
+/**
+ * Translate a key. Placeholders in the catalogue are written as {name} and
+ * filled from `vars`. A missing key returns the key itself, which makes the gap
+ * obvious in the dashboard instead of silently rendering nothing.
+ */
+export function t(key, vars) {
+  const catalogue = catalogues[current] || catalogues.en;
+  let text = catalogue[key] ?? catalogues.en[key] ?? key;
+  if (vars) {
+    for (const [name, value] of Object.entries(vars)) {
+      text = text.replaceAll(`{${name}}`, String(value));
+    }
+  }
+  return text;
+}
+
+/** Re-render every element carrying a data-i18n* attribute. */
+export function applyTranslations(root = document) {
+  for (const el of root.querySelectorAll('[data-i18n]')) {
+    el.textContent = t(el.dataset.i18n);
+  }
+  for (const el of root.querySelectorAll('[data-i18n-placeholder]')) {
+    const text = t(el.dataset.i18nPlaceholder);
+    el.placeholder = text;
+    el.setAttribute('aria-label', text);
+  }
+  for (const el of root.querySelectorAll('[data-i18n-title]')) {
+    el.title = t(el.dataset.i18nTitle);
+  }
+  for (const el of root.querySelectorAll('[data-i18n-aria]')) {
+    el.setAttribute('aria-label', t(el.dataset.i18nAria));
+  }
+}

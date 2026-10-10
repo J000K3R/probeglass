@@ -1,0 +1,57 @@
+# Weatherglass — the quickest way to run it.
+#
+#   docker compose up -d
+#   open http://localhost:8080
+#
+# The first visit asks you to choose the dashboard password. Nothing else is
+# required: sensors are configured in the web UI.
+
+services:
+  weatherglass:
+    image: j000k3r/weatherglass:latest
+    # To build from a checkout instead of pulling, replace the line above with:
+    # build: .
+    container_name: weatherglass
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - weatherglass-data:/data
+      # Docker container sensors need the host's Docker socket, and this is the
+      # one line in this file that hands out more than it looks like. Whoever can
+      # reach that socket can start a container that mounts the whole host as
+      # root — it is not "just monitoring", it is the keys to the machine. Read
+      # SECURITY.md before you uncomment it, and leave it commented if you do not
+      # watch Docker containers.
+      #
+      # - /var/run/docker.sock:/var/run/docker.sock:ro
+      #
+      # The :ro is a reminder rather than a protection: a read-only mount does not
+      # stop anyone from writing to the socket itself. The prober only ever issues
+      # GET requests, and that is a promise about this program, not a wall around
+      # what the socket can do.
+    environment:
+      # Used to build the links that alert messages point back to. Set this to
+      # the address you actually reach the dashboard on.
+      WEATHERGLASS_BASE_URL: http://localhost:8080
+      WEATHERGLASS_LOG_LEVEL: info
+      # Set a password here to skip the setup screen on a fresh database. It is
+      # ignored once a password has been stored.
+      # WEATHERGLASS_ADMIN_PASSWORD: change-me
+    # ICMP ping needs a raw socket. Without this the ping sensors report exactly
+    # that, and every other sensor type keeps working.
+    cap_add:
+      - NET_RAW
+    # The image is distroless and already runs as uid 65532. These lines only
+    # matter if you harden further or mount a host directory.
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/weatherglass", "healthcheck"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+volumes:
+  weatherglass-data:

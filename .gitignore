@@ -1,0 +1,27 @@
+# Compiled binaries and build output
+weatherglass
+dist/
+bin/
+
+# Test and coverage output
+*.test
+coverage.out
+coverage.html
+
+# Local runtime data
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# Local configuration and secrets
+.env
+*.local.yaml
+
+# Editors and IDEs
+.idea/
+.vscode/
+.DS_Store
+
+# Defensive: in case tooling is added later
+node_modules/
