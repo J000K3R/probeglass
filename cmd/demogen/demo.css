@@ -1,0 +1,67 @@
+/*
+ * The styles for the bar the demo wears above the dashboard.
+ *
+ * This is the only stylesheet the demo adds. Everything below the bar is
+ * style.css, untouched, and the four rules at the end are the whole cost of
+ * putting something above a page that was written as if it owned the top of the
+ * window: the fixed bar, the room made for it, and the two places that measure
+ * themselves against the viewport.
+ */
+
+.demo-bar {
+  position: fixed;
+  inset: 0 0 auto 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  min-height: var(--demo-bar-h);
+  padding: 6px 16px;
+  box-sizing: border-box;
+  background: var(--surface, #16181d);
+  border-bottom: 1px solid var(--border, #2a2e37);
+  color: var(--text-dim, #a5acba);
+  font: 13px/1.4 var(--font, system-ui, sans-serif);
+}
+
+.demo-tag {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--accent, #4c8dff);
+  color: #fff;
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.demo-text { flex: 1 1 22rem; min-width: 0; }
+.demo-text strong { color: var(--text, #e7eaf0); font-weight: 600; }
+
+.demo-links { display: flex; gap: 14px; white-space: nowrap; }
+.demo-links a { color: var(--accent, #4c8dff); }
+
+@media (max-width: 640px) {
+  .demo-bar { padding: 6px 12px; font-size: 12px; }
+  .demo-text { flex-basis: 100%; }
+}
+
+/* --- the four rules that make room for it ------------------------------- */
+
+:root { --demo-bar-h: 2.5rem; }
+
+body { padding-top: var(--demo-bar-h); }
+
+/* The product's own bar sticks to the top of the window; in the demo the top of
+   the window is the demo's. */
+.topbar { top: var(--demo-bar-h); }
+
+/* These two fill the window on purpose, so they now fill what is left of it.
+   Without this the page is always one bar-height too tall and scrolls. */
+.boot, .auth-view { min-height: calc(100vh - var(--demo-bar-h)); }
+
+/* Two things measured against a window with nothing above it: the panel the top
+   bar folds into on a narrow screen, and the detail sheet, which is centred. */
+.topbar.menu-open .topbar-extra { max-height: calc(100vh - 76px - var(--demo-bar-h)); }
+.sheet { max-height: calc(100vh - 60px - var(--demo-bar-h)); }

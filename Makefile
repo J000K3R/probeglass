@@ -24,8 +24,13 @@ IMAGE       ?= ghcr.io/j000k3r/weatherglass
 TAG         ?= dev
 GO          ?= go
 
+# Where the clickable demo is published from. The website repository holds it, and
+# the two are expected to sit beside each other — which is how the project is laid
+# out locally and how CI checks it out.
+DEMO_DIR    ?= ../weatherglass-website/site/demo
+
 .DEFAULT_GOAL := help
-.PHONY: help build run dev test test-race test-browser cover vet fmt lint tidy seed docker docker-run clean rename check
+.PHONY: help build run dev test test-race test-browser cover vet fmt lint tidy seed docker docker-run clean rename check demo demo-check
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -73,6 +78,12 @@ check: fmt vet test ## What CI runs before building
 
 seed: build ## Fill ./data with demo sensors and a week of history
 	./bin/$(BINARY) seed --demo --days 7 --data ./data
+
+demo: ## Regenerate the clickable demo the website serves ($(DEMO_DIR))
+	$(GO) run ./cmd/demogen -out $(DEMO_DIR)
+
+demo-check: ## Fail if the published demo is not the one this tree would write
+	./scripts/check-demo.sh $(DEMO_DIR)
 
 docker: ## Build the container image as $(IMAGE):$(TAG)
 	docker build \
