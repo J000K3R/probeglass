@@ -7,7 +7,12 @@
 BINARY      := weatherglass
 PKG         := github.com/j000k3r/weatherglass
 CMD         := ./cmd/weatherglass
-VERSION     ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo 0.1.0-dev)
+# `--always` is deliberately absent. It falls back to the commit hash when there is no
+# tag to describe, which is the right answer only once this tree *has* tags. Before the
+# first release there is nothing to describe, `git describe` fails, and the version stays
+# the string the project is developed under. With `--always` the day this directory became
+# a repository would have silently renamed the build from 0.1.0-dev to a hash.
+VERSION     ?= $(shell git describe --tags --dirty 2>/dev/null || echo 0.1.0-dev)
 COMMIT      ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 BUILD_DATE  ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 LDFLAGS     := -s -w \
