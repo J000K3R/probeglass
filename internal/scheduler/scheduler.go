@@ -201,6 +201,18 @@ func (s *Scheduler) restoreState(ctx context.Context, c model.Sensor) {
 	st.failStreak = count
 	st.firstFail = firstFail
 
+	// The newest probe, so that a restart does not blank the dashboard. The status
+	// above is decided from the history; this is the rest of what the cards draw —
+	// the latency, the reply and when the sensor was last heard from — and without it
+	// every sensor reads "up" with no reading beside it until its own first probe
+	// lands, which is up to the startup jitter later. Nothing in the scheduler decides
+	// anything from it, so restoring it can only change what is on screen.
+	if last, err := s.store.LastResult(ctx, c.ID); err != nil {
+		s.log.Error("read last result", "sensor", c.Name, "error", err)
+	} else if last != nil {
+		st.lastResult = last
+	}
+
 	open, err := s.store.OpenIncidentFor(ctx, c.ID)
 	if err != nil {
 		s.log.Error("read open incident", "sensor", c.Name, "error", err)
@@ -567,6 +579,14 @@ func (s *Scheduler) maintenanceLoop(ctx context.Context) {
 		mctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 		defer cancel()
 		if err := s.store.Maintain(mctx, time.Now()); err != nil {
+			// A pass interrupted by the shutdown is not a failed pass. Without this,
+			// every daemon that stops while a pass is running — the hourly rollup can
+			// take a moment — writes an error into its log on the way out, and a line
+			// that means "this is normal" teaches its reader to skim past the ones
+			// that do not.
+			if mctx.Err() != nil {
+				return
+			}
 			s.log.Error("maintenance pass failed", "error", err)
 			return
 		}

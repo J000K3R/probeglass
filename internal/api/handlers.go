@@ -144,7 +144,6 @@ func (s *Server) handleSummary(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sum := model.Summary{Total: len(views)}
-	var oldest time.Time
 	for _, v := range views {
 		switch v.Status {
 		case model.StatusUp:
@@ -156,13 +155,20 @@ func (s *Server) handleSummary(w http.ResponseWriter, r *http.Request) {
 		default:
 			sum.Unknown++
 		}
-		// The header shows "monitoring since" as the oldest probe still known,
-		// which is the honest answer after a restart or a fresh install.
-		if v.LastSensor != nil && (oldest.IsZero() || v.LastSensor.Before(oldest)) {
-			oldest = *v.LastSensor
-		}
 	}
-	sum.Since = oldest
+
+	// The header shows "monitoring since" as the oldest probe still known.
+	//
+	// The question is asked of the results table and not of the scheduler, and that
+	// is the whole of the reasoning: a scheduler only remembers the probes it has
+	// seen, so a dashboard opened in the second after a restart would be told the
+	// installation began watching just now — above a week of uptime charts, and
+	// beside a settings page that is reporting the real oldest sample. The table is
+	// the one place that knows. Nothing stored at all leaves the field at zero, and
+	// the widget prints a dash rather than a date it made up.
+	if oldest, _, err := s.store.DataSpan(ctx); err == nil {
+		sum.Since = oldest
+	}
 
 	now := time.Now().UTC()
 	if day, err := s.store.UptimeBySensor(ctx, now.Add(-24*time.Hour), now); err == nil {
