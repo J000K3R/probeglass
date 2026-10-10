@@ -252,6 +252,35 @@ func (s *Server) Handler() http.Handler {
 // seconds means something is wrong, and the log line says what to check.
 const slowRequestThreshold = 10 * time.Second
 
+// hashesPasswords reports whether the request is one of the handlers that spends its
+// time in bcrypt rather than in the database: signing in, the first-time setup, and
+// everything that checks or sets a password.
+//
+// It exists because the warning below used to blame the database for all of them,
+// and that was measurably wrong. A password change with one processor under the race
+// detector took 10.7 seconds, every millisecond of it in bcrypt — a password change
+// compares the old password and hashes the new one, so it pays twice — while the hint
+// pointed the reader at a stalled disk. A hint that sends you to the wrong place is
+// worse than no hint, so the slow ones that are slow on purpose say so.
+//
+// The method is part of the match, not decoration: GET /api/users is the user list and
+// never hashes, while POST /api/users creates a user and does. Matching on the path
+// alone would blame bcrypt for a slow list, which is the same mistake pointing the
+// other way.
+func hashesPasswords(r *http.Request) bool {
+	switch r.Method + " " + r.URL.Path {
+	case "POST /api/login", "POST /api/login/totp", "POST /api/setup",
+		"PUT /api/password", "POST /api/users",
+		"POST /api/me/totp/recovery", "POST /api/me/totp/disable":
+		return true
+	}
+	// The password reset carries a user id, so it cannot be named above. Only the POST
+	// at that shape hashes; the PUT and DELETE beside it are the user record itself.
+	return r.Method == http.MethodPost &&
+		strings.HasPrefix(r.URL.Path, "/api/users/") &&
+		strings.HasSuffix(r.URL.Path, "/password")
+}
+
 func (s *Server) withMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
@@ -307,12 +336,20 @@ func (s *Server) withMiddleware(next http.Handler) http.Handler {
 		}
 
 		// A request that took seconds did not fail loudly, it just hung, and the
-		// user sees a spinner. Say so, with the likely cause.
+		// user sees a spinner. Say so, and say which of the two causes to look at
+		// first — the database, or a handler that is slow because hashing is
+		// expensive by design. Both are real; guessing the wrong one costs the
+		// reader an evening with a disk that was never at fault.
 		if elapsed >= slowRequestThreshold {
+			hint := "the database may be locked or on a stalled disk"
+			if hashesPasswords(r) {
+				hint = "this one hashes a password, and bcrypt is slow on purpose; " +
+					"a password change compares one hash and makes another, so it pays twice"
+			}
 			s.log.Warn("slow request",
 				"method", r.Method, "path", r.URL.Path,
 				"status", rec.status, "duration_ms", elapsed.Milliseconds(),
-				"hint", "the database may be locked or on a stalled disk")
+				"hint", hint)
 		}
 	})
 }

@@ -7,10 +7,13 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"golang.org/x/crypto/bcrypt"
 
 	"github.com/j000k3r/weatherglass/internal/config"
 	"github.com/j000k3r/weatherglass/internal/event"
@@ -19,6 +22,36 @@ import (
 	"github.com/j000k3r/weatherglass/internal/scheduler"
 	"github.com/j000k3r/weatherglass/internal/store"
 )
+
+// TestMain drops bcrypt to its cheapest setting for the whole package.
+//
+// The cost exists to make a stolen hash expensive to crack. In a test the password is
+// written in the file next to the hash, so the cost buys nothing there and the suite
+// pays it dozens of times over: at cost 12 this package took six minutes on its own
+// under the race detector, every second of it spent hashing passwords nobody is
+// attacking.
+//
+// The two tests about a client that disconnects are the exception — they put the real
+// cost back, because there the hash has to still be running after the client has gone.
+// See withProductionBcryptCost.
+func TestMain(m *testing.M) {
+	bcryptCost = bcrypt.MinCost
+	os.Exit(m.Run())
+}
+
+// withProductionBcryptCost hashes at the real cost for the duration of one test.
+//
+// Only the abandonment tests use it, and they are the one place where a fast hash
+// would not speed the test up but empty it out: they cancel the request while the
+// handler is still working, so at bcrypt.MinCost the whole handler finishes inside the
+// 50 ms before the cancel lands, the context is never abandoned at all, and the test
+// would pass while proving nothing.
+func withProductionBcryptCost(t *testing.T) {
+	t.Helper()
+	old := bcryptCost
+	bcryptCost = productionBcryptCost
+	t.Cleanup(func() { bcryptCost = old })
+}
 
 // harness is a running API over a temporary database.
 type harness struct {
@@ -289,15 +322,17 @@ func (h *harness) abandonAfter(d time.Duration, method, path string, body any) {
 }
 
 // abandonedWriteDeadline is how long the tests below wait for work that a handler
-// does after its client has gone. It is deliberately far longer than that work
-// takes on a laptop.
+// does after its client has gone.
 //
-// The number to beat is bcrypt, not the database. A password change compares the
-// old password and hashes the new one, so it pays that cost twice; at cost 12 that
-// is half a second here, but the CI runner is slower and runs the whole suite under
-// the race detector, and there the same handler was measured at 10.7 seconds. A
-// ten-second limit was a coin toss on CI, and when it lost the flip it blamed the
-// product for discarding a password it had in fact stored.
+// The number to beat is bcrypt, not the database. A password change compares the old
+// password and hashes the new one, so it pays that cost twice, and these two tests
+// hash at the real cost on purpose. Measured on one processor under the race detector,
+// that handler took 10.7 seconds end to end. A ten-second limit was a coin toss on CI,
+// where nothing is faster, and when it lost the flip it blamed the product for
+// discarding a password that was in fact stored.
+//
+// The rest of the suite no longer pays this cost at all — see TestMain — so this
+// deadline only has to be generous for the two tests that need it.
 const abandonedWriteDeadline = 60 * time.Second
 
 // waitForUser polls until an account exists, or gives up.
@@ -318,12 +353,14 @@ func (h *harness) waitForUser() bool {
 }
 
 // A browser that reloads while the password is being hashed ends the request.
-// bcrypt takes about a quarter of a second, which is not a small window — an
-// impatient F5 lands in it — and the handler does its one and only write after
-// that. Taking the request's context there threw the work away at the last
-// moment: the account was not created, nothing said so, and the next page load
-// showed the setup form again as though it had never been filled in.
+// bcrypt is deliberately slow — long enough that an impatient F5 lands in the middle
+// of it on any machine — and the handler does its one and only write after that.
+// Taking the request's context there threw the work away at the last moment: the
+// account was not created, nothing said so, and the next page load showed the setup
+// form again as though it had never been filled in.
 func TestSetupSurvivesAClientThatGaveUp(t *testing.T) {
+	withProductionBcryptCost(t)
+
 	h := newHarness(t)
 	h.abandonAfter(50*time.Millisecond, http.MethodPost, "/api/setup",
 		map[string]string{"username": testUser, "password": testPassword})
@@ -361,6 +398,8 @@ func (h *harness) accountHash() string {
 // is the more expensive of the two: it compares the old password and hashes the
 // new one, so it pays the bcrypt cost twice.
 func TestChangePasswordSurvivesAClientThatGaveUp(t *testing.T) {
+	withProductionBcryptCost(t)
+
 	h := newHarness(t)
 	h.setup()
 
@@ -372,9 +411,10 @@ func TestChangePasswordSurvivesAClientThatGaveUp(t *testing.T) {
 	// Watching the store rather than the sign-in endpoint, for two reasons: the
 	// stored hash is the thing the handler writes, and polling /api/login would
 	// spend failed sign-ins against the login limiter, which locks a client out for
-	// a minute once five of them have piled up. That second reason is not
-	// hypothetical — it is what the old version of this test did, and on CI the
-	// lockout outlived the deadline and was reported as a discarded password.
+	// a minute once five of them have piled up. That is a hazard in its own right,
+	// whatever else is going on — a test that hammers the one endpoint with a
+	// throttle in front of it cannot tell "the write was lost" from "I have been
+	// locked out", and the second would be reported as the first.
 	deadline := time.Now().Add(abandonedWriteDeadline)
 	for h.accountHash() == before {
 		if time.Now().After(deadline) {

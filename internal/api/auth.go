@@ -31,9 +31,9 @@ const (
 	// the second factor stays valid. It has to be long enough to find a phone and
 	// type six digits, and short enough that it is worthless later.
 	challengeTTL = 2 * time.Minute
-	// bcryptCost 12 is a good balance for a homelab box: strong enough that a
-	// stolen hash is expensive to crack, fast enough to log in instantly.
-	bcryptCost = 12
+	// productionBcryptCost 12 is a good balance for a homelab box: strong enough
+	// that a stolen hash is expensive to crack, fast enough to log in instantly.
+	productionBcryptCost = 12
 	// minPasswordLength is deliberately only a floor; the threat model is a
 	// private network, not the public internet.
 	minPasswordLength = 8
@@ -50,6 +50,23 @@ const (
 	sessionPrefix   = "v2."
 	challengePrefix = "c1."
 )
+
+// bcryptCost is what the program hashes with. It is a variable for exactly one
+// reason, and that reason is the tests.
+//
+// Signing in, being created as a user and changing a password all pay this cost,
+// and the suite does each of them dozens of times. At cost 12 that made the api
+// package take six minutes on its own, every second of it hashing passwords that
+// nobody is attacking — the cost buys nothing in a test, where the password is
+// known to everyone reading the file. TestMain lowers it for the package.
+//
+// Two tests put the real cost back, and they are the exception that shows why this
+// is not simply a test-only constant: they are about a client that disappears in
+// the middle of a request, so there the hash has to still be running when the
+// client walks away. Slowness is the thing they test rather than overhead they pay.
+//
+// Nothing in the program ever writes it.
+var bcryptCost = productionBcryptCost
 
 // dummyHash is what a password is compared against when the username does not
 // exist.
@@ -669,10 +686,10 @@ func uiSettings(u *model.User) map[string]string {
 // commitContext detaches a write from the client's connection, but not from
 // time.
 //
-// Both callers hash a password with bcrypt first, which costs about a quarter of
-// a second, and a quarter of a second is long enough for an impatient reload to
-// end the request. Writing with r.Context() after that means the work is thrown
-// away at the last moment: the password the user chose is not stored, nothing
+// Both callers hash a password with bcrypt first, which takes the better part of a
+// second on a desktop and several on a small box, and a window that size is one an
+// impatient reload lands in. Writing with r.Context() after that means the work is
+// thrown away at the last moment: the password the user chose is not stored, nothing
 // tells them so, and the next page load shows the form again as if they had
 // never filled it in. That is a silent loss of the one piece of state they
 // explicitly asked to set.

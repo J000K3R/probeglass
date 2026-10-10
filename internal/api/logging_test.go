@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
@@ -215,6 +216,48 @@ func TestClientErrorDoesNotLogAsServerFault(t *testing.T) {
 	}
 	if status, ok := attr(info[0], "status"); !ok || status != "400" {
 		t.Errorf("info line status = %q (present=%v), want 400", status, ok)
+	}
+}
+
+// TestHashesPasswordsKnowsTheSlowRoutes pins the list that decides which hint comes
+// with a slow-request warning.
+//
+// It is worth a test of its own because the warning it feeds cannot be tested: getting
+// one takes ten real seconds of work in a handler, and no test should spend that. So
+// the choice of hint is checked here, where it is cheap, and the consequence of the
+// list rotting is that a renamed route quietly goes back to blaming the disk — which
+// is the bug this list was added to fix.
+func TestHashesPasswordsKnowsTheSlowRoutes(t *testing.T) {
+	cases := []struct {
+		method, path string
+		want         bool
+	}{
+		// Everything that checks or sets a password, by bcrypt.
+		{http.MethodPost, "/api/login", true},
+		{http.MethodPost, "/api/login/totp", true},
+		{http.MethodPost, "/api/setup", true},
+		{http.MethodPut, "/api/password", true},
+		{http.MethodPost, "/api/users", true},
+		{http.MethodPost, "/api/users/7/password", true},
+		{http.MethodPost, "/api/me/totp/recovery", true},
+		{http.MethodPost, "/api/me/totp/disable", true},
+
+		// Neighbours that must not be swept up, in both directions: the same path
+		// under another method, and the rest of the dashboard. A hint naming the
+		// wrong cause is the whole reason this function exists.
+		{http.MethodGet, "/api/users", false},
+		{http.MethodPost, "/api/me/totp/start", false},
+		{http.MethodGet, "/api/me/totp/qr", false},
+		{http.MethodGet, "/api/summary", false},
+		{http.MethodGet, "/api/sensors/3", false},
+		{http.MethodGet, "/api/password", false},
+	}
+
+	for _, c := range cases {
+		r := httptest.NewRequest(c.method, c.path, nil)
+		if got := hashesPasswords(r); got != c.want {
+			t.Errorf("hashesPasswords(%s %s) = %v, want %v", c.method, c.path, got, c.want)
+		}
 	}
 }
 
