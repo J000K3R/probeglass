@@ -436,8 +436,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   zoom 7 — four and a half thousand of them at once would be a grey smear, not a map.
   Names that would land on a name already placed are dropped rather than drawn over it,
   countries first.
+- **The map is drawn finer, and a country now has districts and cities.** The map's
+  coastlines, country borders, lakes and rivers move from Natural Earth's 1:50m sets to
+  its 1:10m ones — which is four times the detail on the water: the Bodensee carries 6
+  points in the files this map was drawn from before and 14 now, and the same for every
+  lake and coastline on it. The map's data grows from 1.1 MB to 2.0 MB, and the
+  simplification stays where it was (about two kilometres, under a pixel to about zoom
+  6), so the honest limit of the picture is unchanged even though there is more of it.
+  With the finer sources come two things the map did not have at all:
+  - **Austria's political districts** — the 94 Bezirke and the 23 statutory cities as
+    117 filled areas, drawn from zoom 8, under the province lines and dimmer than both
+    them and the country lines, because a Bezirk sits inside a Bundesland. This is the
+    one layer on the map that is neither Natural Earth's nor public domain: it comes
+    from **Statistik Austria** under **CC BY 4.0**, which asks to be named when the work
+    is shown. The header of `internal/web/assets/districts.js`, `SECURITY.md`,
+    `README.md` and the documentation all say so, because it is the one obligation this
+    project passes on to whoever runs it — and it is also the one source URL here that
+    carries a year and has to be refreshed. Everywhere outside Austria the district band
+    is empty, and that is honest rather than lazy: Natural Earth's only second-order
+    layer is the counties of the United States.
+  - **The larger cities**, 7295 of them from Natural Earth's populated places, as a third
+    list of names behind the countries and the provinces. They appear at the zoom Natural
+    Earth drew each of them for — about zoom 3 for a capital, about zoom 10 for a small
+    town — and they lose a collision to a province and a country above them. The names
+    are the data's own, and the data is not of one habit: "Zürich" keeps its umlaut and
+    Vienna arrives as "Vienna". Nothing here renames them.
+- **Europe's water, in a second and finer copy.** Natural Earth publishes Europe again
+  at 1:10m, with the middle-sized lakes and rivers the world files leave out — the
+  Zürichsee, the Walensee, the Salzach, the Enns, the Traun. They are drawn into the same
+  layer and the same colour, from about zoom 6, so nothing about the picture says which
+  file a lake came from. `cmd/worldgen` grows a `-minus <geojson>` flag for them: the two
+  copies overlap on 8 lakes and 72 rivers, and a shape whose name the other file already
+  draws is dropped rather than drawn a hair's width apart from it. An empty name never
+  matches, which is what keeps the 610 unnamed lakes of the world file in it.
 - **A switch for the borders and the names**, under **Settings → Look → Map**, on by
-  default. Off, the map draws the coastlines alone — and the two data files that carry
+  default. Off, the map draws the coastlines alone — and the six data files that carry
   the borders and the names are not sent to the browser at all, so the switch saves the
   megabyte it looks like it should save. Missing row means on, like every other
   yes/no setting here, and a viewer sees the state without being able to change it.

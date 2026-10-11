@@ -1301,8 +1301,8 @@ func TestSitesReachEveryViewAndTheMapIsHonest(t *testing.T) {
 }
 
 // TestTheMapDrawsItsOwnBordersAndNames is about the half of the map that is drawn
-// from the binary rather than fetched: the water, the country and province borders, and
-// the names.
+// from the binary rather than fetched: the water, the country, province and district
+// borders, and the names — the countries, the provinces and the places.
 //
 // Three things here cannot be checked anywhere but in a browser. The first is that the
 // layers are built at all — they arrive from modules fetched after the first draw, so a
@@ -1313,6 +1313,12 @@ func TestSitesReachEveryViewAndTheMapIsHonest(t *testing.T) {
 // than by reading the generator's output. The third is the switch: it covers the two
 // border files and the names, and it must not reach the water, which is basemap — a
 // country with no lakes in it is not a country with its borders turned off.
+//
+// The finer layers are checked the way their failures would show: as counts of bands
+// that never appear. A supplement that is not due yet and one that never arrived look
+// the same at any single zoom, which is why this test walks up to a deep zoom and asks
+// there; and a district band, a city list and a Europe river band are each one file
+// whose absence leaves the rest of the layer intact.
 func TestTheMapDrawsItsOwnBordersAndNames(t *testing.T) {
 	browser := findBrowser(t)
 	base := startServer(t, buildBinary(t))
@@ -1461,6 +1467,96 @@ func TestTheMapDrawsItsOwnBordersAndNames(t *testing.T) {
 			"can tell from a border")
 	}
 
+	// --- the finer water, and the three layers that come with it --------------
+
+	// Everything here belongs to the deep zooms, and the bands of every one of these
+	// files are built only when a zoom reaches them. The fitted view is a country view
+	// at about zoom 8, which is close enough to the edge that a supplement which is
+	// not due yet and a supplement that never arrived look the same from here — so
+	// three steps in first, and then ask.
+	if err := withTimeout(ctx, func(tctx context.Context) error {
+		return chromedp.Do(tctx,
+			chromedp.Click(`.map-controls [data-map="in"]`),
+			chromedp.Click(`.map-controls [data-map="in"]`),
+			chromedp.Click(`.map-controls [data-map="in"]`),
+		)
+	}); err != nil {
+		capture(t, ctx, dir, "map-zoom-in")
+		t.Fatalf("could not zoom the map in: %v", err)
+	}
+
+	// The lake bands are what says whether the Europe supplements arrived at all. The
+	// world lakes file publishes seven bands and the Europe one two more, and the two
+	// copies carry the same class because they draw the same thing — a Zürichsee is a
+	// lake, and which file it came from is not a fact about the picture. So the count
+	// is what is read here, and nine is the number that means both files are in.
+	eventually(t, ctx, `document.querySelectorAll('.map-water path.k-lake').length >= 9`,
+		"zooming into Germany never brought the Europe lake bands up; the world lakes file "+
+			"publishes seven of them and the Europe supplement two, and the two are drawn "+
+			"as one layer because they are one layer",
+		dir, "no-europe-lakes", 20*time.Second)
+	// The rivers are the same arrangement and the reason the Alps have water in them at
+	// all: the world file's four bands hold the Rhine and nothing else of Vorarlberg,
+	// and the Salzach and the Enns are in the Europe file. A map with the world's
+	// rivers and without Europe's is a map of the Alps with empty valleys.
+	if n := read[int](t, ctx, `document.querySelectorAll('.map-water path.k-river').length`,
+		"how many river bands the map built"); n < 6 {
+		capture(t, ctx, dir, "no-europe-rivers")
+		t.Errorf("the map built %d river band(s) at this zoom; the world file's four and "+
+			"Europe's two are six, and the second of them is the one the middle-sized rivers "+
+			"are in", n)
+	}
+
+	// The districts are one country's and one band, at 8. Nothing else on this map has
+	// that shape, and no count of border paths would notice the file being missing: the
+	// country and province bands are built whether it arrived or not. So it is asked for
+	// by class, and by the length of its path as well, because a band that was built
+	// with nothing in it is a path too and passes a count.
+	eventually(t, ctx, `document.querySelectorAll('.map-borders path.k-district').length > 0`,
+		"the map never drew a district path; the Bezirke are one band at zoom 8 and they "+
+			"arrive in the border layer, which is the layer that was already there",
+		dir, "no-districts", 20*time.Second)
+	if n := read[int](t, ctx,
+		`[...document.querySelectorAll('.map-borders path.k-district')].reduce((n, p) => n + (p.getAttribute('d') || '').length, 0)`,
+		"how much district border the map drew"); n < 1000 {
+		capture(t, ctx, dir, "districts-empty")
+		t.Errorf("the district band is %d character(s) of path; the whole of Austria's 117 "+
+			"districts are in that one band, which is tens of thousands of characters, so a "+
+			"short path here is a band that was built and has no geometry in it", n)
+	}
+
+	// And the places. The cities are the third list of names behind the countries and
+	// the provinces, and they are only on the map from the zoom each of them carries —
+	// the biggest cities around zoom 3, Bregenz at 8. Over Munich at this zoom there are
+	// several, so a count of zero is the name layer being there with an empty third list
+	// behind it, which is what a cities.js that never arrived looks like.
+	if n := read[int](t, ctx, `document.querySelectorAll('.map-label.k-city').length`,
+		"how many cities the map named"); n == 0 {
+		capture(t, ctx, dir, "no-cities")
+		t.Errorf("the map named no city although Munich is on screen at this zoom; the city " +
+			"names are a module and a list of their own, and a name layer that draws countries " +
+			"and provinces and no places is the one that did not arrive")
+	}
+
+	// Back to the fitted view, so that everything after this looks at the same picture
+	// as before. The bands that were built stay built — that is what makes a zoom a
+	// button press rather than 97 000 points rebuilt — but the ones on screen come back
+	// to what the fitted view shows, and the built count is read again because it has
+	// grown and the checks further down compare against it.
+	if err := withTimeout(ctx, func(tctx context.Context) error {
+		return chromedp.Do(tctx, chromedp.Click(`.map-controls [data-map="fit"]`))
+	}); err != nil {
+		capture(t, ctx, dir, "map-fit-back")
+		t.Fatalf("could not fit the map back to its places: %v", err)
+	}
+	eventually(t, ctx, fmt.Sprintf(
+		`document.querySelectorAll('.map-borders path:not([hidden])').length === %d`, deepShown),
+		"fitting the map back after zooming in left a different number of border bands on "+
+			"screen; the fitted view is the view the rest of this test is written for",
+		dir, "bands-not-restored", 15*time.Second)
+	deepPaths = read[int](t, ctx, `document.querySelectorAll('.map-borders path').length`,
+		"how many border bands are built now that the map has been taken down and back up")
+
 	// --- one drag, and every layer moves with it ------------------------------
 
 	// The map moves a drag by writing the same transform onto each of its layers,
@@ -1601,6 +1697,20 @@ func TestTheMapDrawsItsOwnBordersAndNames(t *testing.T) {
 			"band 0, which belongs at every zoom there is, and %d of them are built",
 			countries)
 	}
+	// And the districts are built and off the picture, which is the other half of their
+	// band and the half a count of built paths cannot see. One band at 8, a world view
+	// at about 3: Austria's Bezirke belong in the file at every zoom and on the screen
+	// at none of the shallow ones. A layer that drew them over a world map would be
+	// right about the geometry and wrong about the picture — 117 shapes of a country
+	// 500 kilometres across, drawn at the size of Europe.
+	if n := read[int](t, ctx,
+		`document.querySelectorAll('.map-borders path.k-district:not([hidden])').length`,
+		"how many district bands a world view shows"); n != 0 {
+		capture(t, ctx, dir, "districts-at-world")
+		t.Errorf("%d district band(s) are on screen at a world view; the third file in this "+
+			"layer has one band at zoom 8, so this is the band rule not reaching it — the "+
+			"two files beside it are the ones it was written for", n)
+	}
 	if built := read[int](t, ctx, `document.querySelectorAll('.map-borders path').length`,
 		"how many bands are built"); built != deepPaths {
 		t.Errorf("zooming out changed the number of built bands from %d to %d; the bands are "+
@@ -1733,12 +1843,15 @@ func TestTheMapDrawsItsOwnBordersAndNames(t *testing.T) {
 			"come from")
 	}
 	if n := read[int](t, ctx,
-		`performance.getEntriesByType('resource').filter(r => /mapborders|maplabels/.test(r.name)).length`,
-		"how many of the two layer files a fresh page fetched"); n != 0 {
+		`performance.getEntriesByType('resource').filter(r => /mapborders|maplabels|districts|cities/.test(r.name)).length`,
+		"how many of the four layer files a fresh page fetched"); n != 0 {
 		capture(t, ctx, dir, "borders-fetched-anyway")
 		t.Errorf("a fresh page fetched %d of the border and name files although the layer is "+
 			"off and it drew neither; the setting is read before the import so that turning "+
-			"the layer off costs the operator nothing", n)
+			"the layer off costs the operator nothing — and the two files behind them are "+
+			"imported by the two modules and are counted here too, because a switch that "+
+			"takes the module and leaves the 74 KB file under it is a switch that saved "+
+			"nothing", n)
 	}
 
 	// --- the switch is put back, and the header's mini map gets the borders ---
@@ -1865,16 +1978,18 @@ func TestTheMapDrawsItsOwnBordersAndNames(t *testing.T) {
 	}
 	// And the names were not fetched for it. This is the whole point of `labels: false`
 	// reaching the import and not only the drawing: a widget that never draws a name
-	// must not make the browser download one.
+	// must not make the browser download one. The cities are counted with the names
+	// because they ride in on the same module — the header's widget draws none of
+	// either, and 134 KB of city names is the larger half of what it is spared.
 	fetched := read[[]string](t, ctx,
-		`performance.getEntriesByType('resource').map(r => r.name).filter(n => /mapborders|maplabels/.test(n))`,
-		"which of the two layer files the page fetched for the mini map")
+		`performance.getEntriesByType('resource').map(r => r.name).filter(n => /mapborders|maplabels|districts|cities/.test(n))`,
+		"which of the layer files the page fetched for the mini map")
 	for _, url := range fetched {
-		if strings.Contains(url, "maplabels") {
+		if strings.Contains(url, "maplabels") || strings.Contains(url, "cities") {
 			capture(t, ctx, dir, "minimap-fetched-the-names")
 			t.Errorf("the page fetched %s for the header's mini map, which draws no names; "+
 				"the option has to reach the import and not only the drawing, or a 150-pixel "+
-				"widget costs the operator 87 KB", url)
+				"widget costs the operator 220 KB of names and places", url)
 		}
 	}
 	if !slices.ContainsFunc(fetched, func(u string) bool { return strings.Contains(u, "mapborders") }) {

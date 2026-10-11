@@ -1,8 +1,10 @@
-// The water: the world's lakes, filled, and its largest rivers, as lines.
+// The water: the world's lakes and the finer copy of Europe's, filled, then the world's
+// largest rivers and the finer copy of Europe's, as lines.
 //
-// It comes from two generated files — lakes.js and rivers.js — in the same zoom-band
-// shape the borders arrive in, and mapbands.js walks both of them. What is worth
-// knowing here is the arrangement rather than the machinery:
+// It comes from four generated files — lakes.js, lakes_europe.js, rivers.js and
+// rivers_europe.js — in the same zoom-band shape the borders arrive in, and mapbands.js
+// walks all four. What is worth knowing here is the arrangement rather than the
+// machinery:
 //
 //   * Water is part of the basemap, not a layer of its own. There is no switch for it:
 //     the setting in Settings → appearance turns off the borders and the names, and a
@@ -17,10 +19,24 @@
 //   * Lakes are rings and rivers are lines, which is the `closed` flag and nothing
 //     else in the drawing code. A ring has to be closed to be filled; a line that
 //     closed would be a river running back up itself.
+//
+//   * There are two of each because Natural Earth publishes Europe twice. The world
+//     files carry what is visible from a world view; the Europe ones carry the water
+//     too small for that and are drawn from zoom 6, which is why the Zürichsee and the
+//     Walensee arrive when somebody zooms into the Alps and not before. Their bands are
+//     the files' own, so this module does not know which is which — it walks four
+//     streams and the four band tables say when each of them belongs.
+//
+//     They are not two independent layers. The Europe files are the world files again
+//     at a finer scale, and the generator drops the shapes whose name the world file
+//     already draws (-minus in cmd/worldgen), so the two meet at a shore without a
+//     second shoreline an inch away from it.
 
 import { banded } from './mapbands.js';
 import { WORLD_LAKE_BANDS, WORLD_LAKE_DATA } from './lakes.js';
+import { WORLD_LAKE_EUROPE_BANDS, WORLD_LAKE_EUROPE_DATA } from './lakes_europe.js';
 import { WORLD_RIVER_BANDS, WORLD_RIVER_DATA } from './rivers.js';
+import { WORLD_RIVER_EUROPE_BANDS, WORLD_RIVER_EUROPE_DATA } from './rivers_europe.js';
 
 /**
  * fill builds the water inside a layer the map has already put on the page.
@@ -35,9 +51,21 @@ export function fill(node) {
     closed: true,
     className: 'k-lake',
   });
+  const lakesEurope = banded(node, {
+    data: WORLD_LAKE_EUROPE_DATA,
+    bands: WORLD_LAKE_EUROPE_BANDS,
+    closed: true,
+    className: 'k-lake',
+  });
   const rivers = banded(node, {
     data: WORLD_RIVER_DATA,
     bands: WORLD_RIVER_BANDS,
+    closed: false,
+    className: 'k-river',
+  });
+  const riversEurope = banded(node, {
+    data: WORLD_RIVER_EUROPE_DATA,
+    bands: WORLD_RIVER_EUROPE_BANDS,
     closed: false,
     className: 'k-river',
   });
@@ -45,7 +73,9 @@ export function fill(node) {
   return {
     setView(z, left, top) {
       lakes.setView(z, left, top);
+      lakesEurope.setView(z, left, top);
       rivers.setView(z, left, top);
+      riversEurope.setView(z, left, top);
     },
   };
 }

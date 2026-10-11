@@ -216,13 +216,23 @@ If the community matters, treat it as compromised the moment it crosses one.
 ## The map draws itself, and fetches nothing by default
 
 The dashboard draws your sites on a map. The map's world comes out of the binary —
-coastlines, the lakes and rivers, the country and province borders and the names of
-both, all from
+coastlines, the lakes and rivers, the country, district and province borders and the
+names of all three, nearly
+all of it from
 public-domain datasets decoded in the browser — and **out of the box nothing about it
 leaves the machine**. No request is made to any server to draw it, so there is nobody to
 disclose anything to: not your IP address, not your browser, and not the part of the
 world you are looking at. The daemon never contacts a map server either, by default or
 otherwise.
+
+**One file on that map is not public domain, and this is where that is written down.**
+The district borders are Austria's, and they come from Statistik Austria under
+**CC BY 4.0**, which is not a licence that asks for nothing: it asks to be named when the
+work is shown. Ten of the eleven embedded datasets are Natural Earth's and are public
+domain; this one is the exception, it is the only obligation this project passes on to
+whoever runs it, and it is also the only source URL here that changes from year to year,
+because the register in it carries a date. The wording to use is in the file's own header
+(`internal/web/assets/districts.js`) and in the dashboard documentation.
 
 An administrator can still enter a tile URL in **Settings → Look → Map**, and that is a
 real decision with a real cost, so it is written down here rather than buried in a
@@ -255,7 +265,7 @@ What Weatherglass does about it:
   server of their choosing, and cannot use the map to make somebody else's browser talk
   to a host of their choosing. The borders switch rides in the same payload and is the
   same kind of setting, but it fetches nothing and discloses nothing — it only decides
-  whether four files already in the binary are sent to the browser.
+  whether six files already in the binary are sent to the browser.
 - **No data of any kind leaves with the map.** The borders, the water and the names are
   decoded
   from the binary exactly like the coastlines: a query about a place name cannot be
@@ -277,12 +287,17 @@ What that does not protect you from:
 - **Anything else on that origin.** The policy allows the origin you name, so if you
   point the map at a host that serves other things, the browser may fetch those too.
   That is the same trust you extend to any server you type into a setting.
-- **Coarse data.** The bundled coastlines, country borders, lakes and rivers are 1:50m,
-  the province borders and their names
-  1:10m, the country names 1:110m: recognisable to about zoom 6 for the coastlines, and
-  in a city a straight line between distant points. Only the 275 largest river systems
-  are drawn — the Rhine and the Elbe are in the dataset and not in the file, because a
-  river that is the whole point of a country map is a hairline on a world map. That is
+- **Coarse data.** The bundled coastlines, country borders, lakes and rivers are 1:10m,
+  the province borders, their names and the city names are
+  1:10m as well, the country names 1:110m — and all of it is simplified to about two
+  kilometres, which is
+  under a pixel to about zoom 6 and visible by about zoom 10. In a city it is a straight
+  line between distant points, and the districts are the only layer simplified harder
+  (about 200 metres) because they are only ever drawn at a zoom where two kilometres
+  would show. Only the 472 largest river systems are in the world file and only the
+  middle-sized ones of Europe are added to it, so a stream through a valley is not on
+  this map and neither is a river in a country Natural Earth did not draw one for. That
+  is
   the honest limit of a world
   map small enough to embed, and it is the other half of the reason the tile URL field
   exists. It is also the price of the property above: a dataset small enough to ship is

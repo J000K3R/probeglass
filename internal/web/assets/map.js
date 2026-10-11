@@ -142,16 +142,16 @@ export function mount(host, opts = {}) {
 
   const outline = createOutline();
   // The water, the border and name layers are built empty here and filled by modules
-  // that are fetched afterwards. Those files are most of a megabyte between them and
+  // that are fetched afterwards. Those files are nearly two megabytes between them and
   // are needed only in this view, so importing them at the top of this file would make
   // every page load in the dashboard pay for a map nobody opened. They arrive a frame
   // or two after the first draw, and until they do the map is a map: coastlines,
   // graticule and pins, exactly as it was before they existed.
   //
-  // `borders: false` is the setting, which is labelled "Draw country and province
-  // borders" and is about the lines and the names and nothing else. It is decided here
-  // rather than after the fetch, because a layer somebody has turned off must not be
-  // downloaded either.
+  // `borders: false` is the setting, which is labelled "Draw country, province and
+  // district borders" and is about the lines and the names and nothing else. It is
+  // decided here rather than after the fetch, because a layer somebody has turned off
+  // must not be downloaded either.
   const wanted = opts.borders !== false;
   // The water is not behind that setting. It is the ground: a lake is where the map says
   // there is a lake whether or not the borders are on, and a country whose lakes and
@@ -160,7 +160,7 @@ export function mount(host, opts = {}) {
   // The names are a second file again, and `labels: false` — which is how the header's
   // mini map mounts — has to keep it out of the browser's queue rather than merely off
   // the screen. A layer that is imported and then not filled still costs the operator
-  // 90 KB of names for a 150-pixel widget, and the comment in widgets.js promises it
+  // 220 KB of names for a 150-pixel widget, and the comment in widgets.js promises it
   // does not. So the import itself is what is conditional here.
   const withLabels = wanted && opts.labels !== false;
   const waterNode = svgLayer('map-water');

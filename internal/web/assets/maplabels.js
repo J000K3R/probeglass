@@ -1,10 +1,10 @@
-// The names of the countries and the first-order administrative areas — states,
-// provinces, the German Bundesländer — drawn on the map.
+// The names of the countries, the first-order administrative areas — states, provinces,
+// the German Bundesländer — and the cities, drawn on the map.
 //
-// They come from labels.js and regions.js, and they are drawn in screen coordinates:
-// one absolutely positioned span each, in a layer over the tiles. The alternative —
-// text in the SVG that is scaled with the map — would make a name bigger as somebody
-// zooms in, and a 40-pixel "Bayern" is not a map anybody wants.
+// They come from labels.js, regions.js and cities.js, and they are drawn in screen
+// coordinates: one absolutely positioned span each, in a layer over the tiles. The
+// alternative — text in the SVG that is scaled with the map — would make a name bigger
+// as somebody zooms in, and a 40-pixel "Bayern" is not a map anybody wants.
 //
 // Three things decide what is on screen, and they are all here rather than spread
 // over the callers:
@@ -18,9 +18,15 @@
 //     viewport holds a handful of them.
 //
 //   * Whether it collides. Names are laid down most important first — countries, then
-//     provinces, and within each the source's own ranking — and one that would overlap
-//     something already placed is dropped. A map with half the names on it is a map; a
-//     map with all of them is a grey smear.
+//     provinces, then cities, and within each the source's own ranking — and one that
+//     would overlap something already placed is dropped. A map with half the names on
+//     it is a map; a map with all of them is a grey smear.
+//
+// The three lists are also three levels of zoom, and that is the other reason for the
+// order: a country name arrives at zoom 2 and stays, a province name at 4 or 5, a city
+// at 6 and deeper. Vorarlberg is one province and, at zoom 8, one city — Bregenz. Where
+// two of them want the same square inch the deeper one gives way, which is the right way
+// round: "Vorarlberg" over a village is a worse map than a village with no label.
 //
 // What a name takes up is measured, not guessed: the candidates are put on the page and
 // their boxes asked for in one batch, and the ones that would cover a name already kept
@@ -31,6 +37,7 @@
 import { WORLD_LABEL_NAMES, WORLD_LABEL_POINTS } from './labels.js';
 import { cursor } from './outline.js';
 import { WORLD_REGION_NAMES, WORLD_REGION_POINTS } from './regions.js';
+import { WORLD_CITY_NAMES, WORLD_CITY_POINTS } from './cities.js';
 
 // The gap left between two names that are both drawn. Each box is measured off the
 // page and is therefore exact, but two words touching edge to edge still read as one
@@ -84,12 +91,13 @@ function read(points, names) {
  * importing a second copy is what keeps a name on its own country.
  *
  * Both streams arrive sorted by zoom and then by importance, which is the order they
- * are placed in, so nothing here sorts anything: it walks the countries and then the
- * provinces and stops at the first one that does not fit.
+ * are placed in, so nothing here sorts anything: it walks the countries, then the
+ * provinces, then the cities, and stops at the first one that does not fit.
  */
 export function fill(node, project) {
   const countries = read(WORLD_LABEL_POINTS, WORLD_LABEL_NAMES).map((l) => ({ ...l, kind: 'country' }));
   const regions = read(WORLD_REGION_POINTS, WORLD_REGION_NAMES).map((l) => ({ ...l, kind: 'region' }));
+  const cities = read(WORLD_CITY_POINTS, WORLD_CITY_NAMES).map((l) => ({ ...l, kind: 'city' }));
 
   return {
     /** draw places the names for one view. Called from the map's own draw(). */
@@ -110,7 +118,7 @@ export function fill(node, project) {
       // measuring approach dear enough to be worth an estimate in the first place.
       const built = [];
       const fragment = document.createDocumentFragment();
-      for (const list of [countries, regions]) {
+      for (const list of [countries, regions, cities]) {
         for (const label of list) {
           if (built.length >= MAX_LABELS) break;
           // Sorted by zoom, so the first name that is too fine ends the list.

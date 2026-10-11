@@ -155,19 +155,19 @@ func TestTheEmbeddedCoastlineDecodes(t *testing.T) {
 			"reader that trusts this number is wrong by whatever factor it is", scale)
 	}
 	if rings < 1000 {
-		t.Errorf("world.js claims %d ring(s); 1:50m land is about 1 400 landmasses and "+
-			"islands, so this is a file that lost most of itself", rings)
+		t.Errorf("world.js claims %d ring(s); the 1:10m land file is about 3 900 landmasses "+
+			"and islands, so this is a file that lost most of itself", rings)
 	}
 
 	data := strings.Trim(exportValue(t, js, "WORLD_DATA"), "'")
-	if len(data) < 100000 {
-		t.Fatalf("WORLD_DATA is %d characters long; the 1:50m coastline is around 200 000, "+
+	if len(data) < 400000 {
+		t.Fatalf("WORLD_DATA is %d characters long; the 1:10m coastline is around 520 000, "+
 			"so this file is a fragment", len(data))
 	}
 	decoded, points := decodeWorld(t, data, rings, scale)
 
-	if points < 20000 {
-		t.Errorf("%d point(s) across %d ring(s); the whole 1:50m land layer is about 35 000, "+
+	if points < 60000 {
+		t.Errorf("%d point(s) across %d ring(s); the whole 1:10m land layer is about 94 000, "+
 			"so most of the world is missing from the file", points, rings)
 	}
 
@@ -585,15 +585,15 @@ func TestTheEmbeddedCountryBordersDecode(t *testing.T) {
 			"which is where somebody will first look for them", f.bands[0])
 	}
 
-	// 358 of the file's 393 lines are the international class and 8 328 points survive
-	// the tolerance; both numbers are in the header and both floors are loose.
-	if len(f.shapes) < 250 {
-		t.Errorf("%d line(s) across the bands; the international class holds 358, so this "+
+	// 7 693 of the file's 7 980 lines are the international class and 23 044 points
+	// survive the tolerance; both numbers are in the header and both floors are loose.
+	if len(f.shapes) < 5000 {
+		t.Errorf("%d line(s) across the bands; the international class holds 7 693, so this "+
 			"file has lost whole borders", len(f.shapes))
 	}
-	if f.points < 5000 {
-		t.Errorf("%d point(s) across %d line(s); the 1:50m international borders are about "+
-			"8 300, so the tail of this file is somewhere else", f.points, len(f.shapes))
+	if f.points < 20000 {
+		t.Errorf("%d point(s) across %d line(s); the 1:10m international borders are about "+
+			"23 000, so the tail of this file is somewhere else", f.points, len(f.shapes))
 	}
 	// 282° is the honest span: a border is a line where two countries meet, and the
 	// two ends of the world — Chukotka, Alaska, the islands of the Pacific — are coast
@@ -629,12 +629,12 @@ func TestTheEmbeddedLakesDecode(t *testing.T) {
 		t.Errorf("the first lake band is zoom %d; a world view should show the lakes big "+
 			"enough to be seen on one", f.bands[0])
 	}
-	if len(f.shapes) < 300 {
-		t.Errorf("%d ring(s); the 1:50m lakes file holds 465, so this is missing the lakes "+
-			"of whole continents", len(f.shapes))
+	if len(f.shapes) < 1000 {
+		t.Errorf("%d ring(s); the 1:10m lakes file holds 1 597 and the tolerance keeps 1 521, "+
+			"so this is missing the lakes of whole continents", len(f.shapes))
 	}
-	if f.points < 5000 {
-		t.Errorf("%d point(s) across %d ring(s); the tolerance leaves about 8 600, so the "+
+	if f.points < 20000 {
+		t.Errorf("%d point(s) across %d ring(s); the tolerance leaves about 30 700, so the "+
 			"tail of this file is somewhere else", f.points, len(f.shapes))
 	}
 	if span := f.box[2] - f.box[0]; span < 300 {
@@ -650,18 +650,48 @@ func TestTheEmbeddedLakesDecode(t *testing.T) {
 		t.Errorf("no lake ring reaches Lake Victoria; its min_zoom of 1 puts it in the " +
 			"coarsest band, so a file without it is missing the lakes a world view draws")
 	}
-	if n := inBox(f, 9.0, 47.4, 9.8, 47.85); n == 0 {
+
+	// The Bodensee, which is the other end of the band list and the one lake whose
+	// detail is the reason this whole regeneration happened. Two things are checked
+	// about it and they are different questions: that it is there at all — a file that
+	// lost its tail keeps Lake Victoria and drops this one — and how many points its
+	// ring has, because that number is what the source change bought.
+	//
+	// Measured, both files, at the tolerance this map simplifies with: the coarse 1:50m
+	// source leaves 6 points on this lake and the 1:10m one leaves 14. (The sources hold
+	// 17 and 65; the rest is the Douglas-Peucker pass, which is this layer's own screw
+	// and is written down in the header.) So a floor of 10 is the number that tells the
+	// two sources apart, and nothing else in this test does.
+	//
+	// The largest ring in the window rather than the first one, because the window is a
+	// box and the Bodensee shares it with a handful of ponds and with the Altrhein: the
+	// shoreline is the long one, and a small lake found first would make this test pass
+	// on any file at all.
+	points := 0
+	for _, shape := range f.shapes {
+		for _, p := range shape {
+			if p[0] >= 9.0 && p[0] <= 9.8 && p[1] >= 47.4 && p[1] <= 47.85 {
+				points = max(points, len(shape))
+				break
+			}
+		}
+	}
+	if points == 0 {
 		t.Errorf("no lake ring reaches the Bodensee; it is one of the finer bands, so a file " +
 			"that lost its tail keeps Lake Victoria and drops this one")
+	} else if points < 10 {
+		t.Errorf("the longest ring reaching the Bodensee has %d points; the 1:10m source "+
+			"leaves 14 and the coarse 1:50m one 6, so the shoreline that made Vorarlberg "+
+			"look coarse is back", points)
 	}
 }
 
 // TestTheEmbeddedRiversDecode reads the rivers.
 //
-// Rivers are the one layer here that a world view does not want at all: Natural Earth
-// ranks them 1 to 6 and the generator keeps 3 and better, which is the Amazon and the
-// Danube and not the tributaries that reach them. A file generated at a looser cut would
-// pass every count in this test and put a hairball over Europe.
+// Rivers are the one layer here that a world view does not want at all: the 1:10m source
+// ranks them 0 to 10 and the generator keeps 4 and better, which is the Amazon and the
+// Danube and the Rhine. A file generated at a looser cut would pass every count in this
+// test and put a hairball over Europe.
 func TestTheEmbeddedRiversDecode(t *testing.T) {
 	js := readAsset(t, Assets(), "rivers.js")
 
@@ -670,17 +700,185 @@ func TestTheEmbeddedRiversDecode(t *testing.T) {
 		t.Errorf("the first river band is zoom %d; the Danube is drawn at zoom 3, so a first "+
 			"band above it means no rivers on a map anybody would call a country view", f.bands[0])
 	}
-	if len(f.shapes) < 150 {
-		t.Errorf("%d line(s) at rank 3 and better; there are 275, so this file has lost the "+
+	if len(f.shapes) < 300 {
+		t.Errorf("%d line(s) at rank 4 and better; there are 472, so this file has lost the "+
 			"largest rivers of whole continents", len(f.shapes))
 	}
-	if f.points < 3000 {
-		t.Errorf("%d point(s) across %d line(s); the tolerance leaves about 5 500, so the "+
+	if f.points < 7000 {
+		t.Errorf("%d point(s) across %d line(s); the tolerance leaves about 11 500, so the "+
 			"tail of this file is somewhere else", f.points, len(f.shapes))
 	}
 	if span := f.box[2] - f.box[0]; span < 300 {
 		t.Errorf("the rivers span %.1f° of longitude; they run on every continent, so this "+
 			"is a corner of the world", span)
+	}
+
+	// The Rhine, and this is about the rank cut rather than the river: at rank 3 — the
+	// cut this project drew at while the source was 1:50m — the Rhine was still in the
+	// file, and at rank 4 it is the river Vorarlberg's western border runs along. So
+	// this is the one line whose presence says the cut is where the header says it is.
+	//
+	// It is also the only river this file has in Vorarlberg, which is not a fact about
+	// the cut but about Natural Earth: the Ill, the Bregenzer Ach and the Dornbirner
+	// Ach are in no file of theirs at any scale (measured, see the header of
+	// rivers_europe.js). Whoever next tries to make Vorarlberg look finer should read
+	// this test first, because the file this is not in is the one they will look in.
+	if n := inBox(f, 9.4, 46.9, 10.3, 47.65); n == 0 {
+		t.Errorf("no river line reaches Vorarlberg; the Rhine is rank 4 and is the one line " +
+			"this file has there, so a file without it has lost the rank cut")
+	}
+}
+
+// TestTheEmbeddedEuropeWaterDecode reads the two finer copies of Europe's water.
+//
+// These two files are why the map has water at all between zoom 6 and zoom 9 in the
+// Alps. The world files carry what a world view can see, which for the Alps is the
+// Bodensee and the Rhine, and the lake somebody looking at Vorarlberg wants next to it
+// is the Zürichsee — 60 km away, four pixels wide at a country view, and in this file.
+//
+// The check that these are the second copy and not the first is the box: both sources
+// cover Europe and nothing outside it, so a shape anywhere else in either file means the
+// generator was pointed at the world file and wrote the world again under a second name.
+// Nothing else here would notice that, because a world's worth of lakes passes every
+// count a Europe's worth of lakes passes.
+func TestTheEmbeddedEuropeWaterDecode(t *testing.T) {
+	t.Run("lakes", func(t *testing.T) {
+		js := readAsset(t, Assets(), "lakes_europe.js")
+		f := decodeBanded(t, js, "WORLD_LAKE_EUROPE", 4)
+		if want := []int{6, 7}; !slices.Equal(f.bands, want) {
+			t.Errorf("WORLD_LAKE_EUROPE_BANDS is %v, want %v: this is the finer copy of one "+
+				"continent, so it draws nothing at a world view and everything where somebody "+
+				"is looking at a valley", f.bands, want)
+		}
+		if len(f.shapes) < 500 {
+			t.Errorf("%d ring(s); the source holds 778 and the generator keeps 740, so this "+
+				"file has lost most of its lakes", len(f.shapes))
+		}
+		if f.points < 3000 {
+			t.Errorf("%d point(s) across %d ring(s); the tolerance leaves about 4 600", f.points, len(f.shapes))
+		}
+		if west, south, east, north := f.box[0], f.box[1], f.box[2], f.box[3]; west < -35 || east > 70 || south < 20 || north > 76 {
+			t.Errorf("the rings span %g..%g east and %g..%g north; this is the Europe "+
+				"supplement, which reaches the Urals and the Mediterranean and not the "+
+				"Americas or the Antarctic, so this is the world file generated under the "+
+				"second name", west, east, south, north)
+		}
+		if n := inBox(f, 8.4, 47.1, 9.0, 47.5); n == 0 {
+			t.Errorf("no ring reaches the Zürichsee; it is in this file and in no world " +
+				"file, so this is the one lake in it that says which source it came from")
+		}
+	})
+
+	t.Run("rivers", func(t *testing.T) {
+		js := readAsset(t, Assets(), "rivers_europe.js")
+		f := decodeBanded(t, js, "WORLD_RIVER_EUROPE", 2)
+		if want := []int{6, 7}; !slices.Equal(f.bands, want) {
+			t.Errorf("WORLD_RIVER_EUROPE_BANDS is %v, want %v", f.bands, want)
+		}
+		if len(f.shapes) < 800 {
+			t.Errorf("%d line(s); the source holds 1 701 and the rank cut and -minus keep "+
+				"1 247, so this file has lost whole river systems", len(f.shapes))
+		}
+		if f.points < 6000 {
+			t.Errorf("%d point(s) across %d line(s); the tolerance leaves about 10 900", f.points, len(f.shapes))
+		}
+		if west, south, east, north := f.box[0], f.box[1], f.box[2], f.box[3]; west < -35 || east > 70 || south < 20 || north > 76 {
+			t.Errorf("the lines span %g..%g east and %g..%g north; this is the Europe "+
+				"supplement, which reaches the Urals and not the Americas, so this is the "+
+				"world file generated under the second name",
+				west, east, south, north)
+		}
+		// The Salzach, and it is here for a reason worth writing down: this file exists
+		// because the world file stops at the Rhine for the whole west of Austria, and
+		// the Salzach — rank 11 here, in no world file at any rank — is the river a
+		// reader of this test is most likely to look for. It is also the check that the
+		// rank cut is at 11 and not at 10, because 10 drops it.
+		if n := inBox(f, 12.4, 47.2, 13.2, 48.0); n == 0 {
+			t.Errorf("no river line reaches the Salzach; it is rank 11, so a file without " +
+				"it has the rank cut one too deep")
+		}
+	})
+}
+
+// TestTheEmbeddedDistrictsDecode reads Austria's political districts.
+//
+// This is the one layer on the map that is not public domain and the one with a licence
+// attached — Statistik Austria, CC BY 4.0 — and it is also the one with a band the
+// generator chose rather than read. Both of those are invisible in the browser: a
+// districts file that lost half of itself is a map of Austria with half its districts,
+// which looks like a map of Austria. So: one band, and it is 8; every point inside
+// Austria's own bounding box; and Vorarlberg's four districts present, because that is
+// where this layer was asked for.
+func TestTheEmbeddedDistrictsDecode(t *testing.T) {
+	js := readAsset(t, Assets(), "districts.js")
+
+	f := decodeBanded(t, js, "WORLD_DISTRICT", 4)
+	if want := []int{8}; !slices.Equal(f.bands, want) {
+		t.Errorf("WORLD_DISTRICT_BANDS is %v, want %v: the Austrian register has no zoom in "+
+			"it, so the band is chosen in the generator and 8 is the choice — the zoom at "+
+			"which Vorarlberg's four districts and Vienna's one are separately visible",
+			f.bands, want)
+	}
+	if len(f.shapes) < 100 {
+		t.Errorf("%d ring(s); the source holds 117 districts as 128 rings, so this is a "+
+			"fraction of a country", len(f.shapes))
+	}
+	if f.points < 10000 {
+		t.Errorf("%d point(s) across %d ring(s); the finer district tolerance leaves about "+
+			"17 200", f.points, len(f.shapes))
+	}
+	// Austria's own bounding box, from the source: 9.53..17.16 east, 46.37..49.02 north.
+	// The window is that plus a hair, and nothing else in this test can tell a district
+	// file from a file of somebody else's districts.
+	if west, south, east, north := f.box[0], f.box[1], f.box[2], f.box[3]; west < 9.4 || east > 17.3 || south < 46.3 || north > 49.1 {
+		t.Errorf("the rings span %g..%g east and %g..%g north; Austria is 9.53..17.16 by "+
+			"46.37..49.02, so this is not the Austrian register", west, east, south, north)
+	}
+	if n := inBox(f, 9.5, 46.9, 10.0, 47.45); n < 4 {
+		t.Errorf("%d ring(s) reach Vorarlberg; Bregenz, Dornbirn, Feldkirch and Bludenz are "+
+			"the four districts this layer was added for, so fewer than four means the file "+
+			"is a different country's", n)
+	}
+}
+
+// TestTheEmbeddedCityNamesDecode reads the city names.
+//
+// The names and their coordinates are two halves of one record in two exports, so what
+// this guards is not a corrupt file but a changed one: a name list and a stream that no
+// longer line up put the right names in the wrong places, which is a map that is
+// confidently wrong and nothing else. The counts have to match, and the names a reader
+// can check by hand have to be the right ones.
+//
+// Bregenz is checked by name and not by coordinate because it is the whole point of this
+// layer for the person who asked for it, and because the file it comes from is the only
+// one of the nine that has Vorarlberg's capital in it at all. Dornbirn and Feldkirch are
+// deliberately not checked: Natural Earth has neither, and a test that demanded them
+// would be a test demanding somebody else's data.
+func TestTheEmbeddedCityNamesDecode(t *testing.T) {
+	js := readAsset(t, Assets(), "cities.js")
+
+	names := exportStrings(t, js, "WORLD_CITY_NAMES")
+	if len(names) < 7000 {
+		t.Fatalf("WORLD_CITY_NAMES holds %d name(s); the populated-places file has 7 342 "+
+			"and 7 295 of them are places, so this list has lost a continent", len(names))
+	}
+	for _, want := range []string{"Bregenz", "Zürich", "Vienna", "Munich"} {
+		if !slices.Contains(names, want) {
+			t.Errorf("WORLD_CITY_NAMES has no %q; the names are the dataset's own, in the "+
+				"dataset's own mixed spelling, and this one is a place a reader can look for", want)
+		}
+	}
+
+	points, groups := decodeLabels(t, strings.Trim(exportValue(t, js, "WORLD_CITY_POINTS"), "'"))
+	if points != len(names) {
+		t.Fatalf("the stream holds %d point(s) and the name list %d name(s); the two are "+
+			"halves of one record, so a difference is every name after it drawn on the wrong "+
+			"place", points, len(names))
+	}
+	if groups < 10 {
+		t.Errorf("%d group(s); the source carries min_zoom from 1 to 10, so a handful of "+
+			"groups means the grouping by zoom has come apart and every city would arrive at "+
+			"once", groups)
 	}
 }
 
