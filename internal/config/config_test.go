@@ -273,15 +273,15 @@ func TestIsTruthy(t *testing.T) {
 }
 
 func TestEnvInt(t *testing.T) {
-	t.Setenv("WG_TEST_INT", "42")
-	if got := EnvInt("WG_TEST_INT", 7); got != 42 {
+	t.Setenv("PG_TEST_INT", "42")
+	if got := EnvInt("PG_TEST_INT", 7); got != 42 {
 		t.Errorf("EnvInt = %d, want 42", got)
 	}
-	t.Setenv("WG_TEST_INT", "not a number")
-	if got := EnvInt("WG_TEST_INT", 7); got != 7 {
+	t.Setenv("PG_TEST_INT", "not a number")
+	if got := EnvInt("PG_TEST_INT", 7); got != 7 {
 		t.Errorf("EnvInt of garbage = %d, want the default 7", got)
 	}
-	if got := EnvInt("WG_TEST_INT_UNSET", 7); got != 7 {
+	if got := EnvInt("PG_TEST_INT_UNSET", 7); got != 7 {
 		t.Errorf("EnvInt of an unset variable = %d, want the default 7", got)
 	}
 }

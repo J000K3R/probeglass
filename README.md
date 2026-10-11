@@ -383,9 +383,9 @@ not tied to an account and has full administrator rights, so treat it like a
 root password.
 
 ```bash
-curl -H "X-API-Key: $WG_KEY" http://localhost:8080/api/summary | jq
-curl -H "X-API-Key: $WG_KEY" localhost:8080/api/sensors/1/series?range=24h | jq
-curl -H "X-API-Key: $WG_KEY" localhost:8080/api/sensors/1/uptime?range=30d | jq
+curl -H "X-API-Key: $PG_KEY" http://localhost:8080/api/summary | jq
+curl -H "X-API-Key: $PG_KEY" localhost:8080/api/sensors/1/series?range=24h | jq
+curl -H "X-API-Key: $PG_KEY" localhost:8080/api/sensors/1/uptime?range=30d | jq
 ```
 
 A route's method is also its permission boundary. Reads are open to every

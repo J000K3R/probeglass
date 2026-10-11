@@ -33,7 +33,7 @@
 'use strict';
 
 (function () {
-  var fixtures = window.__WG_FIXTURES__;
+  var fixtures = window.__PROBEGLASS_FIXTURES__;
   if (!fixtures || !fixtures.responses) return;
 
   /* ------------------------------------------------------------ the clock

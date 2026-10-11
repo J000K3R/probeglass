@@ -553,7 +553,7 @@ func write(assets fs.FS, dir string, rec *recorder) error {
 		return err
 	}
 	files := map[string]string{
-		"fixtures.js": "window.__WG_FIXTURES__ = " + string(fixtures) + ";\n",
+		"fixtures.js": "window.__PROBEGLASS_FIXTURES__ = " + string(fixtures) + ";\n",
 		"shim.js":     shimJS,
 		"demo.css":    demoCSS,
 	}
