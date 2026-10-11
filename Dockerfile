@@ -16,8 +16,18 @@ RUN go mod download
 
 COPY . .
 
-ARG TARGETOS=linux
-ARG TARGETARCH=amd64
+# These two carry the platform being built for, put there by buildx, and they must
+# be declared with no value. An ARG that has one keeps it: `ARG TARGETARCH=amd64`
+# made every platform compile amd64, so the arm64 and arm/v7 images shipped an
+# x86-64 binary under an arm64 and an arm label — a container that dies with "exec
+# format error" on the Pi, and on a machine that does have an emulator it runs, at
+# emulator speed, crashing now and then in the garbage collector. BuildKit sees the
+# three variants ask for identical arguments and folds them into a single build step,
+# which is why all three published images share one build ID. The three VERSION args
+# below keep their defaults because they are ordinary build arguments, which a
+# workflow's `build-args` does override.
+ARG TARGETOS
+ARG TARGETARCH
 ARG VERSION=dev
 ARG COMMIT=unknown
 ARG BUILD_DATE=unknown
@@ -33,6 +43,28 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
         -X github.com/j000k3r/probeglass/internal/model.Commit=${COMMIT} \
         -X github.com/j000k3r/probeglass/internal/model.BuildDate=${BUILD_DATE}" \
       -o /out/probeglass ./cmd/probeglass
+
+# The mistake above was silent for as long as it existed because nothing ever looked
+# at what came out. The two bytes at offset 18 of an ELF header are its machine type —
+# 3e00 is x86-64, b700 is AArch64, 2800 is ARM — so the binary can be asked what it is
+# without being run, which is the only way to ask it here: the machine that builds the
+# arm64 image is usually an amd64 one and cannot execute the answer.
+#
+# The comparison is against TARGETPLATFORM, the platform the image is for, and not
+# against TARGETARCH, which is the same thing until the day it is shadowed by a default
+# — then it said amd64 for an arm64 build, so the two would have agreed with each other
+# while both disagreed with the image being made. It is declared below, beside the check
+# that reads it, and without a value, which is what leaves buildx's own in place.
+ARG TARGETPLATFORM
+RUN case "${TARGETPLATFORM}" in \
+      linux/amd64)  want=3e00 ;; \
+      linux/arm64)  want=b700 ;; \
+      linux/arm/*)  want=2800 ;; \
+      *) echo "no machine type known for ${TARGETPLATFORM}"; exit 1 ;; \
+    esac; \
+    got=$(od -An -tx1 -j18 -N2 /out/probeglass | tr -d ' \n'); \
+    test "$got" = "$want" \
+      || { echo "the binary's machine type is $got, but ${TARGETPLATFORM} wants $want"; exit 1; }
 
 # An empty directory whose ownership the runtime image can copy. Docker copies
 # the ownership of a copied directory, which is how /data ends up writable by

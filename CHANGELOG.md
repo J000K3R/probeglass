@@ -702,6 +702,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The arm64 and arm/v7 images contained an x86-64 binary.** `ARG TARGETARCH=amd64`
+  is not a default that buildx overrides, it is a value it keeps: all three platforms
+  compiled amd64, so the images carried the right labels over the wrong executable. On
+  a Pi that is a container that dies with `exec format error` before it can say
+  anything, and on an arm64 desktop one that runs at emulator speed and crashes in the
+  garbage collector now and then. BuildKit folded the three platform builds into a
+  single step, which is why every published image shared one build ID. The platform
+  arguments are declared without a value now, and the build ends by reading the machine
+  type out of the ELF header of the binary it has just made and stopping unless it is
+  the platform the image is for — nothing had ever looked at that binary, which is why
+  it lasted. The smoke test's log check had the same kind of quiet defect: `docker logs
+  … | grep -q` under `set -o pipefail` reports a line as missing whenever the log has
+  more to write after the match, so its PUID checks went red now and then on containers
+  that had done exactly what was asked, and the job that watches the privilege drop
+  failed for reasons that were its own.
 - **An installation that had ever saved its map settings kept asking OpenStreetMap.**
   The map form writes the value it is *showing* into the settings row, so pressing Save
   on a freshly installed dashboard was enough to store `tile.openstreetmap.org` as

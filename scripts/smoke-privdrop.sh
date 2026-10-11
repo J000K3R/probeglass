@@ -51,10 +51,13 @@ owner() { stat -c '%u:%g' "$1"; }
 
 # wait_for blocks until the pattern is in the log, and fails the moment the container
 # stops — a container that exits is not "not ready yet", it is the answer.
+#
+# The grep reads to the end of the log rather than stopping at the match, for the reason
+# logs_have below explains at length.
 wait_for() {
   local name=$1 pattern=$2 i
   for ((i = 0; i < 60; i++)); do
-    if docker logs "$name" 2>&1 | grep -q -- "$pattern"; then
+    if docker logs "$name" 2>&1 | grep -- "$pattern" >/dev/null; then
       return 0
     fi
     if [ "$(docker inspect -f '{{.State.Running}}' "$name" 2>/dev/null)" != "true" ]; then
@@ -67,7 +70,19 @@ wait_for() {
   fail "no \"$pattern\" in the log after 60s"
 }
 
-logs_have() { docker logs "$1" 2>&1 | grep -q -- "$2"; }
+# logs_have asks whether a line is in the container's log.
+#
+# It reads the whole log, and must: with `set -o pipefail`, `docker logs … | grep -q`
+# is a race, and the loser is this check. grep -q exits the moment it matches, which
+# closes the pipe, and `docker logs` — which is still streaming the lines after the one
+# that matched — is killed by SIGPIPE and exits 141. pipefail then reports 141 for a
+# pipeline whose grep found the line, so logs_have says "it is not there" exactly when
+# it is. Measured here, not reasoned about: over fifteen runs of this script the left
+# side of the pipe returned 141 while the right returned 0 twice, and both times it was
+# reported as a PUID that had not taken effect when the container had logged it plainly.
+# Reading to the end costs nothing — the log is a few hundred bytes — and takes the race
+# away.
+logs_have() { docker logs "$1" 2>&1 | grep -- "$2" >/dev/null; }
 
 echo "smoke: the container takes /data over and gives up root"
 
