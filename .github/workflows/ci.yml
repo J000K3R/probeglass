@@ -164,3 +164,36 @@ jobs:
           build-args: |
             VERSION=ci-${{ github.sha }}
             COMMIT=${{ github.sha }}
+
+  smoke:
+    name: The container takes /data over
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      # Loaded into the runner's own image store rather than pushed: nothing here is
+      # about publishing, it is about what the image does when it starts. That needs a
+      # real Linux kernel and a real bind mount — Docker Desktop on a laptop does not pass
+      # bind-mount ownership through at all, so this job is the only place the privilege
+      # drop is exercised from end to end.
+      - name: Build for the runner's architecture
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: weatherglass:smoke
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            VERSION=ci-${{ github.sha }}
+            COMMIT=${{ github.sha }}
+
+      # Starts the image on a folder owned by root and checks that it ends up owning it,
+      # that the daemon reports the uid it was asked for, that an unprivileged process can
+      # still open an ICMP socket, and — the negative control — that the same image started
+      # with --user still fails and says why. Without that last check, every other assertion
+      # here would pass on a folder that had been 500:500 all along.
+      - name: Smoke test the privilege drop
+        run: scripts/smoke-privdrop.sh

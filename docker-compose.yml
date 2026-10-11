@@ -31,6 +31,16 @@ services:
       # GET requests, and that is a promise about this program, not a wall around
       # what the socket can do.
     environment:
+      # The user the daemon ends up as. It starts as root, gives /data to
+      # PUID:PGID and becomes that user before it opens anything. 500:500 is the
+      # default and matches the identity every other image on the platforms this
+      # ships to runs as; change it when /data is a host folder that somebody else
+      # owns. PUID=0 keeps root, which is not recommended.
+      PUID: 500
+      PGID: 500
+      # Quote the mask. YAML turns an unquoted 022 into the number 18, and the
+      # daemon refuses to start on a mask that is not one.
+      UMASK: "022"
       # Used to build the links that alert messages point back to. Set this to
       # the address you actually reach the dashboard on.
       WEATHERGLASS_BASE_URL: http://localhost:8080
@@ -42,15 +52,17 @@ services:
     # that, and every other sensor type keeps working.
     cap_add:
       - NET_RAW
-    # The image is distroless and already runs as uid 500. These lines only
-    # matter if you harden further or mount a host directory.
+    # The image is distroless and starts as root only so that it can take /data
+    # over and leave root again; these lines matter if you harden further.
+    # no-new-privileges forbids *gaining* privileges, not giving them away, so it
+    # does not stand in the way of that drop.
     security_opt:
       - no-new-privileges:true
-    # Run as somebody else by naming them here. This, and not an environment
-    # variable, is the knob: the runtime picks the uid before the process
-    # starts, so a variable inside it could only report a decision already
-    # made. Worth setting when /data is a host folder that something else owns
-    # -- see docs/operations/troubleshooting.md.
+    # Setting a user here overrides all of the above: the runtime picks the uid
+    # before the process starts, so PUID, PGID and UMASK are ignored, and a daemon
+    # that is not root cannot claim /data for itself either. Use it only to run as
+    # whoever already owns the host folder — see
+    # https://j000k3r.github.io/weatherglass-docs/operations/troubleshooting
     # user: "1000:1000"
     healthcheck:
       test: ["CMD", "/usr/local/bin/weatherglass", "healthcheck"]

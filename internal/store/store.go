@@ -103,10 +103,12 @@ func Open(path string, log *slog.Logger) (*Store, error) {
 // process does not own all read exactly the same, which is no help to somebody
 // staring at a container that exits two seconds after it starts.
 //
-// The one that actually happens is the last: the image runs as uid 500, and a bind
-// mount brings the *host* folder's ownership along with it. On a NAS the folder is
-// usually created by whoever handles the install, as root, so the process that has to
-// create the database inside it cannot — and nothing in the message says so.
+// The one that actually happens is the last: a bind mount brings the *host* folder's
+// ownership along with it, and on a NAS that folder is usually created by root. The
+// container is built for exactly that — it starts as root, hands the folder to
+// PUID:PGID and then drops to it — so reaching this message means the drop never ran:
+// the process was started with --user, or by a runtime that will not run it as root
+// at all.
 //
 // Hence the probe rather than a guess: if a file can be created in the directory, the
 // failure is something else entirely, and this returns nothing so that the message
@@ -126,8 +128,10 @@ func unwritableHint(dir string) string {
 		return ""
 	}
 	return fmt.Sprintf("; %s is not writable by uid %d, the user this process runs as."+
-		" A bind mount keeps the ownership of the host folder rather than taking the"+
-		" image's, so hand that folder to it once and start again: chown -R %d:%d <host folder>",
+		" In a container the daemon starts as root, takes the data directory over and"+
+		" then drops to PUID:PGID, so this means it did not start as root — drop --user,"+
+		" or set PUID and PGID to whoever owns the folder, or hand it over yourself:"+
+		" chown -R %d:%d <host folder>",
 		dir, os.Getuid(), os.Getuid(), os.Getuid())
 }
 

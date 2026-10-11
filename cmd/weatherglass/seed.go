@@ -7,6 +7,7 @@ import (
 
 	"github.com/j000k3r/weatherglass/internal/config"
 	"github.com/j000k3r/weatherglass/internal/demo"
+	"github.com/j000k3r/weatherglass/internal/privdrop"
 	"github.com/j000k3r/weatherglass/internal/store"
 )
 
@@ -37,6 +38,16 @@ func seed(args []string) error {
 		return err
 	}
 	logger := newLogger(cfg)
+
+	// Same preflight as serve: seed writes the database, so it needs the directory
+	// just as much, and it must not do it as root either.
+	if _, err := privdrop.Apply(privdrop.Options{
+		DataDir: cfg.DataDir,
+		DBPath:  cfg.DBPath,
+		Logger:  logger,
+	}); err != nil {
+		return err
+	}
 
 	st, err := store.Open(cfg.DBPath, logger)
 	if err != nil {

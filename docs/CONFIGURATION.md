@@ -33,6 +33,41 @@ re-applied on every start.
 Truthy values for boolean environment variables are `1`, `true`, `yes`, and `on`
 (case-insensitive); everything else is false.
 
+### The container user: `PUID`, `PGID`, `UMASK`
+
+These three do not belong to the `WEATHERGLASS_*` family, and there is no line in the
+configuration file for them, because they are not settings of the daemon — they are about
+the user it runs as, which is decided before it starts.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `PUID` | `500` | the user the daemon becomes |
+| `PGID` | `500` | the group it becomes |
+| `UMASK` | `022` | the mask for files it creates |
+
+The container starts as root, takes its data directory over — a bind mount keeps the host
+folder's ownership, and on a NAS the platform created that folder as root — and then
+becomes `PUID:PGID` with `UMASK` set, before it opens the database. That is what makes a
+fresh install work without a `chown`; [SECURITY.md](SECURITY.md) describes what the root
+moment costs and why it is spent that way.
+
+- These have **no effect when the process does not start as root** — with `--user`, with
+  `user:` in compose, or on a rootless runtime. The daemon says so in the log rather than
+  ignoring the values in silence.
+- A binary run as yourself, outside a container, ignores them for the same reason. Run it
+  as root and it does what the container does: hands the data directory to `PUID:PGID` and
+  becomes that user — so `PUID=0` is how you keep root there.
+- `PUID=0` and `PGID=0` mean "stay root for the whole run". Supported, logged loudly, not
+  recommended.
+- A value that cannot be parsed **stops the start** when the process is root, the same
+  treatment `WEATHERGLASS_LOG_LEVEL` gets and unlike an unparseable retention duration,
+  which keeps its default. A `PUID` that was quietly ignored would leave the daemon
+  running as 500 while its operator believed otherwise, which is the exact failure these
+  variables exist to remove.
+- **Quote `UMASK`** wherever it is written down: `UMASK: "022"` in a compose file, not
+  `UMASK: 022`. YAML reads an unquoted `022` as the number 18, and 0018 is not a mask
+  anybody typed — so the daemon refuses it instead of running with it.
+
 ```yaml
 listen: ":8080"
 data_dir: /data

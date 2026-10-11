@@ -390,6 +390,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The container no longer runs as a fixed uid 500; it starts as root, takes its data
+  directory over and drops to `PUID:PGID`.** A bind mount keeps the ownership of the host
+  folder, and the platforms Weatherglass is installed on create that folder as root, so a
+  container that started as 500 could not write in it and could not fix it either — only
+  root can change who owns a file. That is why a first install needed `chmod 777` on the
+  appdata folder, and why every comparable image on those platforms works without a
+  `chown`: they start as root, claim the folder and leave root. `PUID`, `PGID` and `UMASK`
+  (defaults 500, 500 and 022, the identity every other image there uses) decide who it
+  becomes; `internal/privdrop` does the handover and the drop before the database is
+  opened, verifies the change and refuses to continue if it is still root. `PUID=0` keeps
+  root, which is documented and not recommended. With `--user`, or on a runtime that will
+  not run the process as root, the three are ignored and the daemon says so in its log.
+  `CAP_NET_RAW` is carried across the drop on purpose, so a ping sensor keeps working; if
+  that fails the daemon reports the lost capability and carries on. [SECURITY.md](SECURITY.md)
+  states what the root moment costs.
+- **The startup log line and `weatherglass doctor` now name the uid.** The daemon logs the
+  `uid` and `gid` it actually ended up as, and doctor reports both its own identity and the
+  daemon's side by side, because under `docker exec` those two numbers differ and the
+  answer to "why can it not write" depends on which one is meant.
+- **A data-directory failure names the real causes.** SQLite reports every reason it cannot
+  open a file as `unable to open database file (14)`, so the message now distinguishes a
+  directory that is not writable by the daemon's user from a mount that is read-only or full
+  — which needs a different fix than a `chown`.
 - **Sign-in is per account now, and every existing session is invalidated once.**
   The session cookie gained an identity and a version, so a cookie issued by an
   older build is rejected with a plain "sign in again". Every session everywhere

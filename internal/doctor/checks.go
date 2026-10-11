@@ -15,6 +15,7 @@ import (
 	"github.com/j000k3r/weatherglass/internal/config"
 	"github.com/j000k3r/weatherglass/internal/model"
 	"github.com/j000k3r/weatherglass/internal/notify"
+	"github.com/j000k3r/weatherglass/internal/privdrop"
 	"github.com/j000k3r/weatherglass/internal/sensor"
 	"github.com/j000k3r/weatherglass/internal/store"
 )
@@ -82,9 +83,31 @@ func (r *run) checkConfig() {
 // is not a problem — the question is whether the nearest ancestor that does
 // exist is writable. Testing the directory as it is would report a failure for
 // an installation that is about to work.
+//
+// The identity that matters is the daemon's, not this one. doctor is a separate
+// process: under docker exec it runs as whatever the image's user is — root — while
+// the daemon takes the directory over as root and then drops to PUID:PGID before it
+// opens anything. Both are printed, because "not writable by uid 0" and "not
+// writable by uid 500" lead to two different fixes.
 func (r *run) checkDataDir() {
 	dir := filepath.Dir(r.cfg.DBPath)
 	uid := os.Getuid()
+
+	// Read for the target identity only. ParseSettings is pure, and doctor must not
+	// do anything else from this package — a diagnostic tool that quietly repairs the
+	// folder it was asked to report on is worse than no diagnostic tool.
+	settings, settingsErr := privdrop.ParseSettings(os.Getenv)
+	if settingsErr != nil {
+		// A malformed value is ignored by a process that is not root and fatal to one
+		// that is, which is the rule the daemon itself applies. Whether doctor is root
+		// decides which of those two this is.
+		level, hint := Warn, "this process is not root, so PUID, PGID and UMASK are ignored anyway;"+
+			" the container's daemon does start as root, and there the same value stops the start"
+		if uid == 0 {
+			level, hint = Fail, "the daemon refuses to start on a value it cannot understand"
+		}
+		r.addHint(level, "container user", settingsErr.Error(), hint)
+	}
 
 	probe, missing := dir, false
 	for {
@@ -104,26 +127,42 @@ func (r *run) checkDataDir() {
 
 	f, err := os.CreateTemp(probe, ".doctor-*")
 	if err != nil {
-		// The uid is printed because the answer depends on who is asking. Doctor
-		// tests writability as its own user, so run as root against a volume
-		// owned by 500 this passes while the daemon still cannot write; the
-		// visible uid is what lets a person spot that mismatch.
+		if uid == 0 {
+			// Root writes nearly anywhere it likes, so this is not about ownership
+			// at all: the filesystem is not taking writes.
+			r.addHint(Fail, "data dir",
+				fmt.Sprintf("%s is not writable even as root: %v", probe, err),
+				"the mount is read-only or full rather than owned by the wrong user;"+
+					" PUID and PGID will not help here")
+			return
+		}
 		r.addHint(Fail, "data dir",
 			fmt.Sprintf("%s is not writable by uid %d: %v", probe, uid, err),
-			"in the container the daemon runs as uid 500; the volume has to be writable by it,"+
-				" or the container has to run as whoever owns it (user: in compose, --user for docker run)")
+			fmt.Sprintf("started as root, the daemon would have taken this directory over and dropped to PUID:PGID"+
+				" before opening anything, so this means it did not start as root — a --user override, or a runtime"+
+				" that will not run it as root. Either let it start as root (the image's default) so it can fix the"+
+				" folder itself, or hand the folder to the user that runs it: chown -R %d:%d <folder>."+
+				" PUID and PGID cannot help while the process is not root: an unprivileged process cannot change user",
+				uid, os.Getgid()))
 		return
 	}
 	name := f.Name()
 	f.Close()
 	os.Remove(name)
 
+	// Who the verdict is about. Only a root doctor can be looking at the daemon's
+	// folder while being a different user from it.
+	whom := fmt.Sprintf("by uid %d", uid)
+	if uid == 0 && settings.UID != 0 {
+		whom = fmt.Sprintf("as root; the daemon runs as uid %d", settings.UID)
+	}
+
 	if missing {
-		r.add(OK, "data dir", fmt.Sprintf("%s (does not exist yet, created on first start; %s is writable by uid %d)",
-			dir, probe, uid))
+		r.add(OK, "data dir", fmt.Sprintf("%s (does not exist yet, created on first start; %s is writable %s)",
+			dir, probe, whom))
 		return
 	}
-	r.add(OK, "data dir", fmt.Sprintf("%s (writable, uid %d)", dir, uid))
+	r.add(OK, "data dir", fmt.Sprintf("%s (writable %s)", dir, whom))
 }
 
 // openDatabase stats the file and opens it read-only. It reports whether the

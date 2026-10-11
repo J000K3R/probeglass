@@ -143,7 +143,9 @@ frontend pipeline to keep alive.
 - **Config as code** — sensors, sites and channels can be declared in a YAML file,
   so a rebuild from zero takes seconds.
 - **Small** — a ~14 MB static binary in a 27 MB image (about 6 MB to pull),
-  distroless, non-root, no shell, no package manager, ~3 MB of RAM while idle.
+  distroless, no shell, no package manager, ~3 MB of RAM while idle. The container
+  starts as root only long enough to take its data directory over and drops to
+  `PUID:PGID` before it opens anything — see [SECURITY.md](SECURITY.md).
 
 ## Quick start
 

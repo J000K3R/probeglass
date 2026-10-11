@@ -10,6 +10,7 @@ It is written for someone about to change the code, not for an end user —
 ```
 cmd/weatherglass        flags, wiring, graceful shutdown
   ├── internal/config   defaults → YAML → environment → flags → validate
+  ├── internal/privdrop the data directory is handed over, then root is given up
   ├── internal/doctor   read-only inspection, for `weatherglass doctor`
   ├── internal/store    one *sql.DB, schema, queries, accounts, rollups, retention
   ├── internal/scheduler  one goroutine per enabled sensor
@@ -22,10 +23,11 @@ cmd/weatherglass        flags, wiring, graceful shutdown
                           style.css, users.js, password.js, tooltip.js, tour.js
 ```
 
-Startup is deliberately linear: load configuration, open the store, apply the
-declarative sensors, build the scheduler and the dispatcher, build the API server,
-then serve until the signal arrives. Shutdown cancels the root context, waits for
-the scheduler's goroutines, and closes the database.
+Startup is deliberately linear: load configuration, hand the data directory over and
+give up root (`internal/privdrop`), open the store, apply the declarative sensors, build
+the scheduler and the dispatcher, build the API server, then serve until the signal
+arrives. Shutdown cancels the root context, waits for the scheduler's goroutines, and
+closes the database.
 
 ## Storage
 
@@ -428,21 +430,53 @@ with no changes elsewhere, because the markup never contains user-facing strings
 `--platform=$BUILDPLATFORM` and uses `TARGETOS`/`TARGETARCH`, so a multi-arch
 build cross-compiles rather than emulating: the arm64 image for a Pi builds at
 native speed. The runtime stage is
-`gcr.io/distroless/static-debian12:nonroot` — no shell, no package manager, uid
-500. Because there is no shell, the image's `HEALTHCHECK` runs the binary
-itself (`weatherglass healthcheck`), which makes a `GET /healthz` and exits
-non-zero on failure.
+`gcr.io/distroless/static-debian12:nonroot`, with `USER 0:0` on top of it — no
+shell, no package manager. It starts as root for one reason: the data directory
+is a bind mount on the platforms this is installed on, created by the platform as
+root, and only root can change who owns a file. `internal/privdrop` hands the
+directory to `PUID:PGID`, becomes that user and verifies it, all before the
+database is opened; see "Privileges" below. Because there is no shell, the image's
+`HEALTHCHECK` runs the binary itself (`weatherglass healthcheck`), which makes a
+`GET /healthz` and exits non-zero on failure.
 
 `docker buildx bake`-style multi-arch publishing and the release archives are
 driven from `.github/workflows/release.yml`, with the version, commit, and build
 date stamped into `internal/model` via `-ldflags`, so `weatherglass version` and
 `/api/version` report exactly which build is running.
 
+## Privileges
+
+`internal/privdrop` is the one place in the program that runs as root, and it runs there
+for milliseconds. Its job is the folder rather than the process: a bind mount keeps the
+ownership of the host folder, the platforms this ships to create that folder as root, and
+only root can hand it to somebody else. So the container starts as root, sets `UMASK`,
+creates the data directory if it is missing, `lchown`s it and its contents to `PUID:PGID`
+(`lchown`, and never through a symlink), and then becomes that user with
+`setgroups`/`setgid`/`setuid`, verifying with `geteuid` afterwards and refusing to
+continue if it is still root. Everything after the call in `cmd/weatherglass` — the store,
+the scheduler, the API — is unprivileged, and a privileged `setuid` sets the saved uid, so
+nothing can go back.
+
+The Linux half lives behind a build tag; elsewhere `Apply` is a refusal, not a no-op, when
+it is asked to run as root. Capabilities are per-thread in the kernel, so every
+`prctl`/`capset` goes through `syscall.AllThreadsSyscall`; Go's `setuid` already does.
+`CAP_NET_RAW` is carried across the drop on purpose — it is what a ping sensor opens a raw
+socket with — and if that carry fails the daemon logs which capability was lost and keeps
+running, because a ping sensor that falls back is a smaller problem than a watchdog that
+does not start.
+
+`doctor` deliberately does not call it. A diagnostic tool that quietly repairs the folder
+it was asked to report on would report success for a problem it has just removed; it reads
+the settings for their values only, and prints both identities — doctor's own and the
+daemon's — because they are not always the same number.
+
 ## Testing
 
 `internal/store`, `internal/config`, `internal/sensor`, `internal/notify`,
-`internal/scheduler`, `internal/totp`, and `internal/api` all have tests; CI runs
-them with `-race`. The sensor and notify tests exercise real sockets — a local
+`internal/scheduler`, `internal/totp`, `internal/privdrop`, and `internal/api` all have
+tests; CI runs them with `-race`. `privdrop`'s tests never change the identity of the test
+process: they drive the sequence through a fake syscall layer and assert the exact order
+of the calls, because the order is the part that a later refactor would break silently. The sensor and notify tests exercise real sockets — a local
 `httptest` server, a real TCP listener, a DNS stub built with `dnsmessage` — rather
 than mocking the network, because the interesting failures are in the interaction
 with it. The API tests drive a real `httptest` server with its own store and

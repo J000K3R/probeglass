@@ -260,6 +260,53 @@ reachable from outside your network, run a tile server inside your own network a
 put its address in **Settings → Map**. Nothing about the map needs the public
 internet.
 
+## The container starts as root, and leaves it before it opens anything
+
+The image's `USER` is root and its `ENTRYPOINT` starts as root. This is a deliberate
+decision with a real cost, so here it is in full rather than as a line in a Dockerfile.
+
+**Why.** The data directory is normally a bind mount, and on the platforms Weatherglass
+is installed on — the MOS Hub, and anything with a template that mounts an appdata
+folder — that folder is created by the platform, as root, before the container ever
+starts. A process that is not root cannot write into it, and cannot repair it either,
+because only root may change who owns a file. Every comparable image on those platforms
+starts as root, takes its folder over and then drops; that is the entire reason their
+installations work without a `chown` and Weatherglass's did not. It is fixed by doing the
+same thing.
+
+**What root is used for, exactly.** Three things, in this order, before the database is
+opened or a port is bound: `umask` is set to `UMASK`; the data directory is created if it
+is missing; and the directory and everything inside it is handed to `PUID:PGID` with
+`lchown`. Then the process becomes that user — `setgroups`, `setgid`, `setuid` — and
+checks with `geteuid` that it worked; if it did not, it refuses to continue rather than
+run as root. The chown uses `lchown` and never follows a symlink, so a link planted in a
+folder that other things can write to cannot point it at `/etc/shadow`.
+
+**What that costs.** For those few milliseconds the process is root. Nothing has been
+read from the network, no request has arrived, and no path has come from a request — the
+data directory is the one from the configuration — so the reachable surface during the
+window is the startup code itself. It is small, and it is not zero, and saying otherwise
+would be the kind of reassurance this file exists to avoid.
+
+**Afterwards.** The drop is permanent: a privileged `setuid` sets the saved uid as well,
+so no code running later, including Weatherglass's own, can return to root. Go applies
+`setuid` to every OS thread, so there is no thread left behind as root. `CAP_NET_RAW`,
+which ICMP ping needs, is carried across the drop on purpose; if that fails the daemon
+logs which capabilities were lost and keeps running, because a watchdog that refuses to
+start is the worse trade.
+
+`no-new-privileges: true`, as in `docker-compose.yml`, does not interfere: it forbids
+*gaining* privileges, not giving them away.
+
+**Setting `PUID=0`** keeps the container as root for its whole life. It is supported,
+documented and logged loudly at startup, and it is not recommended: it gives up the
+property that everything a sensor or a request can reach runs unprivileged.
+
+**If the container must not start as root at all**, that is possible and stays possible:
+start it with `--user 500:500` (or `user:` in compose) and hand the folder to that user
+once, yourself. The daemon then logs that `PUID`, `PGID` and `UMASK` are set but cannot
+take effect, because that is exactly what is happening.
+
 ## Scope
 
 In scope:

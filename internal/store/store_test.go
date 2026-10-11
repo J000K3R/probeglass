@@ -862,8 +862,11 @@ func TestManagedSensorTakesOverARowThatAlreadyExists(t *testing.T) {
 }
 
 // TestOpenNamesTheCauseWhenTheDirectoryIsNotWritable covers the failure a first
-// install in a container actually hits: the image runs as uid 500, the bind mount on
-// the host is owned by whoever created it, and the database cannot be created inside it.
+// install in a container actually hits: the bind mount on the host is owned by whoever
+// created it — the platform, as root — and the database cannot be created inside it.
+// The container normally prevents this by taking the directory over before it drops to
+// PUID:PGID, so what is left here is the run that never got the chance: started with
+// --user, or somewhere that will not run it as root.
 // SQLite calls that "unable to open database file (14)" and says nothing else.
 //
 // Root ignores directory permissions altogether, so on a run as root there is no way to

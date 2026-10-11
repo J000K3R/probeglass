@@ -34,6 +34,7 @@ import (
 	"github.com/j000k3r/weatherglass/internal/event"
 	"github.com/j000k3r/weatherglass/internal/model"
 	"github.com/j000k3r/weatherglass/internal/notify"
+	"github.com/j000k3r/weatherglass/internal/privdrop"
 	"github.com/j000k3r/weatherglass/internal/scheduler"
 	"github.com/j000k3r/weatherglass/internal/sensor"
 	"github.com/j000k3r/weatherglass/internal/store"
@@ -103,6 +104,12 @@ Flags for serve:
 
 Every flag has a WEATHERGLASS_* environment variable equivalent; the environment
 wins over the file. See docs/CONFIGURATION.md.
+
+In a container the daemon starts as root, takes ownership of its data directory
+and then becomes PUID:PGID, reading PUID, PGID and UMASK from the environment
+(500, 500 and 022 by default). PUID=0 keeps root, which is not recommended.
+A process that does not start as root ignores the three, and says so once if any
+of them is set: an unprivileged process cannot change user.
 `)
 }
 
@@ -134,12 +141,28 @@ func serve(args []string) error {
 	logger := newLogger(cfg)
 	slog.SetDefault(logger)
 
+	// Before the store is opened, and before anything else has been written
+	// anywhere: the data directory is handed to the user this process is about to
+	// become. Everything after this line runs unprivileged, and cannot go back.
+	if _, err := privdrop.Apply(privdrop.Options{
+		DataDir: cfg.DataDir,
+		DBPath:  cfg.DBPath,
+		Logger:  logger,
+	}); err != nil {
+		return err
+	}
+
+	// The uid is read from the process rather than from what was asked for: this
+	// line has to be the truth about what is running, because in a container
+	// without a shell it is the only way to see which user the daemon ended up as.
 	logger.Info("starting weatherglass",
 		"version", model.Version,
 		"listen", cfg.Listen,
 		"data_dir", cfg.DataDir,
 		"config", cfg.Path,
-		"database", cfg.DBPath)
+		"database", cfg.DBPath,
+		"uid", os.Geteuid(),
+		"gid", os.Getegid())
 
 	st, err := store.Open(cfg.DBPath, logger)
 	if err != nil {

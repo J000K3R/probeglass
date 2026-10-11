@@ -36,21 +36,23 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
 
 # An empty directory whose ownership the runtime image can copy. Docker copies
 # the ownership of a copied directory, which is how /data ends up writable by
-# the container user when a fresh named volume is created from this image.
+# the container user when a fresh named volume is created from this image. 500 is
+# the default PUID, and the entrypoint corrects it whenever PUID says otherwise.
 RUN mkdir -p /out/data
 
 # ---------------------------------------------------------------------------
 # runtime
 # ---------------------------------------------------------------------------
 # distroless static has no shell, no package manager and no libc to speak of:
-# the attack surface is the binary and nothing else. It runs as uid 500, not
-# root.
+# the attack surface is the binary and nothing else.
 #
-# 500 rather than distroless's own 65532, which would be the tidier default:
-# the platforms this actually gets installed on create the appdata folder as
-# 500:500, and a folder the process does not own is a container that exits a
-# second after it starts with nothing useful in the log. Matching them means a
-# fresh install works with no chown. See docs/operations/troubleshooting.md.
+# It starts as root, and does not stay there. The data directory is a bind mount on
+# the platforms this gets installed on, and those platforms create that folder as
+# root before the container ever sees it. A container that starts as anybody else
+# cannot write in it, and cannot repair it either, because only root can change who
+# owns a file. So the daemon hands the folder to PUID:PGID and becomes that user
+# before it opens the database or binds a port. It is what the LinuxServer images do,
+# and the reason an install of one of those needs no chown.
 FROM gcr.io/distroless/static-debian12:nonroot
 
 LABEL org.opencontainers.image.title="Weatherglass" \
@@ -62,21 +64,26 @@ LABEL org.opencontainers.image.title="Weatherglass" \
 
 COPY --from=build /out/weatherglass /usr/local/bin/weatherglass
 
-# Everything mutable lives under /data: the SQLite database and its WAL. The
-# directory is created here, owned by the container user, so a named volume
-# created from this image is writable without any --user gymnastics.
+# Everything mutable lives under /data: the SQLite database and its WAL. A copied
+# directory carries its ownership along, so a named volume created from this image is
+# writable by the default PUID with nobody having to fix it first. A bind mount brings
+# the host folder's ownership instead, and that one is handed to PUID by the entrypoint
+# before it drops.
 COPY --from=build --chown=500:500 /out/data /data
 
-# The uid is fixed here rather than configurable, because it cannot be
-# otherwise: the container runtime resolves USER before exec, and an
-# environment variable is read by a process that is already running as that
-# uid. To run as somebody else, override it where it is actually decided --
-# `user:` in compose, `--user` for docker run, the user field in the platform's
-# own template. Anything else would be an environment variable that appears to
-# work and quietly does nothing.
-USER 500:500
+# Root, so that the daemon can take the data directory over and then become PUID:PGID.
+# That is the whole reason this is not 500:500 as it once was, and it is not a matter of
+# taste: the container runtime resolves USER before exec, so a container started as 500
+# could never have claimed ownership of the folder, whatever was set inside it. PUID,
+# PGID and UMASK are read by the running process, after it is root — which is why they
+# work here, and why they do nothing at all when the container is started with --user
+# or on a runtime that refuses to run it as root.
+USER 0:0
 
-ENV WEATHERGLASS_DATA_DIR=/data
+ENV PUID=500 \
+    PGID=500 \
+    UMASK=022 \
+    WEATHERGLASS_DATA_DIR=/data
 VOLUME ["/data"]
 EXPOSE 8080
 
