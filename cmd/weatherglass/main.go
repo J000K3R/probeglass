@@ -189,6 +189,7 @@ func serve(args []string) error {
 		Broker:     broker,
 		Logger:     logger,
 		Assets:     web.Assets(),
+		AssetETags: web.Fingerprints(),
 	})
 	if err != nil {
 		return err

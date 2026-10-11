@@ -380,7 +380,9 @@ const en = {
   'settings.map': 'Map',
   'settings.tileUrl': 'Tile URL',
   'settings.tileAttribution': 'Attribution',
-  'settings.tileHint': 'The template for one map tile. {z}, {x} and {y} are required; {s} is optional and is replaced by a, b or c in turn. Leave it empty and the map draws the world coastline that ships with the dashboard — coarse, but it needs no server and asks nobody anything.',
+  'settings.mapBorders': 'Draw country and province borders',
+  'settings.mapBordersHint': 'The dashboard draws these itself, from data inside the program: the coastlines, every country border, and the provinces, states and Bundesländer within them, each with its name. Nothing is fetched from anywhere. Country borders and their names appear as you zoom in; the provinces follow a little later, and their names later still — at world scale they would be a grey texture, not information.',
+  'settings.tileHint': 'The template for one map tile. {z}, {x} and {y} are required; {s} is optional and is replaced by a, b or c in turn. Leave it empty and the map draws the world that ships with the dashboard — the coastlines, the borders and their names, all from data inside the program — coarse, but it needs no server and asks nobody anything.',
   'settings.tilePrivacy': 'Your browser fetches the tiles straight from whatever you enter here, so that server sees your IP address, your browser and roughly which part of the map you are looking at. That is fine for a homelab on your own network, and it is the reason OpenStreetMap can no longer be the default: their public tiles are not open to applications any more. An empty field costs nothing and tells nobody.',
   'settings.mapSaved': 'Map settings saved.',
 
@@ -417,6 +419,7 @@ const en = {
   'sites.deleted': 'Site removed.',
   'sites.edit': 'Edit site',
   'sites.nameHint': 'Up to 64 characters. No slashes — the name ends up in a URL.',
+  'sites.fromSensorHint': 'This is the same window Settings → Sites opens. The sensor you were filling in stays as you left it, behind this one.',
 
   // ------------------------------------------------------------------- the map
   'map.aria': 'Map of your sites',
@@ -425,7 +428,7 @@ const en = {
   'map.reset': 'Fit all sites',
   'map.legend.local': 'Homelab',
   'map.legend.external': 'External',
-  'map.offline': 'The tile server you configured is not answering. The map is drawing its own coastlines instead, and every place is still in the right position relative to the others.',
+  'map.offline': 'The tile server you configured is not answering. The map is drawing its own world instead — coastlines and borders — and every place is still in the right position relative to the others.',
   'map.empty': 'No site has coordinates yet. Add them under Sites in Settings and they will be drawn here.',
   'map.unplaced': 'Not drawn: {count} site(s).',
   'map.unplacedHint': 'They have no coordinates yet.',

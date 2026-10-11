@@ -383,12 +383,30 @@ different ones.
 ## Frontend
 
 No build step, no framework, no CDN. `internal/web/assets` holds `index.html` and
-a dozen plain ES modules — `app.js` for the shell and the routes, `layouts.js` for
-the five views, `charts.js` for the canvas drawing, `map.js`, `search.js`,
-`widgets.js`, `users.js`, `user.js`, `tour.js`, `tooltip.js`, `password.js`,
-`i18n.js` and `style.css` — embedded with `embed.FS`. Editing a `.js` file and reloading the page
-is the whole development loop, and the image ships exactly the bytes in the
-repository.
+a dozen-odd plain ES modules — `app.js` for the shell and the routes, `layouts.js`
+for the five views, `charts.js` for the canvas drawing, `map.js`, `outline.js`,
+`mapborders.js`, `maplabels.js`, `search.js`, `widgets.js`, `users.js`, `user.js`,
+`tour.js`, `tooltip.js`, `password.js`, `i18n.js` and `style.css` — embedded with
+`embed.FS`. Editing a `.js` file and reloading the page is the whole development
+loop, and the image ships exactly the bytes in the repository. The map's four data
+files (`world.js`, `borders.js`, `labels.js`, `regions.js`) sit in the same
+directory and are the only files there that are generated rather than written —
+they come from `cmd/worldgen`, are committed, and are imported as ES modules and by
+nothing else.
+
+The map is four modules rather than one. `outline.js` owns the projection — the one
+place `lonToX`/`latToY` and the base zoom live — and draws the coastlines.
+`mapborders.js` and `maplabels.js` are the two layers over it, imported
+*dynamically* by `map.js` the first time a map is built, so that a page which never
+shows a map never downloads a megabyte of borders. They take the projection from
+`outline.js` rather than copying it, because two projections that each say what the
+world's width is are two projections that will disagree. `mapborders.js` is its own
+`<svg class="map-borders">` rather than a second path inside `.map-outline`, which
+is the coastline and is filled like land. `maplabels.js` draws in *screen*
+coordinates — absolutely positioned spans, not SVG text — because a name is a label
+in the interface rather than a shape in the world, and because overlapping names
+have to be measured against each other to be dropped, which is a question about
+pixels.
 
 `search.js` is the leaf module the top bar's search field is built from: it
 `mount`s on the input, takes the few functions it needs from the app as arguments

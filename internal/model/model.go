@@ -681,6 +681,12 @@ const (
 	// decision about the installation's network, not a matter of taste.
 	SettingTileURL         = "map.tile_url"
 	SettingTileAttribution = "map.attribution"
+	// SettingMapBorders is whether the map draws the borders and the names that
+	// shipped in the binary. It is installation-wide like the two above it, and for
+	// the same reason: what the map draws is the same map for everybody who looks at
+	// it, and a per-user version would mean two readers describing the same screen
+	// differently.
+	SettingMapBorders = "map.borders"
 )
 
 // The map's defaults, which are both empty, and empty means "fetch nothing".
@@ -699,6 +705,11 @@ const (
 const (
 	DefaultTileURL         = ""
 	DefaultTileAttribution = ""
+	// DefaultMapBorders is on, and the value is "on" rather than a bool for the same
+	// reason PrefLive's is: this project stores a yes/no setting as those two words.
+	// A missing row means the default, which means an installation that has never
+	// opened the panel gets the borders — the map that was asked for.
+	DefaultMapBorders = "on"
 )
 
 // RetiredTileURL is the default tile address this project used to ship.

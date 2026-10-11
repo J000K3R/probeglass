@@ -366,44 +366,64 @@ than per account, and administrator-only:
 |---|---|
 | `map.tile_url` | **empty by default**, which means the map fetches nothing; when set, must be `http(s)` and must contain `{z}`, `{x}` and `{y}` (`{s}` is optional) |
 | `map.attribution` | empty by default; shown in the corner of the map when a tile URL is set |
+| `map.borders` | `on` by default (`DefaultMapBorders`); `off` draws only the coastlines and does not send the borders and names to the browser at all |
 
-**With no tile URL the map draws its own coastlines.** They come from a
-public-domain world outline (Natural Earth 1:110m) that is embedded in the binary
-and decoded in the browser by `internal/web/assets/outline.js`, so a dashboard on a
-network with no internet still shows where its sites are, and nothing about it is
-disclosed to anybody. It is deliberately coarse: continents are recognisable to
-about zoom 6, and in a city the coastline is straight lines between far-apart
-points. Entering a tile URL is what that field is for.
+**With no tile URL the map draws its own world.** Four public-domain Natural Earth
+data sets are embedded in the binary and decoded in the browser — 1:50m coastlines
+by `internal/web/assets/outline.js`, 1:10m first-order administrative borders,
+country names and province names — so a dashboard on a network with no internet
+still shows where its sites are, and nothing about it is disclosed to anybody. The
+borders and the names arrive with the zoom, in the bands Natural Earth itself puts
+them in: country outlines and names at a world view, provinces from about zoom 5 and
+their names from about zoom 7. `map.borders` is the switch, and it does not merely
+stop the drawing — with it off the two data files that carry the borders and the
+names are never fetched. The data is deliberately coarse: the 1:50m coastlines are
+honest to about zoom 6 and are straight lines between far-apart points in a city.
+Entering a tile URL is what that field is for.
 
 **With a tile URL the browser fetches the tiles directly**, so that server sees the
 viewer's address and roughly where they are looking; the daemon never proxies them.
 OpenStreetMap is no longer usable this way — their tile usage policy stopped
-permitting third-party applications in 2025, and their servers answer with a block
-notice rather than an error. Point the field at a tile server inside your own
-network. The origin is added to the dashboard's content security policy
-automatically, which is what lets the tiles load at all — see `SECURITY.md`.
+permitting third-party applications, and their servers answer with a block notice
+rather than an error. Google Maps tiles are not usable through this field either:
+Google licenses maps through the Maps JavaScript API with a key, and this project
+embeds no third-party scripts and stores no keys. Point the field at a tile server
+inside your own network. The origin is added to the dashboard's content security
+policy automatically, which is what lets the tiles load at all — see `SECURITY.md`.
 
-### Regenerating the coastline data
+### Regenerating the map data
 
-`internal/web/assets/world.js` is generated and committed. To rebuild it:
-
-```sh
-curl -O https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_land.geojson
-go run ./cmd/worldgen -in ne_110m_land.geojson
-```
-
-`cmd/worldgen` fetches nothing itself. It validates the shape of what it reads,
-simplifies the rings (Douglas-Peucker, 0.02° by default), quantises them to
-thousandths of a degree and writes them delta-coded, and the header of the file it
-writes records the source URL, the SHA-256 of the input, the tolerance and the
-point counts — so a file in the repository can be checked against the data it came
-from. A coarser or finer `-tol` trades size for detail; `-tol 0.005` is roughly
-1:50m and about four times the file. The rings are simplified in degrees, which
-over-simplifies longitude near the poles; at 1:110m the Arctic is coarse either way:
+`internal/web/assets/world.js`, `borders.js`, `labels.js` and `regions.js` are
+generated and committed. To rebuild all four:
 
 ```sh
-go run ./cmd/worldgen -in ne_110m_land.geojson -tol 0.005
+curl -LO https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_50m_land.geojson
+curl -LO https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_admin_1_states_provinces_lines.geojson
+curl -LO https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_admin_0_countries.geojson
+curl -LO https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_admin_1_label_points.geojson
+
+go run ./cmd/worldgen -kind land    -in ne_50m_land.geojson                              -out internal/web/assets/world.js
+go run ./cmd/worldgen -kind borders -in ne_10m_admin_1_states_provinces_lines.geojson    -out internal/web/assets/borders.js
+go run ./cmd/worldgen -kind labels  -in ne_110m_admin_0_countries.geojson                -out internal/web/assets/labels.js
+go run ./cmd/worldgen -kind regions -in ne_10m_admin_1_label_points.geojson              -out internal/web/assets/regions.js
 ```
+
+`-kind` picks the reader — closed rings, open lines, or named points — so one
+program produces all four files. `-out` is required for every kind except `land`,
+whose default is the coastline: an accidental run that wrote provinces over
+`world.js` would be a map that lost its land. `cmd/worldgen` fetches nothing
+itself. It validates the shape of what it reads, simplifies (Douglas-Peucker,
+0.02° by default for both the coastlines and the border lines), quantises to
+thousandths of a degree and writes the coordinates delta-coded, and the header of
+every file it writes records the source URL, the SHA-256 of the input, the
+tolerance and the point counts — so a file in the repository can be checked against
+the data it came from. `-tol` trades size for detail, and it is written into the
+header so the two cannot drift apart. The rings are simplified in degrees, which
+over-simplifies longitude near the poles; the Arctic is coarse either way. The
+borders are grouped into their zoom bands by Natural Earth's own `MIN_ZOOM` rather
+than by a threshold of ours, and the bands are exported with them, so the browser
+shows exactly what the data says belongs at that zoom. Every file is written
+deterministically: same input, same bytes.
 
 ## Validation
 

@@ -389,6 +389,9 @@ let ids = [];
 let signature = null;
 let editing = false;
 let mapHandle = null;
+// What the mini map was built from. See ensureMap: it is not a second signature of
+// the strip but of the map's own inputs, which arrive long after the strip exists.
+let mapSignature = null;
 let clockTimer = null;
 
 /**
@@ -667,6 +670,11 @@ function syncClock() {
  * fallback size for the rest of the session. It waits for a host that is really
  * laid out, and it is called from refresh(), which runs again when the view
  * becomes the one on screen.
+ *
+ * The second thing that must not be built once is the data: the tile is laid out
+ * before the first summary has landed, so the sites it is a picture of arrive
+ * afterwards, and so does the tile server's address. Both go into the signature
+ * below, and a change to either is the reason the tile is rebuilt.
  */
 function ensureMap() {
   const tile = host?.querySelector('[data-widget="mini-map"]');
@@ -674,28 +682,53 @@ function ensureMap() {
     stopMap();
     return;
   }
-  if (mapHandle) return;
   const target = tile.querySelector('[data-widget-map]');
   if (!target || !target.clientWidth || !target.clientHeight) return;
   const settings = opts.mapSettings ? opts.mapSettings() : {};
   const state = context().state;
+  // What the tile would be made of, and the reason this is not simply "build it once".
+  // The strip is laid out at boot, which is a moment before the summary that carries
+  // the sites has arrived, and the map takes its sites when it is built rather than
+  // looking them up as it draws. A widget born into an empty world would keep drawing
+  // that world for the rest of the session, so a change to any of this is a rebuild.
+  // It is a signature rather than a plain re-mount because refresh() runs on every
+  // poll: filling 97 000 border points once a minute for a picture that had not
+  // changed is work nobody asked for.
+  const signature = [
+    settings.tileURL || '',
+    settings.borders !== false ? 'borders' : 'none',
+    (state.sites || []).map((s) => `${s.name}@${s.lat},${s.lon}`).join('|'),
+  ].join('#');
+  if (mapHandle && signature === mapSignature) return;
+  // Tearing the old one down first: mount() appends to its host, so a second map over
+  // the first would be two canvases and two sets of listeners in one tile.
+  stopMap();
+  mapSignature = signature;
   mapHandle = mapUI.mount(target, {
     sites: state.sites || [],
     sensors: state.sensors || [],
     tileURL: settings.tileURL || '',
     attribution: settings.attribution || '',
+    borders: settings.borders !== false,
+    // Not the names. This map is 150 pixels across and is a picture of where things
+    // are; a place name in it is a word laid over the thing it names. Saying so here
+    // rather than hiding them in the stylesheet means maplabels.js — and the 87 KB of
+    // names inside it — is never fetched for a widget that would not draw them, which
+    // is why map.js makes the import itself conditional.
+    labels: false,
     onOpenSensor: opts.openDetail,
   });
-  // The map is a picture here, not a control. map.js makes its canvas focusable
-  // and gives it arrow-key panning, which in the full view is right and in a
-  // header is a tab stop that captures the arrow keys on the way past. Nothing
-  // is lost by taking it out: the pins are still clickable, and the full map is
-  // one press away in the layout switcher.
-  const canvas = target.querySelector('canvas');
-  if (canvas) {
-    canvas.tabIndex = -1;
-    canvas.removeAttribute('role');
-    canvas.setAttribute('aria-hidden', 'true');
+  // The map is a picture here, not a control. map.js makes its root focusable and
+  // gives it arrow-key panning, which in the full view is right and in a header is a
+  // tab stop that captures the arrow keys on the way past. Nothing is lost by taking
+  // it out: the pins are still clickable, and the full map is one press away in the
+  // layout switcher. Only the tab stop goes — hiding the root from assistive
+  // technology would take the pins inside it with it, and those are the one thing on
+  // this tile worth reaching.
+  const root = target.querySelector('.map-canvas');
+  if (root) {
+    root.tabIndex = -1;
+    root.removeAttribute('role');
   }
 }
 
@@ -705,6 +738,7 @@ export function stopMap() {
     mapHandle.unmount();
     mapHandle = null;
   }
+  mapSignature = null;
 }
 
 // ---------------------------------------------------------------------------

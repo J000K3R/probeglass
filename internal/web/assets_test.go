@@ -1,9 +1,14 @@
 package web
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
 	"io/fs"
 	"math"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -133,7 +138,8 @@ func TestEveryWidgetHasAName(t *testing.T) {
 // was truncated — by a merge, by a checkout that ran out of room, by a generator that
 // died halfway through — therefore compiles, ships, and produces a map with no land on
 // it, which is exactly what a map of nowhere looks like. Nothing else in this repository
-// would notice.
+// would notice. The same is true of the three files beside it, which have their own
+// tests below.
 //
 // So the decoder below is a second implementation of the format, written against the
 // format as documented in cmd/worldgen rather than by calling that program's code, and
@@ -148,20 +154,21 @@ func TestTheEmbeddedCoastlineDecodes(t *testing.T) {
 		t.Errorf("WORLD_SCALE = %d; the generator quantises to thousandths of a degree, so a "+
 			"reader that trusts this number is wrong by whatever factor it is", scale)
 	}
-	if rings < 50 {
-		t.Errorf("world.js claims %d ring(s); 1:110m land is well over a hundred landmasses "+
-			"and islands, so this is a file that lost most of itself", rings)
+	if rings < 1000 {
+		t.Errorf("world.js claims %d ring(s); 1:50m land is about 1 400 landmasses and "+
+			"islands, so this is a file that lost most of itself", rings)
 	}
 
 	data := strings.Trim(exportValue(t, js, "WORLD_DATA"), "'")
-	if len(data) < 1000 {
-		t.Fatalf("WORLD_DATA is %d characters long, which cannot be a world", len(data))
+	if len(data) < 100000 {
+		t.Fatalf("WORLD_DATA is %d characters long; the 1:50m coastline is around 200 000, "+
+			"so this file is a fragment", len(data))
 	}
 	decoded, points := decodeWorld(t, data, rings, scale)
 
-	if points < 1000 {
-		t.Errorf("%d point(s) across %d ring(s); the whole 1:110m land layer is several "+
-			"thousand, so most of the world is missing from the file", points, rings)
+	if points < 20000 {
+		t.Errorf("%d point(s) across %d ring(s); the whole 1:50m land layer is about 35 000, "+
+			"so most of the world is missing from the file", points, rings)
 	}
 
 	// Every point has to be somewhere on the planet, and between them they have to
@@ -205,6 +212,27 @@ func exportValue(t *testing.T, js, name string) string {
 	return m[1]
 }
 
+// exportInts reads `export const NAME = [1, 2, 3];`.
+func exportInts(t *testing.T, js, name string) []int {
+	t.Helper()
+	raw := exportValue(t, js, name)
+	var out []int
+	if err := json.Unmarshal([]byte(raw), &out); err != nil {
+		t.Fatalf("export const %s is not an array of numbers: %v", name, err)
+	}
+	return out
+}
+
+// exportStrings reads the JSON string array at the bottom of a name file.
+func exportStrings(t *testing.T, js, name string) []string {
+	t.Helper()
+	var out []string
+	if err := json.Unmarshal([]byte(exportValue(t, js, name)), &out); err != nil {
+		t.Fatalf("export const %s is not a JSON array of strings: %v", name, err)
+	}
+	return out
+}
+
 func exportInt(t *testing.T, js, name string) int {
 	t.Helper()
 	n, err := strconv.Atoi(exportValue(t, js, name))
@@ -214,16 +242,33 @@ func exportInt(t *testing.T, js, name string) int {
 	return n
 }
 
-// decodeWorld is the format from cmd/worldgen, read a second time and on purpose not
-// by calling that code: a decoder that shares its implementation with the encoder
-// agrees with it about any mistake they both make.
+// packed reads the generated files' own encoding back.
 //
-// A number is base 63 written most significant chunk first, closed by a chunk of 63.
-// A ring's first point is absolute and the rest are deltas, so accumulating from zero
-// covers both without a special case. Coordinates are thousandths of a degree.
-func decodeWorld(t *testing.T, data string, rings, scale int) (out [][][2]float64, points int) {
-	t.Helper()
+// It is a second implementation of the format on purpose — a decoder that shares its
+// code with the encoder agrees with it about any mistake the two of them make — and it
+// is one implementation for all four files because the format is one format: a number
+// written base 63 with the most significant chunk first and closed by a chunk of 63,
+// signed numbers zigzagged, and points in thousandths of a degree whose first is
+// absolute and whose rest are deltas.
+type packed struct {
+	t    *testing.T
+	data string
+	pos  int
+	lon  int64
+	lat  int64
+}
 
+func newPacked(t *testing.T, data string) *packed {
+	t.Helper()
+	if len(data) == 0 {
+		t.Fatal("the stream is empty; the whole file is missing, not merely wrong")
+	}
+	return &packed{t: t, data: data}
+}
+
+// value reads one unsigned number.
+func (p *packed) value() int64 {
+	p.t.Helper()
 	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
 	var code [128]int
 	for i := range code {
@@ -233,63 +278,315 @@ func decodeWorld(t *testing.T, data string, rings, scale int) (out [][][2]float6
 		code[alphabet[i]] = i
 	}
 
-	pos := 0
-	value := func() int64 {
-		t.Helper()
-		var v int64
-		for n := 0; n < 12; n++ {
-			if pos >= len(data) {
-				t.Fatalf("WORLD_DATA ends in the middle of a number at offset %d of %d",
-					pos, len(data))
-			}
-			c := int(data[pos])
-			pos++
-			if c >= len(code) || code[c] < 0 {
-				t.Fatalf("WORLD_DATA has %q (offset %d), which is not in the encoding "+
-					"alphabet; the file and the format have drifted apart", data[pos-1], pos-1)
-			}
-			if code[c] == 63 {
-				return v
-			}
-			v = v*63 + int64(code[c])
+	var v int64
+	for n := 0; n < 12; n++ {
+		if p.pos >= len(p.data) {
+			p.t.Fatalf("the stream ends in the middle of a number at offset %d of %d",
+				p.pos, len(p.data))
 		}
-		t.Fatalf("WORLD_DATA has two hundred digits of number at offset %d and no end to it",
-			pos)
-		return 0
-	}
-	unzigzag := func(u int64) int64 {
-		if u%2 == 1 {
-			return -(u-1)/2 - 1
+		c := int(p.data[p.pos])
+		p.pos++
+		if c >= len(code) || code[c] < 0 {
+			p.t.Fatalf("the stream holds %q (offset %d), which is not in the encoding "+
+				"alphabet; the file and the format have drifted apart", p.data[p.pos-1], p.pos-1)
 		}
-		return u / 2
+		if code[c] == 63 {
+			return v
+		}
+		v = v*63 + int64(code[c])
 	}
+	p.t.Fatalf("the stream has twelve digits of number at offset %d and no end to it", p.pos)
+	return 0
+}
 
-	if got := value(); int(got) != rings {
-		t.Fatalf("WORLD_DATA holds %d ring(s), WORLD_RINGS says %d; the file is two files",
-			got, rings)
+// count reads a number that is meant to say how many of something follow.
+func (p *packed) count(what string, max int) int {
+	p.t.Helper()
+	v := p.value()
+	if v < 0 || v > int64(max) {
+		p.t.Fatalf("%s is %d, which is not a number of things that came out of a map", what, v)
+	}
+	return int(v)
+}
+
+// signed reads one delta.
+func (p *packed) signed() int64 {
+	u := p.value()
+	if u%2 == 1 {
+		return -(u-1)/2 - 1
+	}
+	return u / 2
+}
+
+// reset starts a new point chain, which is what makes the next point absolute. A ring
+// and a border line each start with one; the label streams never call it, so their chain
+// runs from the first name to the last.
+func (p *packed) reset() { p.lon, p.lat = 0, 0 }
+
+// point reads one point, in thousandths of a degree unless the scale says otherwise.
+func (p *packed) point(scale int) [2]float64 {
+	p.t.Helper()
+	p.lon += p.signed()
+	p.lat += p.signed()
+	return [2]float64{float64(p.lon) / float64(scale), float64(p.lat) / float64(scale)}
+}
+
+// end reports the characters the stream had left over.
+func (p *packed) end() {
+	p.t.Helper()
+	if p.pos != len(p.data) {
+		p.t.Errorf("the stream has %d character(s) left over after the last of its "+
+			"content; the file holds more than it says it does", len(p.data)-p.pos)
+	}
+}
+
+// decodeWorld reads the coastline, which is a ring count and then that many rings.
+func decodeWorld(t *testing.T, data string, rings, scale int) (out [][][2]float64, points int) {
+	t.Helper()
+	p := newPacked(t, data)
+
+	if got := int(p.value()); got != rings {
+		t.Fatalf("WORLD_DATA holds %d ring(s), WORLD_RINGS says %d; the file and its own "+
+			"header are two different files", got, rings)
 	}
 	out = make([][][2]float64, 0, rings)
 	for i := 0; i < rings; i++ {
-		n := int(value())
-		if n <= 0 || n > 100000 {
-			t.Fatalf("ring %d has %d point(s), which is not a number that came out of a "+
-				"coastline", i, n)
+		n := p.count(fmt.Sprintf("ring %d's point count", i), 100000)
+		if n < 3 {
+			t.Fatalf("ring %d has %d point(s); three is the fewest that encloses any area", i, n)
 		}
+		p.reset()
 		ring := make([][2]float64, n)
-		var lon, lat int64
 		for j := 0; j < n; j++ {
-			lon += unzigzag(value())
-			lat += unzigzag(value())
-			ring[j] = [2]float64{float64(lon) / float64(scale), float64(lat) / float64(scale)}
+			ring[j] = p.point(scale)
 		}
 		out = append(out, ring)
 		points += n
 	}
-	if pos != len(data) {
-		t.Errorf("WORLD_DATA has %d character(s) left over after the last ring; the file "+
-			"holds more than it says it does", len(data)-pos)
-	}
+	p.end()
 	return out, points
+}
+
+// TestTheEmbeddedBordersDecode reads the province borders the way the browser does.
+//
+// The borders are 670 KB of the repository's largest generated file, they are fetched by
+// the map and by nothing else, and a file that lost its tail looks exactly like a map
+// whose eastern half has no provinces in it — which is what a country that has none
+// looks like. So: every band present and ascending, the lines counted, and the sum of
+// them the number the header claims the class filter kept.
+func TestTheEmbeddedBordersDecode(t *testing.T) {
+	js := readAsset(t, Assets(), "borders.js")
+
+	bands := exportInts(t, js, "WORLD_BORDER_BANDS")
+	if len(bands) < 5 {
+		t.Fatalf("WORLD_BORDER_BANDS is %v; Natural Earth spreads its admin-1 lines over "+
+			"about nine MIN_ZOOM levels, so this is a band list that lost most of itself", bands)
+	}
+	if bands[0] > 4 {
+		t.Errorf("the first border band is zoom %d; the map shows a band from its own zoom "+
+			"upwards, so a first band above 4 means no borders at all until the map is deep "+
+			"inside one country", bands[0])
+	}
+	for i := 1; i < len(bands); i++ {
+		if bands[i] <= bands[i-1] {
+			t.Fatalf("WORLD_BORDER_BANDS is %v; the bands have to ascend, because the reader "+
+				"walks them in order and stops at the first one past the current zoom", bands)
+		}
+	}
+
+	data := strings.Trim(exportValue(t, js, "WORLD_BORDER_DATA"), "'")
+	p := newPacked(t, data)
+
+	const scale = 1000
+	minLon, maxLon := 180.0, -180.0
+	minLat, maxLat := 90.0, -90.0
+	lines, points := 0, 0
+
+	for b, zoom := range bands {
+		n := p.count(fmt.Sprintf("band %d (zoom %d) line count", b, zoom), 100000)
+		if n == 0 {
+			t.Errorf("band %d (zoom %d) holds no lines; the generator groups the lines by "+
+				"MIN_ZOOM, so an empty band means the grouping has come apart", b, zoom)
+		}
+		for i := 0; i < n; i++ {
+			got := p.count(fmt.Sprintf("band %d line %d's point count", b, i), 10000)
+			if got < 2 {
+				t.Fatalf("band %d line %d has %d point(s); the generator keeps lines of two "+
+					"points and up — a straight border is still a border", b, i, got)
+			}
+			p.reset()
+			for j := 0; j < got; j++ {
+				pt := p.point(scale)
+				if pt[0] < -180 || pt[0] > 180 || pt[1] < -90 || pt[1] > 90 {
+					t.Fatalf("band %d line %d point %d is at %g,%g, which is off the planet; "+
+						"the delta chain has been misread", b, i, j, pt[0], pt[1])
+				}
+				minLon, maxLon = math.Min(minLon, pt[0]), math.Max(maxLon, pt[0])
+				minLat, maxLat = math.Min(minLat, pt[1]), math.Max(maxLat, pt[1])
+			}
+			points += got
+		}
+		lines += n
+	}
+	p.end()
+
+	// 36 167 is what the class filter keeps of the file's 45 098 lines, and 97 513 points
+	// is what the tolerance leaves of them. Both are in the header; these floors are
+	// loose enough to survive a retuned tolerance and tight enough to catch a truncation.
+	if lines < 30000 {
+		t.Errorf("%d line(s) across the bands; the admin-1 class holds about 36 000, so "+
+			"this file is missing the provinces of whole continents", lines)
+	}
+	if points < 60000 {
+		t.Errorf("%d point(s) across %d line(s); the 1:10m admin-1 lines are about 97 000, "+
+			"so the tail of this file is somewhere else", points, lines)
+	}
+	if span := maxLon - minLon; span < 300 {
+		t.Errorf("the border lines span %.1f° of longitude; provinces exist on every "+
+			"continent, so this is a corner of the world", span)
+	}
+	if span := maxLat - minLat; span < 100 {
+		t.Errorf("the border lines span %.1f° of latitude; they run from Norway to "+
+			"Argentina, so this is a corner of one", span)
+	}
+}
+
+// TestTheEmbeddedCountryNamesDecode reads the country names the way the browser does.
+//
+// A name and its point are two halves of one record stored in two different exports, so
+// the failure this guards against is not a corrupt file but a changed one: a name list
+// and a coordinate stream that no longer line up put the wrong name on the wrong place,
+// which is a map that is confidently wrong and nothing else. The counts have to match,
+// the names have to be there, and the few a reader can check by hand have to be the
+// right ones.
+func TestTheEmbeddedCountryNamesDecode(t *testing.T) {
+	js := readAsset(t, Assets(), "labels.js")
+
+	names := exportStrings(t, js, "WORLD_LABEL_NAMES")
+	if len(names) < 150 {
+		t.Fatalf("WORLD_LABEL_NAMES holds %d name(s); the 1:110m countries file has 177, so "+
+			"this list has lost a fifth of the world", len(names))
+	}
+	for _, want := range []string{"Germany", "Austria", "Switzerland", "United States of America"} {
+		if !slices.Contains(names, want) {
+			t.Errorf("WORLD_LABEL_NAMES has no %q; the names come from the dataset's own NAME "+
+				"field in its own spelling, and this one is a country the file is expected to "+
+				"hold", want)
+		}
+	}
+
+	points, groups := decodeLabels(t, strings.Trim(exportValue(t, js, "WORLD_LABEL_POINTS"), "'"))
+	if points != len(names) {
+		t.Fatalf("the coordinate stream holds %d point(s) and the name list %d; the two are "+
+			"read side by side and a mismatch names every country after the first gap "+
+			"incorrectly", points, len(names))
+	}
+	if groups < 5 {
+		t.Errorf("%d group(s) of names; the file groups runs of equal importance, of which "+
+			"the countries file has about 16", groups)
+	}
+}
+
+// TestTheEmbeddedRegionNamesDecode reads the province, state and Bundesland names.
+//
+// What is worth pinning here is not the format — that is the test above — but the two
+// decisions that were made while generating the file, both of which fail silently. The
+// first is that the German Bundesländer carry the names the people living there use, and
+// the second is that Natural Earth's stand-ins for places it has no name for
+// ("JPN-99 (  minor island)") are not among them. A map that draws a database key over
+// somebody's state is the kind of thing nobody reports as a bug, because it looks like a
+// label nobody has got round to translating.
+func TestTheEmbeddedRegionNamesDecode(t *testing.T) {
+	js := readAsset(t, Assets(), "regions.js")
+
+	names := exportStrings(t, js, "WORLD_REGION_NAMES")
+	if len(names) < 3000 {
+		t.Fatalf("WORLD_REGION_NAMES holds %d name(s); the 1:10m admin-1 file has 4 552 "+
+			"after the deduplication, so this list has lost most of itself", len(names))
+	}
+
+	// The sixteen states of the country this project is written in, spelled as the
+	// dataset spells them: not "Lower Saxony".
+	bundeslaender := []string{
+		"Baden-Württemberg", "Bayern", "Berlin", "Brandenburg", "Bremen", "Hamburg",
+		"Hessen", "Mecklenburg-Vorpommern", "Niedersachsen", "Nordrhein-Westfalen",
+		"Rheinland-Pfalz", "Saarland", "Sachsen", "Sachsen-Anhalt",
+		"Schleswig-Holstein", "Thüringen",
+	}
+	for _, want := range bundeslaender {
+		if !slices.Contains(names, want) {
+			t.Errorf("WORLD_REGION_NAMES has no %q; the names are the dataset's own, and "+
+				"all sixteen Bundesländer are expected in it", want)
+		}
+	}
+
+	// 80 of the dataset's 4 632 names are stand-ins of this shape, and they are dropped
+	// by pattern rather than by rank because the rank they mostly sit at is also where
+	// Kingman Reef and the Bounty Islands live, which are places with names.
+	placeholder := regexp.MustCompile(`^[A-Z]{3}-\d\d \(`)
+	for _, name := range names {
+		if placeholder.MatchString(name) {
+			t.Errorf("WORLD_REGION_NAMES holds %q, which is one of the dataset's stand-ins "+
+				"for an area it has no name for; a map that draws it has drawn a database key",
+				name)
+		}
+	}
+
+	points, groups := decodeLabels(t, strings.Trim(exportValue(t, js, "WORLD_REGION_POINTS"), "'"))
+	if points != len(names) {
+		t.Fatalf("the coordinate stream holds %d point(s) and the name list %d; the two are "+
+			"read side by side and a mismatch names every area after the first gap incorrectly",
+			points, len(names))
+	}
+	if groups < 5 {
+		t.Errorf("%d group(s) of names; the file groups runs of equal importance, of which "+
+			"this one has about 10", groups)
+	}
+}
+
+// decodeLabels reads a name file's coordinate stream and returns the points and the
+// number of groups.
+//
+// The stream holds no total, only a group count and the groups: each is a zoom, a rank
+// and a count, and then that many points. The chain of deltas runs through all of them
+// without a reset, so the points are read straight on from one group into the next.
+func decodeLabels(t *testing.T, data string) (points, groups int) {
+	t.Helper()
+	p := newPacked(t, data)
+
+	groups = p.count("the group count", 1000)
+	if groups == 0 {
+		t.Fatal("the stream holds no groups of names at all")
+	}
+	lastZoom := -1
+	for g := 0; g < groups; g++ {
+		zoom := p.count(fmt.Sprintf("group %d's zoom", g), 24)
+		rank := p.count(fmt.Sprintf("group %d's rank", g), 255)
+		if zoom < lastZoom {
+			t.Fatalf("group %d belongs on the map from zoom %d, after a group that belongs "+
+				"from zoom %d; the reader walks the groups in order and stops at the first "+
+				"name that belongs deeper, so an out-of-order group is a name that is never "+
+				"drawn", g, zoom, lastZoom)
+		}
+		lastZoom = zoom
+		_ = rank
+
+		n := p.count(fmt.Sprintf("group %d's label count", g), 100000)
+		if n == 0 {
+			t.Errorf("group %d (zoom %d, rank %d) holds no labels; a group is a run of names "+
+				"and an empty one is a group that was split in two", g, zoom, rank)
+		}
+		for i := 0; i < n; i++ {
+			pt := p.point(1000)
+			if pt[0] < -180 || pt[0] > 180 || pt[1] < -90 || pt[1] > 90 {
+				t.Fatalf("group %d label %d is at %g,%g, which is off the planet; the delta "+
+					"chain has been misread", g, i, pt[0], pt[1])
+			}
+		}
+		points += n
+	}
+	p.end()
+	return points, groups
 }
 
 func readAsset(t *testing.T, assets fs.FS, name string) string {
@@ -324,4 +621,54 @@ func classifyDisplayRules(css string) (hidden, rivals []string) {
 		}
 	}
 	return hidden, rivals
+}
+
+// TestEveryAssetHasAStableFingerprint is about the ETags the browser is given.
+//
+// A file with no fingerprint is re-downloaded on every page load, and a fingerprint
+// that does not match the bytes it belongs to is worse: the browser would keep a
+// copy under a tag that means a different file, and no upgrade would ever reach it.
+// Both are invisible from the outside, and neither fails to compile.
+func TestEveryAssetHasAStableFingerprint(t *testing.T) {
+	assets := Assets()
+	first := Fingerprints()
+
+	// The map is built once per process. Handing out a different answer the second
+	// time would make every validator in every open tab stale at once.
+	second := Fingerprints()
+	if len(first) != len(second) {
+		t.Fatalf("the second call to Fingerprints holds %d file(s), the first %d",
+			len(second), len(first))
+	}
+
+	seen := 0
+	err := fs.WalkDir(assets, ".", func(path string, entry fs.DirEntry, err error) error {
+		if err != nil || entry.IsDir() {
+			return err
+		}
+		seen++
+		data, err := fs.ReadFile(assets, path)
+		if err != nil {
+			return err
+		}
+		sum := sha256.Sum256(data)
+		want := `"` + hex.EncodeToString(sum[:]) + `"`
+		if got := first[path]; got != want {
+			t.Errorf("Fingerprints()[%q] = %q, want the digest of the file %q", path, got, want)
+		}
+		if got := second[path]; got != want {
+			t.Errorf("the second call gave %q for %q, want %q — an unstable validator "+
+				"invalidates every open tab", got, path, want)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walk the embedded dashboard: %v", err)
+	}
+	// The walk has to have found the dashboard at all: an empty tree would satisfy
+	// every check above by having nothing to check.
+	if seen < 5 || len(first) != seen {
+		t.Errorf("%d file(s) embedded and %d fingerprint(s); the two have to be the same "+
+			"set, and the dashboard is more than five files", seen, len(first))
+	}
 }

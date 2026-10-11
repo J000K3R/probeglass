@@ -222,8 +222,9 @@ func isManagedSiteError(err error) bool {
 // that has to be what happens rather than a silent return to somebody else's server.
 func (s *Server) handleUpdateMap(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		TileURL     string `json:"tile_url"`
-		Attribution string `json:"attribution"`
+		TileURL     string  `json:"tile_url"`
+		Attribution string  `json:"attribution"`
+		Borders     *string `json:"borders"`
 	}
 	if err := decodeJSON(r, &in); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body: %s", err.Error())
@@ -238,6 +239,23 @@ func (s *Server) handleUpdateMap(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "%s", err.Error())
 			return
 		}
+	}
+
+	// A pointer, so that leaving the field out keeps the setting rather than
+	// clearing it. That is not only about the switch: the tile fields have always
+	// been sent together with it, and a client that predates the borders — or a
+	// script that only wanted to set a tile address — must not turn the layer off by
+	// saying nothing about it.
+	var borders string
+	if in.Borders != nil {
+		borders = strings.TrimSpace(*in.Borders)
+		if borders != "on" && borders != "off" {
+			writeError(w, http.StatusBadRequest,
+				"borders is %q; it is \"on\" or \"off\"", borders)
+			return
+		}
+	} else {
+		borders = s.store.Setting(r.Context(), model.SettingMapBorders, model.DefaultMapBorders)
 	}
 
 	// No fallback either. The credit line exists to satisfy a tile server's terms,
@@ -256,11 +274,16 @@ func (s *Server) handleUpdateMap(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err, http.StatusInternalServerError, "could not save the attribution")
 		return
 	}
+	if err := s.store.SetSetting(ctx, model.SettingMapBorders, borders); err != nil {
+		s.fail(w, err, http.StatusInternalServerError, "could not save the map borders setting")
+		return
+	}
 	s.refreshTileOrigin(ctx)
 	s.log.Info("map tiles configured", "tile_origin", s.TileOrigin())
 	writeJSON(w, http.StatusOK, map[string]any{
 		"tile_url":    tileURL,
 		"attribution": attribution,
+		"borders":     borders,
 		"origin":      s.TileOrigin(),
 	})
 }

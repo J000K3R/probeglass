@@ -1184,6 +1184,10 @@ func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 			"tile_url": s.store.Setting(ctx, model.SettingTileURL, model.DefaultTileURL),
 			"attribution": s.store.Setting(
 				ctx, model.SettingTileAttribution, model.DefaultTileAttribution),
+			// The borders and names the binary draws itself. It rides along with the
+			// tile source because it is the same decision — what is under the pins —
+			// and because both map mounts read it from here.
+			"borders":          s.store.Setting(ctx, model.SettingMapBorders, model.DefaultMapBorders),
 			"default_tile_url": model.DefaultTileURL,
 			"placeholders":     model.TileURLPlaceholders,
 		},

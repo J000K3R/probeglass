@@ -40,7 +40,7 @@ import { t } from './i18n.js';
 import { esc } from './charts.js';
 import { worstStatus } from './layouts.js';
 import { overlayHost } from './tooltip.js';
-import { createOutline } from './outline.js';
+import { SVG_NS, createOutline } from './outline.js';
 
 const TILE = 256;
 const MIN_ZOOM = 1;
@@ -70,6 +70,22 @@ function xToLon(x, z) {
 function yToLat(y, z) {
   const n = Math.PI - (2 * Math.PI * y) / (TILE * 2 ** z);
   return (180 / Math.PI) * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n)));
+}
+
+/**
+ * svgLayer builds an empty map layer.
+ *
+ * The positioning is the stylesheet's — `position: absolute; inset: 0` — and the
+ * contents are the layer module's. Building it here rather than in the module is what
+ * lets the layer be in the right place in the stack from the first frame, whether or
+ * not the module that fills it has been fetched yet.
+ */
+function svgLayer(className) {
+  const node = document.createElementNS(SVG_NS, 'svg');
+  node.setAttribute('class', className);
+  node.setAttribute('aria-hidden', 'true');
+  node.setAttribute('focusable', 'false');
+  return node;
 }
 
 /**
@@ -124,13 +140,60 @@ export function mount(host, opts = {}) {
   canvas.setAttribute('aria-label', t('map.aria'));
 
   const outline = createOutline();
+  // The border and name layers are built empty here and filled by modules that are
+  // fetched afterwards. Both files are most of a megabyte between them and are needed
+  // only in this view, so importing them at the top of this file would make every page
+  // load in the dashboard pay for a map nobody opened. They arrive a frame or two
+  // after the first draw, and until they do the map is a map: coastlines, graticule and
+  // pins, exactly as it was before they existed.
+  //
+  // `borders: false` is the setting. It is decided here rather than after the fetch,
+  // because a layer somebody has turned off must not be downloaded either.
+  const wanted = opts.borders !== false;
+  // The names are a second file again, and `labels: false` — which is how the header's
+  // mini map mounts — has to keep it out of the browser's queue rather than merely off
+  // the screen. A layer that is imported and then not filled still costs the operator
+  // 90 KB of names for a 150-pixel widget, and the comment in widgets.js promises it
+  // does not. So the import itself is what is conditional here.
+  const withLabels = wanted && opts.labels !== false;
+  const borderNode = svgLayer('map-borders');
+  const labelNode = document.createElement('div');
+  labelNode.className = 'map-labels';
   const tiles = document.createElement('div');
   tiles.className = 'map-tiles';
   const markers = document.createElement('div');
   markers.className = 'map-markers';
-  // The order is the design: coastlines, then whatever tiles somebody configured,
-  // then the pins. See the third rule at the top of the file.
-  canvas.append(outline.node, tiles, markers);
+  // The order is the design: coastlines, then borders, then whatever tiles somebody
+  // configured, then the names, then the pins. See the third rule at the top of the file.
+  canvas.append(outline.node, borderNode, tiles, labelNode, markers);
+
+  // null until the module that fills the layer arrives, and one of them may arrive
+  // without the other.
+  let borders = null;
+  let labels = null;
+
+  if (wanted) {
+    Promise.all([
+      import('./mapborders.js'),
+      withLabels ? import('./maplabels.js') : Promise.resolve(null),
+    ]).then(([borderMod, labelMod]) => {
+      // The map may have been unmounted, or replaced by another mount, while the two
+      // files were in flight. Filling a layer that is no longer on the page would
+      // build 97 000 points for nobody.
+      if (!canvas.isConnected) return;
+      borders = borderMod.fill(borderNode);
+      // The names are not drawn in the header's mini map: it is a picture of where
+      // things are, 150 pixels wide, and a place name on it is a word on top of the
+      // thing it names. labelMod is null there, which is why this asks before it
+      // fills.
+      labels = labelMod ? labelMod.fill(labelNode, { lonToX, latToY }) : null;
+      draw();
+    }).catch((error) => {
+      // The coastlines, the graticule and the pins are all still here, which is why
+      // this is a console line and not a failed map.
+      console.error('weatherglass: could not draw the borders and names', error);
+    });
+  }
 
   const note = document.createElement('p');
   note.className = 'map-note';
@@ -223,6 +286,7 @@ export function mount(host, opts = {}) {
     tilesFailed = 0;
 
     outline.setView(view.z, left, top);
+    if (borders) borders.setView(view.z, left, top);
 
     // Without a tile address there is no image to fetch, and this is not a loop
     // that quietly finds nothing to do: `src=""` resolves to the page's own
@@ -246,6 +310,9 @@ export function mount(host, opts = {}) {
       }
     }
     tiles.innerHTML = tileHTML;
+    // After the tiles, because a name has to be readable over them, and before the
+    // pins, because a pin is the thing the map is actually about.
+    if (labels) labels.draw(view.z, left, top, w, h);
     drawMarkers();
     updateNote();
   }
@@ -406,10 +473,13 @@ export function mount(host, opts = {}) {
     // and no tile is fetched until the finger comes off. The coastlines move with
     // it, on the same three lines of transform: they are a layer of the map like
     // any other, and a view that jumped back to where it started dragging would be
-    // worse than no map at all.
+    // worse than no map at all. Every layer the map has is in this list — a border
+    // or a name left behind would slide against the country it belongs to.
     const shift = `translate(${dragging.dx}px, ${dragging.dy}px)`;
     outline.node.style.transform = shift;
+    borderNode.style.transform = shift;
     tiles.style.transform = shift;
+    labelNode.style.transform = shift;
     markers.style.transform = shift;
   });
 
@@ -424,7 +494,9 @@ export function mount(host, opts = {}) {
       /* the pointer was already released */
     }
     outline.node.style.transform = '';
+    borderNode.style.transform = '';
     tiles.style.transform = '';
+    labelNode.style.transform = '';
     markers.style.transform = '';
     view.cx -= dx;
     view.cy -= dy;

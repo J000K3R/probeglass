@@ -14,6 +14,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"path"
 	"strconv"
 	"strings"
 	"sync"
@@ -36,6 +37,7 @@ type Server struct {
 	broker     *event.Broker
 	log        *slog.Logger
 	assets     fs.FS
+	assetETags map[string]string
 
 	authMu        sync.RWMutex
 	apiKey        string
@@ -73,6 +75,12 @@ type Options struct {
 	Broker     *event.Broker
 	Logger     *slog.Logger
 	Assets     fs.FS
+	// AssetETags is the validator for each file in Assets, keyed by its path
+	// inside the assets directory (web.Fingerprints()). Empty means no
+	// validators, which is what a test with an in-memory Assets wants and what
+	// the dashboard gets away with when the map is a few kilobytes — but the
+	// shipped dashboard is not, so main passes it in.
+	AssetETags map[string]string
 }
 
 // New builds a Server and loads its authentication state.
@@ -89,6 +97,7 @@ func New(ctx context.Context, opts Options) (*Server, error) {
 		broker:     opts.Broker,
 		log:        log,
 		assets:     opts.Assets,
+		assetETags: opts.AssetETags,
 		logins:     newLoginLimiter(5, time.Minute),
 		totpLogins: newLoginLimiter(5, time.Minute),
 	}
@@ -235,12 +244,74 @@ func (s *Server) Handler() http.Handler {
 
 	// Dashboard shell and assets.
 	if s.assets != nil {
-		mux.Handle("GET /assets/", http.StripPrefix("/assets/",
-			http.FileServer(http.FS(s.assets))))
+		mux.Handle("GET /assets/", http.StripPrefix("/assets/", s.assetValidators(
+			http.FileServer(http.FS(s.assets)))))
 		mux.HandleFunc("GET /", s.handleIndex)
 	}
 
 	return s.withMiddleware(mux)
+}
+
+// ---------------------------------------------------------------------------
+// embedded assets
+// ---------------------------------------------------------------------------
+
+// assetValidators gives every embedded file an ETag and answers a request that
+// already holds that version with 304.
+//
+// Without it the dashboard is re-downloaded on every page load. http.FileServer
+// builds its validators from the file's modification time, and an embed.FS file has
+// none, so it sends no Last-Modified and no ETag — and with no validator a browser
+// cannot revalidate, so `no-cache` (see withMiddleware) turns into a full body every
+// time. That was a few tens of kilobytes when the map was a coastline; the map now
+// draws borders and place names as well, and the difference is worth a header.
+//
+// The path is looked up after the /assets/ prefix has been stripped and cleaned, so
+// the key is the path inside the embedded tree. A path with no fingerprint falls
+// through to the file server untouched: that is a file somebody added without
+// regenerating the map of digests — and it will not happen, because the digests are
+// computed from the same embedded tree at startup.
+func (s *Server) assetValidators(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		tag := s.assetETags[path.Clean(strings.TrimPrefix(r.URL.Path, "/"))]
+		if tag == "" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		w.Header().Set("ETag", tag)
+		if matchesETag(r.Header.Get("If-None-Match"), tag) {
+			// A 304 carries the validator and nothing else. The file server would
+			// have written a body, so it cannot be left to answer this one.
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// matchesETag reports whether an If-None-Match header covers one ETag.
+//
+// The header is a list of tags and may carry the placeholder `*`, and the comparison
+// is the weak one: RFC 9110 says If-None-Match never compares strongly, so `W/"x"`
+// and `"x"` mean the same version here. A browser sends back exactly what it was
+// given, so in practice this is one plain string — but a proxy that weakens tags on
+// the way must not turn every request back into a full download.
+func matchesETag(header, tag string) bool {
+	header = strings.TrimSpace(header)
+	if header == "" {
+		return false
+	}
+	if header == "*" {
+		return true
+	}
+	want := strings.TrimPrefix(tag, "W/")
+	for part := range strings.SplitSeq(header, ",") {
+		part = strings.TrimSpace(part)
+		if part == "*" || strings.TrimPrefix(part, "W/") == want {
+			return true
+		}
+	}
+	return false
 }
 
 // ---------------------------------------------------------------------------
@@ -286,12 +357,12 @@ func (s *Server) withMiddleware(next http.Handler) http.Handler {
 		start := time.Now()
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 
-		// Dashboard files are embedded in the binary and change with it, but
-		// http.FileServer cannot produce a validator for an embed.FS file: there
-		// is no modification time and no ETag, so a browser is free to reuse a
-		// stale copy heuristically. After an upgrade that mismatch is invisible
-		// and looks like a broken dashboard, so tell the browser to revalidate.
-		// The files are served from memory; a 304 costs nothing.
+		// Dashboard files are embedded in the binary and change with it. no-cache
+		// rather than a lifetime: an upgraded binary must not be paired with a
+		// stylesheet from the build before it, and the only thing that can tell the
+		// two apart is the validator — see assetValidators, which is what makes the
+		// revalidation cheap. The files are served from memory, so a 304 costs
+		// nothing and a full body costs almost nothing either.
 		if strings.HasPrefix(r.URL.Path, "/assets/") {
 			rec.Header().Set("Cache-Control", "no-cache")
 		}

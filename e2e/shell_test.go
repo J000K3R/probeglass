@@ -18,6 +18,7 @@ package e2e
 import (
 	"context"
 	"fmt"
+	"math"
 	"os"
 	"slices"
 	"strconv"
@@ -1028,18 +1029,23 @@ type mapView struct {
 }
 
 // createSite walks the "New site" dialog the way a person does.
+//
+// In the site dialog and not in the shared one: the site editor has a window of its
+// own — `#modal-site`, with its own form, its own save button and its own error
+// line — because the sensor form opens it over itself, and one dialog cannot be
+// shown modally twice.
 func createSite(t *testing.T, ctx context.Context, dir, name, kind string, lat, lon float64) {
 	t.Helper()
 	err := withTimeout(ctx, func(tctx context.Context) error {
 		return chromedp.Do(tctx,
 			chromedp.Click(`[data-action="site-new"]`),
-			chromedp.WaitVisible(`#modal input[name="site_name"]`),
-			chromedp.SetValue(`#modal input[name="site_name"]`, name),
-			chromedp.SetValue(`#modal select[name="kind"]`, kind),
-			chromedp.SetValue(`#modal input[name="lat"]`, fmt.Sprintf("%g", lat)),
-			chromedp.SetValue(`#modal input[name="lon"]`, fmt.Sprintf("%g", lon)),
-			chromedp.Click(`#modal-save`),
-			chromedp.WaitNotVisible(`#modal`),
+			chromedp.WaitVisible(`#modal-site input[name="site_name"]`),
+			chromedp.SetValue(`#modal-site input[name="site_name"]`, name),
+			chromedp.SetValue(`#modal-site select[name="kind"]`, kind),
+			chromedp.SetValue(`#modal-site input[name="lat"]`, fmt.Sprintf("%g", lat)),
+			chromedp.SetValue(`#modal-site input[name="lon"]`, fmt.Sprintf("%g", lon)),
+			chromedp.Click(`#site-save`),
+			chromedp.WaitNotVisible(`#modal-site`),
 			chromedp.Poll[chromedp.Void](
 				fmt.Sprintf(`!!document.querySelector('#sites-panel tr[data-name=%q]')`, name),
 				chromedp.WithPollingTimeout(15*time.Second)),
@@ -1048,7 +1054,7 @@ func createSite(t *testing.T, ctx context.Context, dir, name, kind string, lat, 
 	if err != nil {
 		capture(t, ctx, dir, "site-not-created")
 		t.Fatalf("could not create the site %q through the settings screen: %v\n"+
-			"the dialog said: %s", name, err, text(ctx, t, "#modal-error"))
+			"the dialog said: %s", name, err, text(ctx, t, "#site-error"))
 	}
 }
 
@@ -1293,6 +1299,387 @@ func TestSitesReachEveryViewAndTheMapIsHonest(t *testing.T) {
 	}
 }
 
+// TestTheMapDrawsItsOwnBordersAndNames is about the half of the map that is drawn
+// from the binary rather than fetched: the country and province borders, and the names.
+//
+// Three things here cannot be checked anywhere but in a browser. The first is that the
+// two layers are built at all — they arrive from modules fetched after the first draw,
+// so a page that draws coastlines and pins and never grows borders looks exactly like a
+// map with no borders in its data. The second is that the bands behave: the finer lines
+// belong to deeper zooms, so a world view must not be carrying the streets of
+// Mecklenburg, and this is checked by counting what is on screen at two zooms rather
+// than by reading the generator's output. The third is the switch: turning the layer
+// off has to leave no borders and no names, on the big map and on the little one, and
+// the map has to keep drawing itself while it does not.
+func TestTheMapDrawsItsOwnBordersAndNames(t *testing.T) {
+	browser := findBrowser(t)
+	base := startServer(t, buildBinary(t))
+	ctx, done := openBrowser(t, browser)
+	defer done()
+	dir := artifactsDir(t)
+
+	firstRun(t, ctx, base, dir)
+
+	// The places are made on the settings screen, which is where the button that
+	// opens the site dialog lives.
+	if err := withTimeout(ctx, func(tctx context.Context) error {
+		return chromedp.Do(tctx,
+			chromedp.Evaluate[chromedp.Void](`location.hash = '#/settings'`),
+			chromedp.Poll[chromedp.Void](`document.querySelector('#sites-panel') !== null`,
+				chromedp.WithPollingTimeout(15*time.Second)),
+			openSettingsCategory("monitor"),
+		)
+	}); err != nil {
+		capture(t, ctx, dir, "sites-panel-missing")
+		t.Fatalf("the settings screen has no sites panel: %v", err)
+	}
+
+	// Two places in one country and a few hundred kilometres apart. The map fits
+	// itself around them, which is what puts the view at about zoom 8 — deep enough
+	// for the provinces to be drawn, and the zoom the check below is about.
+	createSite(t, ctx, dir, siteLocal, "local", 48.1372, 11.5756)
+	createSite(t, ctx, dir, siteExternal, "external", 50.1109, 8.6821)
+
+	clickLayout(t, ctx, dir, "map", `.map-canvas`)
+
+	// The two modules are fetched after the first draw, so this is a wait and not a
+	// read: a screenshot taken before them is a correct map of a world with no
+	// borders in it.
+	eventually(t, ctx, `document.querySelectorAll('.map-borders path').length >= 4`,
+		"the map never drew any borders; the two layers arrive from modules fetched "+
+			"after the first draw, and a map that stops at the coastline is the failure "+
+			"this waits out",
+		dir, "no-borders", 30*time.Second)
+
+	deepPaths := read[int](t, ctx,
+		`document.querySelectorAll('.map-borders path').length`,
+		"how many border bands the map built")
+	deepShown := read[int](t, ctx,
+		`document.querySelectorAll('.map-borders path:not([hidden])').length`,
+		"how many border bands the map is showing")
+	if deepShown < 4 {
+		capture(t, ctx, dir, "borders-not-drawn-deep")
+		t.Errorf("the map shows %d of its %d border band(s) with two places in Germany fitted "+
+			"on screen; a view of one country has to carry the country borders and the "+
+			"provinces under them", deepShown, deepPaths)
+	}
+	if deepShown != deepPaths {
+		t.Errorf("the map built %d border band(s) and shows %d: a band that is built is a "+
+			"band that was asked for, and one that is built and hidden is work nobody sees",
+			deepPaths, deepShown)
+	}
+	// A band is a path of its own, and each holds thousands of points; a path that
+	// exists with nothing in it would pass a count of paths and draw nothing.
+	shortest := read[int](t, ctx,
+		`Math.min(...[...document.querySelectorAll('.map-borders path')].map(p => (p.getAttribute('d') || '').length))`,
+		"the shortest border band")
+	if shortest < 500 {
+		capture(t, ctx, dir, "borders-empty")
+		t.Errorf("the shortest border path is %d character(s) long; the bands the map builds at "+
+			"this zoom are thousands of points each, so this one is empty", shortest)
+	}
+
+	// --- the names, and what they must not do --------------------------------
+
+	names := read[[]string](t, ctx,
+		`[...document.querySelectorAll('.map-label')].map(l => l.textContent)`,
+		"the names on the map")
+	if len(names) == 0 {
+		capture(t, ctx, dir, "no-names")
+		t.Fatalf("the map drew no names at all; the name layer is a module fetched after the " +
+			"first draw, and a map that stops at the coastline is the failure this catches")
+	}
+	// Somewhere over Germany, at this zoom, some of the sixteen states are named. Not
+	// all of them and not a particular one: which names survive the collision pass
+	// depends on the canvas, and a test that named one state would be testing the
+	// browser's font metrics.
+	bundeslaender := []string{
+		"Baden-Württemberg", "Bayern", "Berlin", "Brandenburg", "Bremen", "Hamburg",
+		"Hessen", "Mecklenburg-Vorpommern", "Niedersachsen", "Nordrhein-Westfalen",
+		"Rheinland-Pfalz", "Saarland", "Sachsen", "Sachsen-Anhalt",
+		"Schleswig-Holstein", "Thüringen",
+	}
+	found := 0
+	for _, name := range names {
+		if contains(bundeslaender, name) {
+			found++
+		}
+	}
+	if found == 0 {
+		capture(t, ctx, dir, "no-provinces-named")
+		t.Errorf("the map names %d place(s) at this zoom and not one of them is a German state, "+
+			"although the whole of southern and central Germany is on screen; the names are "+
+			"the dataset's own and these are the sixteen that are expected", len(names))
+	}
+
+	// No two of them may overlap. The layout is done in the drawing loop from an
+	// estimate of each name's width, so the check is done here against what the browser
+	// actually laid out — an estimate that is wrong shows up as two words on top of
+	// each other and nowhere else.
+	overlaps := read[int](t, ctx, `(() => {
+  const boxes = [...document.querySelectorAll('.map-label')].map((l) => l.getBoundingClientRect());
+  let hits = 0;
+  for (let i = 0; i < boxes.length; i++) {
+    for (let j = i + 1; j < boxes.length; j++) {
+      const a = boxes[i], b = boxes[j];
+      if (a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom) hits++;
+    }
+  }
+  return hits;
+})()`, "how many names overlap")
+	if overlaps > 0 {
+		capture(t, ctx, dir, "names-overlapping")
+		t.Errorf("%d pair(s) of names are drawn on top of each other; the layer is supposed to "+
+			"drop a name rather than draw it over one that is already there", overlaps)
+	}
+
+	// --- out and back in: the bands follow the zoom --------------------------
+
+	if err := withTimeout(ctx, func(tctx context.Context) error {
+		return chromedp.Do(tctx,
+			chromedp.Click(`.map-controls [data-map="out"]`),
+			chromedp.Click(`.map-controls [data-map="out"]`),
+			chromedp.Click(`.map-controls [data-map="out"]`),
+			chromedp.Click(`.map-controls [data-map="out"]`),
+			chromedp.Click(`.map-controls [data-map="out"]`),
+		)
+	}); err != nil {
+		capture(t, ctx, dir, "map-zoom-out")
+		t.Fatalf("could not zoom the map out: %v", err)
+	}
+	// The bands are hidden, not discarded: what was built stays built, because
+	// somebody zooming back in wants it again and 97 000 points are not rebuilt for a
+	// button press.
+	eventually(t, ctx, fmt.Sprintf(
+		`document.querySelectorAll('.map-borders path:not([hidden])').length < %d`, deepShown),
+		"zooming out five levels left the same border bands on screen; the provinces are "+
+			"stored per zoom and a world view is not supposed to be carrying them",
+		dir, "bands-not-hidden", 15*time.Second)
+	worldShown := read[int](t, ctx,
+		`document.querySelectorAll('.map-borders path:not([hidden])').length`,
+		"how many bands a world view shows")
+	if worldShown == 0 {
+		t.Errorf("a world view shows no borders at all; the country borders belong on the " +
+			"shallowest band there is, which is where the map opens")
+	}
+	if built := read[int](t, ctx, `document.querySelectorAll('.map-borders path').length`,
+		"how many bands are built"); built != deepPaths {
+		t.Errorf("zooming out changed the number of built bands from %d to %d; the bands are "+
+			"hidden and shown, not rebuilt, which is what keeps the zoom a button press",
+			deepPaths, built)
+	}
+	// And the names follow: fewer of them, and the country names are the ones left.
+	worldNames := read[[]string](t, ctx,
+		`[...document.querySelectorAll('.map-label')].map(l => l.textContent)`,
+		"the names on a world view")
+	if len(worldNames) == 0 {
+		t.Errorf("a world view has no names at all; the shallowest names are the ones that " +
+			"belong there")
+	}
+
+	if err := withTimeout(ctx, func(tctx context.Context) error {
+		return chromedp.Do(tctx,
+			chromedp.Click(`.map-controls [data-map="fit"]`),
+		)
+	}); err != nil {
+		capture(t, ctx, dir, "map-fit")
+		t.Fatalf("could not fit the map back to its places: %v", err)
+	}
+	eventually(t, ctx, fmt.Sprintf(
+		`document.querySelectorAll('.map-borders path:not([hidden])').length >= %d`, worldShown+1),
+		"fitting the map back to its two places did not bring the finer border bands back; a "+
+			"band that is hidden and never returns is a band that was lost",
+		dir, "bands-not-returning", 15*time.Second)
+
+	// --- the switch ----------------------------------------------------------
+
+	if err := withTimeout(ctx, func(tctx context.Context) error {
+		return chromedp.Do(tctx,
+			chromedp.Evaluate[chromedp.Void](`location.hash = '#/settings'`),
+			openSettingsCategory("look"),
+			chromedp.WaitVisible(`#map-panel [name="borders"]`),
+			chromedp.Click(`#map-panel [name="borders"]`),
+			chromedp.Click(`#map-panel [data-action="map-save"]`),
+			chromedp.Poll[chromedp.Void](
+				`fetch('/api/settings').then(r => r.json())`+
+					`.then(s => !!(s.map && s.map.borders === 'off'))`,
+				chromedp.WithPollingTimeout(15*time.Second)),
+		)
+	}); err != nil {
+		capture(t, ctx, dir, "borders-switch-not-saved")
+		t.Fatalf("could not turn the border layer off: %v", err)
+	}
+
+	// Through another layout on the way, because the switcher only rebuilds the view
+	// when the layout actually changes, and the map has to be built again for the new
+	// setting to reach it. Which is also what somebody does: switch a setting, go and
+	// look at the result.
+	clickLayout(t, ctx, dir, "list", `.sensors-table .row`)
+	clickLayout(t, ctx, dir, "map", `.map-canvas`)
+
+	// The coastlines are still there — the switch is about the borders and the names,
+	// and a map that draws nothing at all is a different feature.
+	if n := read[int](t, ctx, `document.querySelectorAll('.map-outline path').length`,
+		"how many coastline paths the map drew with the borders off"); n != 1 {
+		capture(t, ctx, dir, "coastline-lost-with-borders-off")
+		t.Errorf("with the border layer off the map drew %d coastline path(s), want one: the "+
+			"coastline has nothing to do with the switch", n)
+	}
+	eventually(t, ctx, `document.querySelectorAll('.map-borders path').length === 0`,
+		"the border layer was turned off and the borders are still being drawn",
+		dir, "borders-ignoring-the-switch", 20*time.Second)
+	if n := read[int](t, ctx, `document.querySelectorAll('.map-label').length`,
+		"how many names the map drew with the layer off"); n != 0 {
+		capture(t, ctx, dir, "names-ignoring-the-switch")
+		t.Errorf("with the layer off the map drew %d name(s); the switch covers the borders "+
+			"and the names together, and the names are the half nobody would notice", n)
+	}
+	// --- and a fresh page does not fetch them either -------------------------
+
+	// The claim is about the download and not about the picture, so it needs a page
+	// whose resource list is empty of them: the same page has already fetched both
+	// files for the map it drew a moment ago, and `performance` remembers. A reload is
+	// the only honest way to ask.
+	if err := withTimeout(ctx, func(tctx context.Context) error {
+		return chromedp.Do(tctx, chromedp.Reload(), chromedp.WaitVisible(`#app`))
+	}); err != nil {
+		capture(t, ctx, dir, "borders-reload")
+		t.Fatalf("could not reload the dashboard: %v", err)
+	}
+	// The layout is remembered on the account, and the map was the last one, so this
+	// waits for the map to be up again before reading the fetched files.
+	eventually(t, ctx, `!!document.querySelector('.map-canvas')`,
+		"the dashboard did not come back on the map layout it was left on",
+		dir, "borders-reload-layout", 20*time.Second)
+	eventually(t, ctx, `document.querySelectorAll('.map-borders path').length === 0`,
+		"a reloaded page drew borders although the layer is off",
+		dir, "borders-after-reload", 20*time.Second)
+	if n := read[int](t, ctx,
+		`performance.getEntriesByType('resource').filter(r => /mapborders|maplabels/.test(r.name)).length`,
+		"how many of the two layer files a fresh page fetched"); n != 0 {
+		capture(t, ctx, dir, "borders-fetched-anyway")
+		t.Errorf("a fresh page fetched %d of the border and name files although the layer is "+
+			"off and it drew neither; the setting is read before the import so that turning "+
+			"the layer off costs the operator nothing", n)
+	}
+
+	// --- the switch is put back, and the header's mini map gets the borders ---
+
+	if err := withTimeout(ctx, func(tctx context.Context) error {
+		return chromedp.Do(tctx,
+			chromedp.Evaluate[chromedp.Void](`location.hash = '#/settings'`),
+			openSettingsCategory("look"),
+			chromedp.WaitVisible(`#map-panel [name="borders"]`),
+			chromedp.Click(`#map-panel [name="borders"]`),
+			chromedp.Click(`#map-panel [data-action="map-save"]`),
+			chromedp.Poll[chromedp.Void](
+				`fetch('/api/settings').then(r => r.json())`+
+					`.then(s => !!(s.map && s.map.borders === 'on'))`,
+				chromedp.WithPollingTimeout(15*time.Second)),
+		)
+	}); err != nil {
+		capture(t, ctx, dir, "borders-switch-not-restored")
+		t.Fatalf("could not turn the border layer back on: %v", err)
+	}
+
+	// The mini map is a picture of where things are, 150 pixels across, and it is
+	// mounted with `labels: false`. That is not a style: it keeps 87 KB of names out of
+	// the browser's queue for a widget that would not draw them. The two halves are
+	// checked together below, on a page that was reloaded for the purpose — the picture
+	// without names, and the file that was never asked for.
+	if err := withTimeout(ctx, func(tctx context.Context) error {
+		return chromedp.Do(tctx,
+			chromedp.Evaluate[chromedp.Void](`location.hash = '#/dashboard'`),
+			chromedp.WaitVisible(`#widgets-tools [data-widget-edit]`),
+			chromedp.Click(`#widgets-tools [data-widget-edit]`),
+			chromedp.Click(`#widgets-tools [data-widget-pick]`),
+			chromedp.WaitVisible(`#widget-picker[open] [data-widget-add="mini-map"]`),
+			chromedp.Click(`#widget-picker [data-widget-add="mini-map"]`),
+		)
+	}); err != nil {
+		capture(t, ctx, dir, "minimap-not-added")
+		t.Fatalf("could not put the mini map on the header: %v", err)
+	}
+	eventually(t, ctx,
+		`fetch('/api/session').then(r => r.json())`+
+			`.then(s => ((s.ui || {}).widgets || '').includes('mini-map'))`,
+		"the mini map was added to the header and the account was never told",
+		dir, "minimap-not-stored", 15*time.Second)
+
+	// Reloaded before the map is asked about, for the same reason as above: this page
+	// has already fetched the names for the big map, and what is being checked is what
+	// the little one asks for on its own.
+	if err := withTimeout(ctx, func(tctx context.Context) error {
+		return chromedp.Do(tctx, chromedp.Reload(), chromedp.WaitVisible(`#app`))
+	}); err != nil {
+		capture(t, ctx, dir, "minimap-reload")
+		t.Fatalf("could not reload the dashboard: %v", err)
+	}
+	// Onto a layout that is not the map, so that the only map on the page is the
+	// widget: the account remembers the map layout, and the big map fetches both files
+	// — which would make the check below about it instead of about the header.
+	clickLayout(t, ctx, dir, "list", `.sensors-table .row`)
+
+	// The widget starts its map when its host has a size, and it is only laid out once
+	// the dashboard is the view on screen — so an empty host is a real failure and not
+	// a race that resolves itself.
+	eventually(t, ctx,
+		`document.querySelectorAll('[data-widget="mini-map"] [data-widget-map] .map-canvas').length > 0`,
+		"the mini map never built itself; it starts when its host has a size, and a header "+
+			"widget that stays empty is the failure this waits out",
+		dir, "minimap-empty", 25*time.Second)
+
+	// And it is a picture of somewhere. The two places this test made are on it: the
+	// tile is laid out as the page loads, which is before the summary carrying them
+	// has arrived, and a map that is built once and never told about them again would
+	// draw an empty world with a note saying so.
+	if n := read[int](t, ctx,
+		`document.querySelectorAll('[data-widget="mini-map"] .site-marker').length`,
+		"how many places the mini map drew"); n != 2 {
+		capture(t, ctx, dir, "minimap-without-sites")
+		t.Errorf("the mini map drew %d place(s); this test made two with coordinates, and a "+
+			"header that keeps an empty world while the full map shows both is the same "+
+			"dashboard disagreeing with itself", n)
+	}
+
+	if n := read[int](t, ctx,
+		`document.querySelectorAll('[data-widget="mini-map"] .map-label').length`,
+		"how many names the mini map drew"); n != 0 {
+		capture(t, ctx, dir, "minimap-drawing-names")
+		t.Errorf("the mini map drew %d name(s); it is 150 pixels of map in a header, and the "+
+			"names are left off it on purpose", n)
+	}
+	// The borders are on it, though: the same setting reaches the second map, and a
+	// widget that drew something the layout does not is a picture that disagrees with
+	// itself.
+	if n := read[int](t, ctx,
+		`document.querySelectorAll('[data-widget="mini-map"] .map-borders path').length`,
+		"how many border bands the mini map drew"); n == 0 {
+		capture(t, ctx, dir, "minimap-without-borders")
+		t.Errorf("the mini map drew no borders while the setting is on; the two maps read " +
+			"the same value")
+	}
+	// And the names were not fetched for it. This is the whole point of `labels: false`
+	// reaching the import and not only the drawing: a widget that never draws a name
+	// must not make the browser download one.
+	fetched := read[[]string](t, ctx,
+		`performance.getEntriesByType('resource').map(r => r.name).filter(n => /mapborders|maplabels/.test(n))`,
+		"which of the two layer files the page fetched for the mini map")
+	for _, url := range fetched {
+		if strings.Contains(url, "maplabels") {
+			capture(t, ctx, dir, "minimap-fetched-the-names")
+			t.Errorf("the page fetched %s for the header's mini map, which draws no names; "+
+				"the option has to reach the import and not only the drawing, or a 150-pixel "+
+				"widget costs the operator 87 KB", url)
+		}
+	}
+	if !slices.ContainsFunc(fetched, func(u string) bool { return strings.Contains(u, "mapborders") }) {
+		t.Errorf("the header's mini map drew borders but the page never fetched mapborders.js; "+
+			"the bands it drew came from somewhere else than the file they are supposed to "+
+			"come from (fetched: %v)", fetched)
+	}
+}
+
 // readAsync reads a value the page has to go and fetch before it can be read.
 //
 // Separate from read because chromedp waits for a promise only when it is asked to,
@@ -1310,10 +1697,17 @@ func readAsync[T any](t *testing.T, ctx context.Context, expr, what string) T {
 }
 
 // serverPlace is one place as the server holds it: enough of it to tell one from
-// another and to tell what kind it is.
+// another, to tell what kind it is, and to ask where it stands.
+//
+// The two coordinates are pointers for the same reason the API's are: a place with
+// no coordinates is a place whose pair is absent, not a place in the Gulf of
+// Guinea, and the test that a place can be given coordinates has to be able to see
+// the difference.
 type serverPlace struct {
-	Name string `json:"name"`
-	Kind string `json:"kind"`
+	Name string   `json:"name"`
+	Kind string   `json:"kind"`
+	Lat  *float64 `json:"lat"`
+	Lon  *float64 `json:"lon"`
 }
 
 // readPlacesOnTheServer asks the API what places the installation has.
@@ -1352,7 +1746,7 @@ func openNewSensorForm(t *testing.T, ctx context.Context, dir string) {
 }
 
 // pickTheNewSiteEntry chooses the last entry in the sensor form's place list, which
-// is the one that makes a place.
+// is the one that opens the site editor.
 //
 // By position rather than by value: the value is an internal marker, and a test that
 // hard-coded it would go on passing after the marker was renamed while the entry it
@@ -1362,20 +1756,41 @@ func openNewSensorForm(t *testing.T, ctx context.Context, dir string) {
 //
 // And by hand rather than with chromedp.SetValue. SetValue assigns `.value` in
 // JavaScript and dispatches no event — the note over clearSearch in search_test.go
-// says the same thing about the search box — while the fields that make a place are
-// brought up by a change event. With SetValue they would stay hidden and the test
-// would be measuring one way of setting a field instead of the form.
+// says the same thing about the search box — while the entry that opens the site
+// editor is brought up by a change event. With SetValue the editor would never open
+// and the test would be measuring one way of setting a field instead of the form.
 var pickTheNewSiteEntry = chromedp.Evaluate[chromedp.Void](`(() => {
   const el = document.querySelector('#modal select[name="site"]');
   el.value = el.options[el.options.length - 1].value;
   el.dispatchEvent(new Event('change', { bubbles: true }));
 })()`)
 
-// siteFieldsHidden says whether the two fields that make a place are off screen.
+// siteDialogOpen says whether the site editor is up.
 //
-// `hidden` and not a computed style: the form shows them by clearing the attribute,
-// which is also what keeps them out of the accessibility tree while they are down.
-const siteFieldsHidden = `document.querySelector('#sensor-new-site').hidden`
+// `open` and not a computed style: a dialog that is not open is not on screen and
+// not in the accessibility tree, which is exactly what is being asked — the site
+// editor must not be up before its entry is chosen, and must be up after.
+const siteDialogOpen = `document.querySelector('#modal-site').open`
+
+// thePlacePicker is the sensor form's place picker, read as what it would send.
+const thePlacePicker = `document.querySelector('#modal select[name="site"]').value`
+
+// sensorFormState reads the sensor form field by field, as a list of `name=value`.
+//
+// Read as the whole form rather than as two or three fields, because that is the
+// claim being tested: the site editor is a dialog of its own so that *nothing* in
+// the form behind it has to be carried over by hand, and a test that checked the
+// name and the target would go on passing while the tags, the reminder, the
+// advanced options or a channel tick fell out of the form on the way.
+//
+// The place picker itself is left out where it is compared: it is the one thing the
+// site editor is supposed to change.
+const sensorFormState = `(() => {
+  const form = document.querySelector('#modal-form');
+  return Array.from(form.elements)
+    .filter((el) => el.name && el.name !== 'site' && !el.disabled)
+    .map((el) => el.name + '=' + (el.type === 'checkbox' ? (el.checked ? 'on' : 'off') : el.value));
+})()`
 
 // TestASiteCanBeMadeWhileTheSensorIsMade is about where the two are made.
 //
@@ -1383,20 +1798,30 @@ const siteFieldsHidden = `document.querySelector('#sensor-new-site').hidden`
 // in and the thing on it is written down in the same minute. The place picker used
 // to offer only places that already existed, so the choice was to leave a
 // half-filled sensor form, go to Settings, make the place and come back — or to give
-// up on the place. Its last entry now makes one instead.
+// up on the place. Its last entry now opens the site editor instead.
 //
-// The two things checked here are the two an API test cannot see.
+// The editor is the same window Settings → Sites opens, and not a copy of it. A copy
+// was tried and given up on: it carried two fields with names of their own, no
+// coordinates and its own saving, so a place made from the sensor form could not be
+// given a position at all. The real editor is a second `<dialog>`, because one dialog
+// cannot be shown modally twice — which is also why everything typed into the sensor
+// form has to survive the visit, and that is the third thing checked here.
 //
-// The first is that the fields a place needs are off screen until the entry that
-// makes one is chosen. A name field for a place nobody asked for is a field that
-// gets filled in by mistake, and the entry that reveals it is a claim about what it
-// does — so it has to be called something that says so.
+// The first two are the two an API test cannot see.
 //
-// The second is *when* the place is made: on save, not on choosing the entry. That
-// is what the first half of this test is for — it abandons a form and then looks for
-// what was left behind. An implementation that wrote the place the moment the entry
-// was picked would pass the happy path just as well, and would leave an empty place
-// behind every time somebody opened the form and thought better of it.
+// The first is *when* the place is made: on saving the site editor, neither on
+// choosing the entry that opens it nor on the sensor form's own Save. An
+// implementation that wrote the place the moment the entry was picked would pass the
+// happy path just as well, and would leave an empty place behind every time somebody
+// opened the picker and thought better of it.
+//
+// The second is that the entry says what it does, and that dismissing the window
+// puts the picker back: the entry is a button in the shape of an option, and one left
+// standing would be saved as a place, or as nothing, depending on which end read it.
+//
+// The price of using the real editor is stated rather than discovered: the place is
+// made when the **site editor** is saved, so somebody who then abandons the sensor
+// form leaves the place standing. The test walks exactly that path below.
 func TestASiteCanBeMadeWhileTheSensorIsMade(t *testing.T) {
 	browser := findBrowser(t)
 	base := startServer(t, buildBinary(t))
@@ -1412,13 +1837,15 @@ func TestASiteCanBeMadeWhileTheSensorIsMade(t *testing.T) {
 		sensor    = "Dachboden Thermometer"
 	)
 
-	// --- a form filled in and closed leaves nothing behind ------------------
+	// --- the entry, and the window it opens --------------------------------
 
 	openNewSensorForm(t, ctx, dir)
 
 	// The sensor's own required fields are filled in first, because a form the
 	// browser refuses to submit never reaches the code that would say what is wrong
 	// with the place — which is exactly how the Test button came to look dead.
+	// Two more fields are filled in that nothing here needs: they are the ones that
+	// have to survive the site editor being opened over them.
 	if err := withTimeout(ctx, func(tctx context.Context) error {
 		return chromedp.Do(tctx,
 			chromedp.SetValue(`#modal input[name="name"]`, sensor),
@@ -1426,16 +1853,18 @@ func TestASiteCanBeMadeWhileTheSensorIsMade(t *testing.T) {
 			// deliberate: saving a sensor does not probe it, and a target that
 			// answered would tie this test to something being up.
 			chromedp.SetValue(`#modal input[name="target"]`, "http://127.0.0.1:9/"),
+			chromedp.SetValue(`#modal input[name="tags"]`, "roof, attic"),
+			chromedp.SetValue(`#modal input[name="reminder_every"]`, "30"),
 		)
 	}); err != nil {
 		capture(t, ctx, dir, "sensor-form-not-filled")
 		t.Fatalf("could not fill in the sensor form: %v", err)
 	}
 
-	if hidden := read[bool](t, ctx, siteFieldsHidden, "the fields that make a place"); !hidden {
-		capture(t, ctx, dir, "new-site-fields-too-early")
-		t.Errorf("the fields that make a place are on screen before the entry that makes " +
-			"one was chosen")
+	if open := read[bool](t, ctx, siteDialogOpen, "the site editor"); open {
+		capture(t, ctx, dir, "site-window-open-too-early")
+		t.Errorf("the site editor is up before the entry that opens it was chosen, so " +
+			"opening a sensor form throws a window at the reader")
 	}
 
 	labels := read[[]string](t, ctx,
@@ -1451,6 +1880,8 @@ func TestASiteCanBeMadeWhileTheSensorIsMade(t *testing.T) {
 			"the entries are %v", last, labels)
 	}
 
+	before := read[[]string](t, ctx, sensorFormState, "the sensor form")
+
 	if err := withTimeout(ctx, func(tctx context.Context) error {
 		return chromedp.Do(tctx, pickTheNewSiteEntry)
 	}); err != nil {
@@ -1458,48 +1889,52 @@ func TestASiteCanBeMadeWhileTheSensorIsMade(t *testing.T) {
 		t.Fatalf("could not choose the place-making entry: %v", err)
 	}
 
-	if hidden := read[bool](t, ctx, siteFieldsHidden, "the fields that make a place"); hidden {
-		capture(t, ctx, dir, "new-site-fields-stayed-down")
-		t.Errorf("choosing \"New site…\" did not bring up the fields that make one, so there " +
-			"is no way to say what the place is called")
-	}
-
-	// Saving with the place unnamed is refused, and says which name is missing.
-	// Named by the place and not by the sensor: the sensor has a name, and a message
-	// about the wrong field would send somebody to fill in a field they already
-	// filled in.
 	if err := withTimeout(ctx, func(tctx context.Context) error {
-		return chromedp.Do(tctx, chromedp.Click(`#modal-save`))
+		return chromedp.Do(tctx, chromedp.WaitVisible(`#modal-site input[name="site_name"]`))
 	}); err != nil {
-		t.Fatalf("could not press Save: %v", err)
-	}
-	eventually(t, ctx, `!!document.querySelector('#modal-error').textContent.trim()`,
-		"the form was saved with a place that has no name and said nothing about it",
-		dir, "new-site-unnamed-silent", 10*time.Second)
-
-	if msg := text(ctx, t, "#modal-error"); !strings.Contains(strings.ToLower(msg), "site") {
-		capture(t, ctx, dir, "new-site-unnamed-wrong-reason")
-		t.Errorf("saving a sensor with a nameless place is refused with %q, which does not "+
-			"say that the place is what is missing", msg)
-	}
-	if visible := read[bool](t, ctx, `document.querySelector('#modal').open`, "the form"); !visible {
-		capture(t, ctx, dir, "new-site-unnamed-closed")
-		t.Errorf("the form closed although the place it was making had no name, so the " +
-			"sensor was not saved and nothing says so")
+		capture(t, ctx, dir, "site-editor-did-not-open")
+		t.Fatalf("choosing \"New site…\" did not open the site editor: %v", err)
 	}
 
-	// Now the form is filled in properly and then abandoned. Both the refusal above
-	// and this closing are meant to leave no place behind, and the check below is
-	// after both of them.
+	// The sensor form has to be *behind* the window, not closed by it: closing it and
+	// rebuilding it afterwards is what the old inline fields replaced, and a rebuild
+	// is where values get lost.
+	if behind := read[bool](t, ctx, `document.querySelector('#modal').open`, "the sensor form"); !behind {
+		capture(t, ctx, dir, "sensor-form-closed-under-site-window")
+		t.Errorf("the sensor form was closed when the site editor opened, so everything " +
+			"typed into it is gone and the editor is a window over nothing")
+	}
+	if hint := text(ctx, t, "#modal-site .sheet-note"); hint == "" {
+		capture(t, ctx, dir, "site-editor-without-a-hint")
+		t.Errorf("the site editor opened over the sensor form without a line saying where " +
+			"it came from, so it reads as something that went wrong")
+	}
+
+	// Saving a place with no name is refused, and the window stays open. The refusal
+	// is the browser's own — the field is `required` — and that is the honest thing to
+	// check: what matters is that no nameless place is written and that the reader is
+	// not sent back to a window that has quietly closed.
+	if err := withTimeout(ctx, func(tctx context.Context) error {
+		return chromedp.Do(tctx, chromedp.Click(`#site-save`))
+	}); err != nil {
+		t.Fatalf("could not press the site editor's Save: %v", err)
+	}
+	if open := read[bool](t, ctx, siteDialogOpen, "the site editor"); !open {
+		capture(t, ctx, dir, "nameless-site-closed-silently")
+		t.Errorf("the site editor closed although the place it was making had no name, so " +
+			"the place was not made and nothing says so")
+	}
+
+	// Now it is named and then thrown away.
 	if err := withTimeout(ctx, func(tctx context.Context) error {
 		return chromedp.Do(tctx,
-			chromedp.SetValue(`#modal input[name="site_name"]`, abandoned),
-			chromedp.Click(`#modal-cancel`),
-			chromedp.WaitNotVisible(`#modal`),
+			chromedp.SetValue(`#modal-site input[name="site_name"]`, abandoned),
+			chromedp.Click(`#site-cancel`),
+			chromedp.WaitNotVisible(`#modal-site`),
 		)
 	}); err != nil {
-		capture(t, ctx, dir, "sensor-form-would-not-close")
-		t.Fatalf("could not close the sensor form: %v", err)
+		capture(t, ctx, dir, "site-editor-would-not-close")
+		t.Fatalf("could not close the site editor: %v", err)
 	}
 
 	// Looking for something that is *not* there needs a moment of stillness: a write
@@ -1510,11 +1945,40 @@ func TestASiteCanBeMadeWhileTheSensorIsMade(t *testing.T) {
 	time.Sleep(750 * time.Millisecond)
 
 	if places := readAsync[[]serverPlace](t, ctx, readPlacesOnTheServer, "the places on the server"); contains(placeNames(places), abandoned) {
-		capture(t, ctx, dir, "abandoned-form-made-a-place")
-		t.Errorf("a sensor form closed without saving left the place %q behind: the places "+
-			"are now %v. A place is meant to be made when the sensor is saved, not when the "+
-			"entry was chosen — otherwise every form opened and thought better of leaves an "+
+		capture(t, ctx, dir, "abandoned-window-made-a-place")
+		t.Errorf("a site editor closed without saving left the place %q behind: the places "+
+			"are now %v. A place is meant to be made when that window is saved, not when the "+
+			"entry was chosen — otherwise every window opened and thought better of leaves an "+
 			"empty place behind, and nobody ever asks for one", abandoned, placeNames(places))
+	}
+
+	// The picker goes back to "no place". What is standing there is the entry that
+	// opens a window, and a form saved with it as its value would call the sensor's
+	// place `__new__`.
+	if value := read[string](t, ctx, thePlacePicker, "the place picker"); value != "" {
+		capture(t, ctx, dir, "picker-left-on-the-entry")
+		t.Errorf("after the site editor was dismissed without making a place, the picker "+
+			"still says %q. The entry it was left on is not a place, and it is the picker's "+
+			"own value that gets saved", value)
+	}
+
+	// Abandoning the sensor form as well leaves nothing at all behind: no place, and
+	// no sensor.
+	if err := withTimeout(ctx, func(tctx context.Context) error {
+		return chromedp.Do(tctx,
+			chromedp.Click(`#modal-cancel`),
+			chromedp.WaitNotVisible(`#modal`),
+		)
+	}); err != nil {
+		capture(t, ctx, dir, "sensor-form-would-not-close")
+		t.Fatalf("could not close the sensor form: %v", err)
+	}
+	time.Sleep(750 * time.Millisecond)
+
+	if got := placeNames(readAsync[[]serverPlace](t, ctx, readPlacesOnTheServer, "the places on the server")); contains(got, abandoned) || contains(got, place) {
+		capture(t, ctx, dir, "abandoned-form-made-a-place")
+		t.Errorf("a sensor form closed without saving left a place behind: the places are "+
+			"now %v. Neither name was saved anywhere", got)
 	}
 
 	// --- a place made while the sensor is made ------------------------------
@@ -1525,32 +1989,91 @@ func TestASiteCanBeMadeWhileTheSensorIsMade(t *testing.T) {
 		return chromedp.Do(tctx,
 			chromedp.SetValue(`#modal input[name="name"]`, sensor),
 			chromedp.SetValue(`#modal input[name="target"]`, "http://127.0.0.1:9/"),
+			chromedp.SetValue(`#modal input[name="tags"]`, "roof, attic"),
+			chromedp.SetValue(`#modal input[name="reminder_every"]`, "30"),
+		)
+	}); err != nil {
+		capture(t, ctx, dir, "sensor-form-not-filled-again")
+		t.Fatalf("could not fill in the sensor form: %v", err)
+	}
+	before = read[[]string](t, ctx, sensorFormState, "the sensor form")
+
+	// The place is named and, this time, given coordinates — the thing the old inline
+	// fields could not do, and the reason one editor is better than two.
+	if err := withTimeout(ctx, func(tctx context.Context) error {
+		return chromedp.Do(tctx,
 			pickTheNewSiteEntry,
-			chromedp.SetValue(`#modal input[name="site_name"]`, place),
-			chromedp.SetValue(`#modal select[name="site_kind"]`, "external"),
+			chromedp.WaitVisible(`#modal-site input[name="site_name"]`),
+			chromedp.SetValue(`#modal-site input[name="site_name"]`, place),
+			chromedp.SetValue(`#modal-site select[name="kind"]`, "external"),
+			chromedp.SetValue(`#modal-site input[name="lat"]`, "48.1372"),
+			chromedp.SetValue(`#modal-site input[name="lon"]`, "11.5756"),
+			chromedp.Click(`#site-save`),
+			chromedp.WaitNotVisible(`#modal-site`),
+			// The picker is filled from the server's own list, so the wait is for the
+			// list and not for the option: a select holding a name the server does not
+			// know is exactly what must not happen.
+			chromedp.Poll[chromedp.Void](
+				fmt.Sprintf(`document.querySelector('#modal select[name="site"]').value === %s`, jsQuote(place)),
+				chromedp.WithPollingTimeout(15*time.Second)),
+		)
+	}); err != nil {
+		capture(t, ctx, dir, "place-not-made-over-the-sensor")
+		t.Fatalf("could not make a place from the sensor form: %v\nthe editor said: %s",
+			err, text(ctx, t, "#site-error"))
+	}
+
+	// Everything else in the sensor form is as it was. Compared as a whole list and
+	// not field by field, because the claim is that nothing has to be carried over.
+	if after := read[[]string](t, ctx, sensorFormState, "the sensor form"); !slices.Equal(before, after) {
+		capture(t, ctx, dir, "sensor-form-changed-under-the-site-window")
+		t.Errorf("the sensor form did not survive the site editor being opened over it:\n"+
+			"before: %v\nafter:  %v\nThe site editor is a dialog of its own so that nothing "+
+			"in this form has to be carried over by hand, and everything the reader typed is "+
+			"still meant to be here", before, after)
+	}
+	if value := read[string](t, ctx, thePlacePicker, "the place picker"); value != place {
+		capture(t, ctx, dir, "picker-not-on-the-new-place")
+		t.Errorf("the place picker stands on %q after the place %q was made, want it on the "+
+			"place that was just made — otherwise the sensor has to be pointed at it by hand",
+			value, place)
+	}
+
+	// No sensor was saved by any of this: the site editor makes places, and the sensor
+	// form's own Save makes sensors. That Save is what has to happen next.
+	if stands := readAsync[[]string](t, ctx, readWhereTheSensorStands(sensor), "where the sensor stands"); len(stands) != 0 {
+		capture(t, ctx, dir, "sensor-saved-by-the-site-window")
+		t.Errorf("the sensor was saved by the site editor: the summary already holds %d "+
+			"of them. The editor makes a place, and the sensor form is what saves a sensor",
+			len(stands))
+	}
+
+	if err := withTimeout(ctx, func(tctx context.Context) error {
+		return chromedp.Do(tctx,
 			chromedp.Click(`#modal-save`),
 			chromedp.WaitNotVisible(`#modal`),
 			// Both writes have to have landed before they are asked about: the
 			// sensor is saved after the place it names, and a summary fetched a
 			// moment too early would show the sensor still without one.
 			chromedp.Poll[chromedp.Void](
-				fmt.Sprintf(`fetch('/api/sites').then(r => r.json())`+
-					`.then(d => (d.sites || []).some(s => s.name === %s))`, jsQuote(place)),
+				fmt.Sprintf(`fetch('/api/summary').then(r => r.json())`+
+					`.then(d => (d.sensors || []).some(s => s.name === %s && s.site === %s))`,
+					jsQuote(sensor), jsQuote(place)),
 				chromedp.WithPollingTimeout(15*time.Second)),
 		)
 	}); err != nil {
 		capture(t, ctx, dir, "sensor-with-new-site-not-saved")
-		t.Fatalf("could not make a sensor and its place in one go: %v\nthe form said: %s",
+		t.Fatalf("could not save the sensor on the place it made: %v\nthe form said: %s",
 			err, text(ctx, t, "#modal-error"))
 	}
 
 	places := readAsync[[]serverPlace](t, ctx, readPlacesOnTheServer, "the places on the server")
 	made := 0
-	var kind string
+	var saved serverPlace
 	for _, p := range places {
 		if p.Name == place {
 			made++
-			kind = p.Kind
+			saved = p
 		}
 	}
 	switch {
@@ -1562,10 +2085,19 @@ func TestASiteCanBeMadeWhileTheSensorIsMade(t *testing.T) {
 		capture(t, ctx, dir, "made-place-twice")
 		t.Errorf("the place %q exists %d times; saving one sensor makes one place, even "+
 			"when the picker was used more than once", place, made)
-	case kind != "external":
+	case saved.Kind != "external":
 		capture(t, ctx, dir, "made-place-kind")
-		t.Errorf("the place %q is %q, want external — the kind was chosen in the form and "+
-			"the form is the only place it was said", place, kind)
+		t.Errorf("the place %q is %q, want external — the kind was chosen in the editor and "+
+			"the editor is the only place it was said", place, saved.Kind)
+	case saved.Lat == nil || saved.Lon == nil:
+		capture(t, ctx, dir, "made-place-unplaced")
+		t.Errorf("the place %q has no coordinates, although they were typed into the "+
+			"editor. Being able to give a place a position while making it is the reason the "+
+			"real editor is used here and not a second copy of two of its fields", place)
+	case math.Abs(*saved.Lat-48.1372) > 1e-4 || math.Abs(*saved.Lon-11.5756) > 1e-4:
+		capture(t, ctx, dir, "made-place-wrong-coordinates")
+		t.Errorf("the place %q stands at %v/%v, want 48.1372/11.5756 — the numbers typed "+
+			"into the editor, not the ones it was opened with", place, *saved.Lat, *saved.Lon)
 	}
 	if contains(placeNames(places), abandoned) {
 		t.Errorf("the abandoned name %q became a place after all: the places are %v",

@@ -420,18 +420,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   here, and openly in `SECURITY.md` and `docs/concepts/security.md`. Nothing from
   the file, and no credential in it, is ever written to a log line: the export and
   the restore log row counts per table and nothing else.
-- **A site can be made while the sensor is made.** The sensor form's place picker
-  ended with the places that already existed, so the choice when a sensor stood
-  somewhere new was to leave the half-filled form, declare the place under Settings
-  and come back — or to give up on the place. The picker's last entry is now **New
-  site…**; choosing it brings up a name and a kind, and the place is made together
-  with the sensor. It is made **on save** and not when the entry was chosen, so a
-  form closed again leaves nothing behind and a name that already exists is used
-  rather than made twice. The two fields stay off screen until that entry is picked,
-  so nothing in the form invites a name for a place nobody asked for.
+- **The map draws its own world, borders and names included.** The map used to draw
+  coastlines and nothing else, so a dashboard monitoring two hosts in two countries
+  showed two pins on a silhouette. Three more public-domain Natural Earth data sets are
+  now embedded in the binary and decoded in the browser: the world's first-order
+  administrative borders — states, provinces, German Bundesländer and everything else at
+  that level — the names of the countries, and the names of those provinces. All of it
+  is drawn locally and **nothing is requested to draw it**, exactly as the coastlines
+  always were: there is no geocoding service being asked where Niedersachsen is, and the
+  map on a network with no internet is now a map rather than a coastline. The coastlines
+  themselves move from Natural Earth's 1:110m set to its 1:50m one, which is honest to
+  about zoom 6 instead of about zoom 4. The borders and the names arrive with the zoom,
+  in the bands Natural Earth's own authors put them in: country outlines and country
+  names at a world view, province borders from about zoom 5, province names from about
+  zoom 7 — four and a half thousand of them at once would be a grey smear, not a map.
+  Names that would land on a name already placed are dropped rather than drawn over it,
+  countries first.
+- **A switch for the borders and the names**, under **Settings → Look → Map**, on by
+  default. Off, the map draws the coastlines alone — and the two data files that carry
+  the borders and the names are not sent to the browser at all, so the switch saves the
+  megabyte it looks like it should save. Missing row means on, like every other
+  yes/no setting here, and a viewer sees the state without being able to change it.
+- **A site can be made while the sensor is made, in the real site dialog.** The sensor
+  form's place picker ended with the places that already existed, so the choice when a
+  sensor stood somewhere new was to leave the half-filled form, declare the place under
+  Settings and come back — or to give up on the place. The picker's last entry is **New
+  site…**, and choosing it now opens **the same window Settings → Sites opens**: name,
+  kind **and coordinates**, with the sensor form left standing behind it and saying so.
+  The old route could not set a coordinate at all, which was the real cost — making a
+  sensor is usually the moment somebody first knows where the thing stands. The place is
+  made **when the site window is saved**, not when the sensor is, so a sensor form
+  abandoned afterwards leaves the place behind: that is the price of one dialog rather
+  than two, and it is the honest one. The saved name is put straight into the sensor's
+  place picker, and a name that already exists is used rather than made twice.
 
 ### Changed
 
+- **The settings icon is a gear.** It was a circle with eight strokes around it, which
+  is a sun. Settings is not a brightness control, and in a bar whose other three icons
+  are also drawn by hand the one icon nobody could name was the one that mattered most.
+  The gear is an eight-toothed path on the same 16×16 grid as its three neighbours, so
+  the tab keeps its width and the bar keeps its one line.
+- **The web assets carry an ETag, so a second visit is a 304.** The dashboard's files
+  are embedded in the binary and served `no-cache`, which is right — they change with
+  the version — but `embed.FS` has no modification time and no validator, and with no
+  validator to revalidate against, `no-cache` means every page load downloads every
+  file again. With the map's data that is now a megabyte and a half of re-download per
+  visit. A SHA-256 of each embedded file is computed once at start-up from the bytes
+  already in the binary — no build step, nothing to keep in sync — and served as the
+  file's ETag; `If-None-Match` is answered with a `304` and no body. The cache-control
+  is unchanged, so a changed file is still picked up on the next request.
 - **The map no longer points at OpenStreetMap's tile servers; the field is empty and
   that is the off switch.** A fresh installation drew its map from
   `tile.openstreetmap.org`, and that address is no longer one this project may use:

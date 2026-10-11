@@ -32,6 +32,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -364,6 +365,24 @@ func capture(ctx context.Context, base, out string) error {
 		if err := shot(ctx, out, view.name, 1600, 900, after...); err != nil {
 			return err
 		}
+	}
+
+	// A second picture of the map, taken from much closer in.
+	//
+	// The demo set is a homelab in Berlin and a rented server in Virginia, and the
+	// one view that holds both is a view of the world — where the country borders
+	// and their names are all that is drawn, because the finer lines would be a grey
+	// texture at that scale. The provinces arrive a few zoom levels later, so this
+	// one is taken the way somebody gets there: the wheel, with the cursor on the
+	// place they keep their servers, which is what zooms on the point under it.
+	if err := zoomIn(ctx, `.site-marker[data-site="Homelab"]`, 3); err != nil {
+		return err
+	}
+	if err := shot(ctx, out, "dashboard-map-provinces", 1600, 900,
+		// A moment longer than the other views: the names are measured off the page
+		// and dropped again, and this is the one picture whose whole subject is them.
+		chromedp.Sleep(2*time.Second)); err != nil {
+		return err
 	}
 	if err := do(ctx, "back to the cards",
 		chromedp.Click(`#layout-switcher [data-layout="grid"]`),
@@ -825,6 +844,54 @@ func shot(ctx context.Context, out, name string, width, height int,
 		return err
 	}
 	fmt.Printf("  %-22s %d KB\n", name+".png", len(png)/1024)
+	return nil
+}
+
+// zoomIn turns the map's wheel with the cursor on one of its markers, ticks deep.
+//
+// The cursor is put on the marker as it is on screen rather than at a coordinate
+// worked out here: the map zooms on the point under the pointer, so this is also
+// the check that the place it is aiming at is where it looks — a pin that ends up
+// somewhere else takes the zoom with it. Real wheel events, because the handler
+// they reach is the one a person's wheel reaches.
+func zoomIn(ctx context.Context, marker string, ticks int) error {
+	at, err := chromedp.Run(ctx, chromedp.Evaluate[[]float64](
+		`(() => {
+			const el = document.querySelector(`+strconv.Quote(marker)+`);
+			if (!el) return null;
+			const box = el.getBoundingClientRect();
+			return [box.left + box.width / 2, box.top + box.height / 2];
+		})()`))
+	if err != nil {
+		return fmt.Errorf("finding the marker to zoom in on: %w", err)
+	}
+	if len(at) != 2 {
+		return fmt.Errorf("the map has no %s marker to zoom in on", marker)
+	}
+	step, cancel := context.WithTimeout(ctx, stepTimeout)
+	defer cancel()
+	// The wheel is sent as a raw command rather than through the generated
+	// Input.dispatchMouseEvent parameters, for one dull reason: those parameters
+	// leave a zero `deltaX` out of the JSON, and Chrome refuses a mouseWheel event
+	// that does not carry both deltas. Sending both, with a horizontal one that is
+	// zero and stays zero, is what a wheel that is only turned does.
+	wheel := chromedp.Func(func(ctx context.Context, target *chromedp.Target) error {
+		return target.Call(ctx, "Input.dispatchMouseEvent", map[string]any{
+			"type":   "mouseWheel",
+			"x":      at[0],
+			"y":      at[1],
+			"deltaX": 0,
+			"deltaY": -100,
+		}, nil)
+	})
+	for i := 0; i < ticks; i++ {
+		// No waiting between the ticks: the map's view is moved to the new zoom
+		// before the handler returns and the marker stays under the cursor, so the
+		// next tick is anchored on the same place.
+		if _, err := chromedp.Run(step, wheel); err != nil {
+			return fmt.Errorf("zooming the map in: %w", err)
+		}
+	}
 	return nil
 }
 

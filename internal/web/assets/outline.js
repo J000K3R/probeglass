@@ -9,20 +9,27 @@
 // addresses somebody is watching.
 //
 // The data is in world.js: rings of coordinates, delta-coded, generated from Natural
-// Earth's 1:110m land layer by cmd/worldgen. The provenance is in the header there.
-// This file decodes it once and turns it into one SVG path.
+// Earth's 1:50m land layer by cmd/worldgen. The provenance is in the header there.
+// The country and province borders and the place names come from the same generator
+// and are drawn by borders.js and labels.js, which read their own files.
+//
+// This file is also where the projection lives: lonToX, latToY and the zoom-4 world
+// they are expressed in. The other layers draw with those rather than with a second
+// copy of the arithmetic, because two copies of a projection that disagree by a pixel
+// put a border next to its country.
 //
 // Two things about the drawing are worth knowing:
 //
 //   * The path is in the map's own world coordinates at zoom 4 — the same Web
 //     Mercator arithmetic map.js uses. Zooming scales the group rather than
-//     rebuilding the path, so a wheel click is a transform on 5000 points and not a
-//     5000-point string rebuilt; `vector-effect: non-scaling-stroke` keeps the
+//     rebuilding the path, so a wheel click is a transform on 35 000 points and not a
+//     35 000-point string rebuilt; `vector-effect: non-scaling-stroke` keeps the
 //     coastline one pixel wide at every level.
 //
-//   * It is deliberately coarse. 1:110m is a world map: the shape of a continent is
-//     right, the shape of a bay is a straight line. Somebody who needs the second
-//     one enters a tile URL in Settings, and that field is there for exactly that.
+//   * It is deliberately coarse. 1:50m at a tolerance of 0.02° is within a pixel of
+//     the truth to about zoom 6 and visibly angular by about zoom 10. Somebody who
+//     needs a coastline past that enters a tile URL in Settings, and that field is
+//     there for exactly that.
 
 import { WORLD_DATA, WORLD_RINGS, WORLD_SCALE } from './world.js';
 
@@ -31,10 +38,10 @@ const TILE = 256;
 // The zoom the path coordinates are expressed in, and its extent in world pixels.
 // Four is a compromise: high enough that a round coordinate is not a visible step,
 // low enough that the coordinates stay small in the encoded file.
-const BASE_ZOOM = 4;
-const BASE_SPAN = TILE * 2 ** BASE_ZOOM;
+export const BASE_ZOOM = 4;
+export const BASE_SPAN = TILE * 2 ** BASE_ZOOM;
 
-const SVG_NS = 'http://www.w3.org/2000/svg';
+export const SVG_NS = 'http://www.w3.org/2000/svg';
 
 // The alphabet worldgen writes in, and a reverse lookup built once. A char code
 // outside it means the file and this decoder disagree about the format, which is a
@@ -50,25 +57,33 @@ const CODE = (() => {
 const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
 
 /** lonToX is the projection map.js draws markers with. The two have to agree. */
-function lonToX(lon) {
+export function lonToX(lon) {
   return ((lon + 180) / 360) * BASE_SPAN;
 }
 
-function latToY(lat) {
+export function latToY(lat) {
   const s = Math.sin((clamp(lat, -85.05112878, 85.05112878) * Math.PI) / 180);
   return (0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * BASE_SPAN;
 }
 
 /**
- * decode reads the rings back out of WORLD_DATA.
+ * cursor reads the packed streams cmd/worldgen writes.
  *
- * The format is documented in cmd/worldgen. Two details of it live here: a varint is
- * base 63 in six-bit characters closed by a chunk of 63, and the first point of a ring
- * is written as an absolute value where every other is a delta — so accumulating from
- * zero does the right thing for both, and there is no special case to forget.
+ * The format is documented there. What lives here is the mechanism all three of its
+ * shapes share: a varint is base 63 in six-bit characters closed by a chunk of 63, and
+ * coordinates arrive as deltas from the point before, so a reader accumulates from
+ * zero and the first point of a chain is an absolute one with no special case to
+ * forget.
+ *
+ * The two ways to read a chain are the two the format has. `line()` starts a fresh one
+ * — a coastline ring, a border line, each beginning absolute — and `point()` continues
+ * the one that is running, which is how the name streams run a single chain from the
+ * first label to the last, groups and all.
  */
-export function decode(data = WORLD_DATA) {
+export function cursor(data) {
   let pos = 0;
+  let lon = 0;
+  let lat = 0;
 
   function value() {
     let v = 0;
@@ -77,45 +92,68 @@ export function decode(data = WORLD_DATA) {
     // forever inside an animation frame.
     for (let n = 0; n < 12; n++) {
       const c = CODE[data.charCodeAt(pos++)] ?? -1;
-      if (c < 0) throw new Error('outline data is truncated or not in the expected alphabet');
+      if (c < 0) throw new Error('map data is truncated or not in the expected alphabet');
       if (c === 63) return v;
       v = v * 63 + c;
     }
-    throw new Error('outline data has an unterminated number');
+    throw new Error('map data has an unterminated number');
   }
 
   const unzigzag = (u) => (u % 2 ? -(u - 1) / 2 - 1 : u / 2);
 
-  const rings = [];
-  const count = value();
-  for (let i = 0; i < count; i++) {
-    const points = value();
-    const ring = new Float64Array(points * 2);
-    let lon = 0;
-    let lat = 0;
-    for (let j = 0; j < points; j++) {
-      lon += unzigzag(value());
-      lat += unzigzag(value());
-      ring[j * 2] = lon / WORLD_SCALE;
-      ring[j * 2 + 1] = lat / WORLD_SCALE;
-    }
-    rings.push(ring);
+  /** point advances the running coordinate and returns it in degrees. */
+  function point() {
+    lon += unzigzag(value());
+    lat += unzigzag(value());
+    return [lon / WORLD_SCALE, lat / WORLD_SCALE];
   }
+
+  return {
+    value,
+    point,
+    /** line reads a point count and then that many points, as their own chain. */
+    line() {
+      const points = value();
+      const out = new Float64Array(points * 2);
+      lon = 0;
+      lat = 0;
+      for (let j = 0; j < points; j++) {
+        const p = point();
+        out[j * 2] = p[0];
+        out[j * 2 + 1] = p[1];
+      }
+      return out;
+    },
+  };
+}
+
+/** decode reads the rings of world.js back out of it. */
+export function decode(data = WORLD_DATA) {
+  const read = cursor(data);
+  const count = read.value();
+  const rings = [];
+  for (let i = 0; i < count; i++) rings.push(read.line());
   return rings;
 }
 
-/** pathData turns the rings into one path string in the zoom-4 world. */
-function pathData(rings) {
+/**
+ * pathData turns lines of coordinates into one path string in the zoom-4 world.
+ *
+ * `closed` is whether each line comes back to where it started. A coastline ring does
+ * and a border does not, and the difference is a `Z` — which for a border is a line
+ * drawn straight across the country to its own beginning.
+ */
+export function pathData(lines, closed = true) {
   const parts = [];
-  for (const ring of rings) {
+  for (const line of lines) {
     let head = true;
-    for (let i = 0; i < ring.length; i += 2) {
-      const x = lonToX(ring[i]).toFixed(2);
-      const y = latToY(ring[i + 1]).toFixed(2);
+    for (let i = 0; i < line.length; i += 2) {
+      const x = lonToX(line[i]).toFixed(2);
+      const y = latToY(line[i + 1]).toFixed(2);
       parts.push(head ? `M${x} ${y}` : `L${x} ${y}`);
       head = false;
     }
-    parts.push('Z');
+    if (closed) parts.push('Z');
   }
   return parts.join('');
 }

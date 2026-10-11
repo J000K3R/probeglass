@@ -215,16 +215,17 @@ If the community matters, treat it as compromised the moment it crosses one.
 
 ## The map draws itself, and fetches nothing by default
 
-The dashboard draws your sites on a map. The map's land comes out of the binary —
-coastlines from a public-domain dataset, decoded in the browser — and **out of the box
-nothing about it leaves the machine**. No request is made to any server to draw it, so
-there is nobody to disclose anything to: not your IP address, not your browser, and not
-the part of the world you are looking at. The daemon never contacts a map server either,
-by default or otherwise.
+The dashboard draws your sites on a map. The map's world comes out of the binary —
+coastlines, the country and province borders and the names of both, all from
+public-domain datasets decoded in the browser — and **out of the box nothing about it
+leaves the machine**. No request is made to any server to draw it, so there is nobody to
+disclose anything to: not your IP address, not your browser, and not the part of the
+world you are looking at. The daemon never contacts a map server either, by default or
+otherwise.
 
-An administrator can still enter a tile URL in **Settings → Map**, and that is a real
-decision with a real cost, so it is written down here rather than buried in a setting's
-help text. Once one is entered the tiles are fetched **by the browser**, directly from
+An administrator can still enter a tile URL in **Settings → Look → Map**, and that is a
+real decision with a real cost, so it is written down here rather than buried in a
+setting's help text. Once one is entered the tiles are fetched **by the browser**, directly from
 that server — Weatherglass does not proxy them and no tile passes through the daemon.
 Whoever operates that server then sees the **IP address** of whoever is looking at the
 dashboard, their **browser's user agent**, and the **approximate part of the map** in
@@ -251,7 +252,14 @@ What Weatherglass does about it:
 - **The setting is administrator-only and installation-wide**, unlike the appearance
   preferences, which every account owns for itself. A viewer cannot point the map at a
   server of their choosing, and cannot use the map to make somebody else's browser talk
-  to a host of their choosing.
+  to a host of their choosing. The borders switch rides in the same payload and is the
+  same kind of setting, but it fetches nothing and discloses nothing — it only decides
+  whether two files already in the binary are sent to the browser.
+- **No data of any kind leaves with the map.** The borders and the names are decoded
+  from the binary exactly like the coastlines: a query about a place name cannot be
+  made, because nothing is asked anywhere. The whole reason the layers are embedded and
+  not fetched from a geocoding service is that a map which asks "where is Niedersachsen"
+  is a map that has told somebody where you are looking.
 - **No tile ever reaches the server.** Nothing about the map is written to the database,
   a log line or a stored result.
 - **The retired default is removed, not honoured.** An installation that once saved the
@@ -267,14 +275,16 @@ What that does not protect you from:
 - **Anything else on that origin.** The policy allows the origin you name, so if you
   point the map at a host that serves other things, the browser may fetch those too.
   That is the same trust you extend to any server you type into a setting.
-- **Coarse coastlines.** The bundled dataset is 1:110m: continents are recognisable to
-  about zoom 6, and in a city the coastline is straight lines between distant points.
-  That is the honest limit of a world map small enough to embed, and it is the other
-  half of the reason the tile URL field exists.
+- **Coarse data.** The bundled coastlines are 1:50m, the borders and the province names
+  1:10m, the country names 1:110m: recognisable to about zoom 6 for the coastlines, and
+  in a city a straight line between distant points. That is the honest limit of a world
+  map small enough to embed, and it is the other half of the reason the tile URL field
+  exists. It is also the price of the property above: a dataset small enough to ship is
+  a dataset coarse enough to see.
 
 If the map's subject is somebody else's infrastructure, or the dashboard is reachable
 from outside your network, run a tile server inside your own network and put its address
-in **Settings → Map**. Nothing about the map needs the public internet.
+in **Settings → Look → Map**. Nothing about the map needs the public internet.
 
 ## The container starts as root, and leaves it before it opens anything
 

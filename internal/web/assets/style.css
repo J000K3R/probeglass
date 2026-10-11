@@ -45,6 +45,12 @@
      whether or not anybody configured a tile server. */
   --map-land: #212c39;
   --map-coast: #46586e;
+  /* A border is a line, not an edge of a shape, and a label has to be readable
+     over water, over land and over somebody's tiles. Both are one step brighter
+     than the coast and dimmer than the text, so that the pins stay the loudest
+     thing on the map — they are the only part of it that means anything. */
+  --map-border: #55697f;
+  --map-label: #c7d4e4;
 
   --radius: 12px;
   --radius-sm: 8px;
@@ -91,6 +97,8 @@
     --accent-ink: #ffffff;
     --map-land: #e7eef7;
     --map-coast: #afc0d4;
+    --map-border: #8fa4bd;
+    --map-label: #33415a;
   }
 
   :root[data-theme='auto'][data-accent='azure'] { --accent: #2563eb; }
@@ -125,6 +133,8 @@
   --accent-ink: #ffffff;
   --map-land: #e7eef7;
   --map-coast: #afc0d4;
+  --map-border: #8fa4bd;
+  --map-label: #33415a;
 }
 
 :root[data-theme='light'][data-accent='azure'] { --accent: #2563eb; }
@@ -1259,13 +1269,11 @@ input:disabled, select:disabled { opacity: 0.55; }
 .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: var(--gap); }
 .grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: var(--gap); }
 
-/* The two fields that make a site, shown in the sensor form when the site being
-   chosen is one that does not exist yet. They are the last child of the form's
-   three-column row and claim the whole row rather than one of its columns: two
-   boxes squeezed into a third of the width would read as two more sensor fields,
-   and they belong to the site, not to the sensor. Hidden with the `hidden`
-   attribute like everything else — the fields are not merely invisible. */
-.new-site { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: var(--gap); padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); }
+/* A checkbox that is a field like any other: label.field stacks its children, which
+   is right above an input box and wrong next to a tick, so this one lies flat. */
+label.field.check { display: flex; align-items: center; gap: 8px; }
+label.field.check input { width: auto; }
+label.field.check > span { color: var(--text); font-size: 0.88rem; }
 
 .sensor-row { display: flex; align-items: center; gap: 8px; font-size: 0.88rem; }
 .sensor-row input { width: auto; }
@@ -2005,7 +2013,26 @@ input:disabled, select:disabled { opacity: 0.55; }
 .map-outline path { fill: var(--map-land); stroke: var(--map-coast);
   stroke-width: 1; stroke-linejoin: round; }
 
+/* Borders are a layer of their own, over the coast and under the tiles. `fill: none`
+   is not decoration: a border line does not close, and an open path with a fill
+   paints the shape its ends imply — a black half of Asia. */
+.map-borders { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.map-borders path { fill: none; stroke: var(--map-border);
+  stroke-width: 1; stroke-linejoin: round; stroke-linecap: round; }
+
 .map-tiles, .map-markers { position: absolute; inset: 0; }
+
+/* Names sit over the tiles and under the pins, in screen coordinates: the boxes are
+   positioned by the drawing code and centred on their anchor here, so the width it
+   measured for the collision test never decides where a word goes — that number is
+   only ever used to decide whether there is room. The shadow is what makes a name
+   readable over land and over water both, without an opaque plate that would cover
+   the map it is naming. */
+.map-labels { position: absolute; inset: 0; pointer-events: none; }
+.map-label { position: absolute; white-space: nowrap; color: var(--map-label);
+  line-height: 1; transform: translate(-50%, -50%); text-shadow: 0 0 3px rgba(0, 0, 0, .55); }
+.map-label.k-country { font-size: 11px; font-weight: 600; letter-spacing: .02em; }
+.map-label.k-region { font-size: 10px; opacity: .82; }
 .map-tile { position: absolute; width: 256px; height: 256px; user-select: none;
   pointer-events: none; }
 

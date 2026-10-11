@@ -194,56 +194,98 @@ function confirmDialog(message) {
 }
 
 /**
- * modal is the one dialog every editor in the dashboard shares.
+ * sheet builds the controller for one `<dialog>` and its form.
  *
- * It owns the four things that have to be reset between openings, because getting
- * any of them wrong leaves the next dialog carrying the last one's state. The
- * delete button is the sharpest of them: each editor that offers one injects it
- * into the shared footer, and an editor that does not offer one has to take it
- * away again — otherwise "New channel" opens with a live "Delete sensor" button
- * under it.
+ * Every editor in the dashboard shares a dialog whose four bits of state have to
+ * be reset between openings, because getting any of them wrong leaves the next
+ * dialog carrying the last one's state. The delete button is the sharpest of
+ * them: each editor that offers one injects it into the shared footer, and an
+ * editor that does not offer one has to take it away again — otherwise "New
+ * channel" opens with a live "Delete sensor" button under it.
+ *
+ * There are two of them rather than one, and that is not an accident of taste:
+ * `showModal()` on a dialog that is already open throws, so a dialog opened from
+ * inside another dialog cannot reuse it. Opening the site editor from the sensor
+ * form could have closed the sensor form first and rebuilt it afterwards, but a
+ * rebuilt sensor form is a form whose type select has to have its change handler
+ * run again, whose option fields, channel ticks and open groups all have to be
+ * carried over by hand — and every value missed on the way is silent loss. Two
+ * dialogs cost one element and keep the form behind them untouched.
  */
-const modal = {
-  open({ title, body, mode, id = '', saveLabel, showTest = false, locked = false }) {
-    const form = $('#modal-form');
-    form.dataset.mode = mode;
-    form.dataset.id = id === '' ? '' : String(id);
-    form.dataset.locked = locked ? '1' : '';
-    $('#modal-body').innerHTML = body;
-    $('#modal-error').textContent = '';
-    $('#modal-title').textContent = title;
-    applyTranslations($('#modal'));
-    // After applyTranslations, not before: the save button carries the generic
-    // "Save" in its data-i18n, and this is the per-dialog word for it.
-    $('#modal-save').textContent = saveLabel || t('common.save');
-    $('#modal-test').hidden = !showTest;
-    $('#modal-cancel').hidden = locked;
-    $('#modal-x').hidden = locked;
-    this.clearDanger();
-    $('#modal').showModal();
-    form.querySelector('input:not([disabled]):not([type="radio"]), select, textarea')?.focus();
-  },
+function sheet({ dialog, form, title, body, error, save, cancel, x, test, footer }) {
+  return {
+    open({ title: heading, body: markup, mode, id = '', saveLabel, showTest = false, locked = false }) {
+      const el = $(form);
+      el.dataset.mode = mode;
+      el.dataset.id = id === '' ? '' : String(id);
+      el.dataset.locked = locked ? '1' : '';
+      $(body).innerHTML = markup;
+      $(error).textContent = '';
+      $(title).textContent = heading;
+      applyTranslations($(dialog));
+      // After applyTranslations, not before: the save button carries the generic
+      // "Save" in its data-i18n, and this is the per-dialog word for it.
+      $(save).textContent = saveLabel || t('common.save');
+      if (test) $(test).hidden = !showTest;
+      $(cancel).hidden = locked;
+      $(x).hidden = locked;
+      this.clearDanger();
+      $(dialog).showModal();
+      el.querySelector('input:not([disabled]):not([type="radio"]), select, textarea')?.focus();
+    },
 
-  /** danger puts a destructive action at the far left of the footer. */
-  danger(label, onClick) {
-    this.clearDanger();
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'btn btn-danger danger-delete';
-    button.textContent = label;
-    button.addEventListener('click', onClick);
-    const footer = $('#modal .sheet-foot');
-    footer.insertBefore(button, footer.firstChild);
-  },
+    /** danger puts a destructive action at the far left of the footer. */
+    danger(label, onClick) {
+      this.clearDanger();
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'btn btn-danger danger-delete';
+      button.textContent = label;
+      button.addEventListener('click', onClick);
+      const el = $(footer);
+      el.insertBefore(button, el.firstChild);
+    },
 
-  clearDanger() {
-    $('.danger-delete')?.remove();
-  },
+    clearDanger() {
+      $('.danger-delete')?.remove();
+    },
 
-  close() {
-    $('#modal').close();
-  },
-};
+    close() {
+      $(dialog).close();
+    },
+  };
+}
+
+const modal = sheet({
+  dialog: '#modal',
+  form: '#modal-form',
+  title: '#modal-title',
+  body: '#modal-body',
+  error: '#modal-error',
+  save: '#modal-save',
+  test: '#modal-test',
+  cancel: '#modal-cancel',
+  x: '#modal-x',
+  footer: '#modal .sheet-foot',
+});
+
+/**
+ * siteModal is the site editor, and it is the second dialog on purpose.
+ *
+ * Its own element means its own form, its own error line and its own footer, so
+ * the sensor form underneath keeps every value it was holding when the window
+ * opened over it — see the comment on `sheet`.
+ */
+const siteModal = sheet({
+  dialog: '#modal-site',
+  form: '#site-form',
+  title: '#site-title',
+  body: '#site-body',
+  error: '#site-error',
+  save: '#site-save',
+  cancel: '#site-cancel',
+  x: '#site-x',
+});
 
 // A locked dialog has no way out but its own button: Escape would close it and
 // take the only copy of whatever it is showing with it. The dashboard uses it for
@@ -1629,6 +1671,9 @@ async function mountMap() {
     sensors: state.sensors,
     tileURL: map.tile_url || '',
     attribution: map.attribution || '',
+    // "off" is the only value that means off: a missing row, which is every
+    // installation that never opened the panel, means the borders are drawn.
+    borders: map.borders !== 'off',
     onOpenSensor: openDetail,
   });
 }
@@ -1664,7 +1709,11 @@ function mountWidgets() {
     // settings have ever been fetched, and again once they have.
     mapSettings: () => {
       const map = (state.settings && state.settings.map) || {};
-      return { tileURL: map.tile_url || '', attribution: map.attribution || '' };
+      return {
+        tileURL: map.tile_url || '',
+        attribution: map.attribution || '',
+        borders: map.borders !== 'off',
+      };
     },
     onChange: (list) => persistUI('widgets', list.join(',')),
     onArranging: () => syncDashboardControls(),
@@ -2446,6 +2495,33 @@ function readOptions(form, def) {
   return options;
 }
 
+/**
+ * siteOptions is the place picker's entries, for the form's markup and for putting
+ * the picker back together afterwards.
+ *
+ * A list to choose from rather than a name to type: a site is a row in another
+ * table, and a typo here is refused by the database. Offering only what exists
+ * makes the mistake impossible instead of explaining it.
+ *
+ * The last entry is the way out of that: a sensor is often the moment somebody
+ * first knows where it stands, and sending them to Settings to make the site and
+ * then back here to save the sensor is a trip that loses the half-filled form.
+ * Choosing it opens the site editor on top of this window — see
+ * openSiteFromSensor — so the place is made in the one dialog that makes places,
+ * coordinates and all.
+ *
+ * It is a function and not a line inside the markup because the picker has to be
+ * redrawn from it: the form is built once, and a place made from this very form is
+ * made after that. Without the redraw the sensor would have to be pointed at the
+ * place it just made by choosing from a list the place is not in yet.
+ */
+function siteOptions(selected) {
+  return `<option value="">${esc(t('sites.none'))}</option>` +
+    (state.sites || []).map((s) =>
+      `<option value="${esc(s.name)}"${s.name === selected ? ' selected' : ''}>${esc(s.name)}</option>`).join('') +
+    `<option value="${NEW_SITE}">${esc(t('sites.newOption'))}</option>`;
+}
+
 function sensorFormMarkup(sensor) {
   const isNew = !sensor;
   const def = typeDef(sensor?.type || 'http');
@@ -2480,32 +2556,10 @@ function sensorFormMarkup(sensor) {
     <div class="grid-3 adv-hide">
       <label class="field"><span>${withHelp(t('sensor.group'), 'help.sensor.group')}</span>
         <input name="group" type="text" value="${esc(sensor?.group || '')}" list="group-list"></label>
-      <!-- A list to choose from rather than a name to type: a site is a row in
-           another table, and a typo here is refused by the database. Offering
-           only what exists makes the mistake impossible instead of explaining it.
-
-           The last entry is the way out of that: a sensor is often the moment
-           somebody first knows where it stands, and sending them to Settings to
-           make the site and then back here to save the sensor is a trip that
-           loses the half-filled form. Choosing it makes the two fields below
-           appear, and the site is made with the sensor. -->
       <label class="field"><span>${withHelp(t('sensor.site'), 'help.sensor.site')}</span>
-        <select name="site" id="sensor-site">
-          <option value="">${esc(t('sites.none'))}</option>
-          ${(state.sites || []).map((s) => `<option value="${esc(s.name)}"${s.name === sensor?.site ? ' selected' : ''}>${esc(s.name)}</option>`).join('')}
-          <option value="${NEW_SITE}">${esc(t('sites.newOption'))}</option>
-        </select></label>
+        <select name="site" id="sensor-site">${siteOptions(sensor?.site)}</select></label>
       <label class="field"><span>${withHelp(t('sensor.tags'), 'help.sensor.tags')}</span>
         <input name="tags" type="text" value="${esc((sensor?.tags || []).join(', '))}"></label>
-      <div class="new-site" id="sensor-new-site" hidden>
-        <label class="field"><span>${esc(t('sites.name'))}</span>
-          <input name="site_name" type="text" maxlength="64" autocomplete="off" placeholder="${esc(t('sites.nameHint'))}"></label>
-        <label class="field"><span>${esc(t('sites.kind'))}</span>
-          <select name="site_kind">
-            <option value="local">${esc(t('sites.kind.local'))}</option>
-            <option value="external">${esc(t('sites.kind.external'))}</option>
-          </select></label>
-      </div>
     </div>
     <datalist id="group-list">
       ${[...new Set(state.sensors.map((c) => c.group).filter(Boolean))].map((g) => `<option value="${esc(g)}">`).join('')}
@@ -2554,8 +2608,9 @@ async function openSensorEditor(existing = null) {
   form.dataset.lastType = existing?.type || 'http';
 
   const siteSelect = $('#sensor-site');
-  siteSelect.addEventListener('change', () => syncNewSite(form));
-  syncNewSite(form);
+  siteSelect.addEventListener('change', () => {
+    if (siteSelect.value === NEW_SITE) openSiteFromSensor(siteSelect);
+  });
 
   if (!isNew && !existing.managed) {
     modal.danger(t('sensor.delete'), () => deleteSensor(existing));
@@ -2593,8 +2648,10 @@ function readSensorForm(form) {
     enabled: form.elements.enabled.checked,
     group: form.elements.group.value.trim(),
     // The "new site" entry is a button in the shape of an option, not a site
-    // called that; the site it stands for is made by resolveSite and its name
-    // arrives afterwards.
+    // called that. Choosing it opens the site editor instead of setting a value,
+    // and a form saved with it still standing there — the window was dismissed
+    // without making anything — means the sensor has no place, not a place
+    // called `__new__`.
     site: form.elements.site.value === NEW_SITE ? '' : form.elements.site.value,
     tags: form.elements.tags.value.split(',').map((v) => v.trim()).filter(Boolean),
     reminder_every: Number(form.elements.reminder_every.value) || 0,
@@ -2608,37 +2665,43 @@ function readSensorForm(form) {
 // the server allows letters, digits and a few separators, and no underscores.
 const NEW_SITE = '__new__';
 
-/** Shows the two fields that make a site, when the chosen site is one being made. */
-function syncNewSite(form) {
-  const block = $('#sensor-new-site', form);
-  if (block) block.hidden = form.elements.site.value !== NEW_SITE;
-}
-
 /**
- * resolveSite turns the site field into the name of a site that exists.
+ * openSiteFromSensor opens the site editor over the sensor form.
  *
  * Creating a sensor is often the moment somebody first knows where it stands, so
  * the site list carries an entry that makes one, rather than sending them to
- * Settings and back — a trip that loses the half-filled form.
+ * Settings and back — a trip that loses the half-filled form. What answers is the
+ * site editor itself, the same window Settings → Sites opens: one dialog makes
+ * places, and a second set of fields with its own names and no coordinates would
+ * be a copy to keep in step forever.
  *
- * The making happens on save and not when the entry was picked: a site chosen and
- * then thought better of should leave nothing behind, and neither should a form
- * closed without saving. A name that is already taken is used rather than made
- * again, because two people naming the same rack within a minute of each other is
- * not an error to report, and a name clash would be the only thing that said so.
+ * The sensor form is not saved and not rebuilt; it stays behind the window with
+ * everything in it, which is the whole reason the site editor is its own dialog.
+ * When the place is made its name is put straight into the picker; when the
+ * window is dismissed, the picker goes back to "No site", because the entry that
+ * was chosen there is not a place either.
+ *
+ * The place is made when this window is saved, not when the sensor is. Abandoning
+ * the sensor afterwards therefore leaves the place standing — the one thing this
+ * arrangement gives up, and it is worth saying out loud rather than discovering.
  */
-async function resolveSite(form) {
-  const chosen = form.elements.site.value;
-  if (chosen !== NEW_SITE) return chosen;
-  const name = form.elements.site_name.value.trim();
-  if (!name) throw new Error(t('sites.nameRequired'));
-  if ((state.sites || []).some((s) => s.name === name)) return name;
-  await api('/api/sites', { method: 'POST', body: { name, kind: form.elements.site_kind.value } });
-  // The list is re-read rather than appended to, so the sensor being saved lands
-  // in a tree that already knows about the site it is going into.
-  await loadSites(true);
-  toast(t('sites.created'));
-  return name;
+function openSiteFromSensor(siteSelect) {
+  openSiteDialog(null, {
+    hint: t('sites.fromSensorHint'),
+    onSaved: (name) => {
+      // Re-read rather than append: the list is the server's, and the tree behind
+      // the window wants to know about it too. The picker is then drawn from that
+      // list again, because it was drawn when the form opened and the place was
+      // made after that — without the redraw the entry is not there to choose.
+      loadSites(true).then(() => {
+        siteSelect.innerHTML = siteOptions(name);
+        siteSelect.value = name;
+      });
+    },
+    onClosed: () => {
+      if (siteSelect.value === NEW_SITE) siteSelect.value = '';
+    },
+  });
 }
 
 async function saveSensor(payload, id) {
@@ -2658,7 +2721,8 @@ document.addEventListener('click', (event) => {
 //
 // The modes users.js owns are listed rather than probed for, so that the sensor
 // path — the one that runs when nothing else matches — cannot quietly swallow a
-// typo in a mode name.
+// typo in a mode name. The site editor is not among them: it has a dialog and a
+// form of its own, and its submit handler is below.
 const USER_MODES = new Set(['user', 'user-password', 'totp', 'totp-off', 'totp-codes', 'recovery']);
 
 $('#modal-form').addEventListener('submit', async (event) => {
@@ -2678,18 +2742,35 @@ $('#modal-form').addEventListener('submit', async (event) => {
       await submitAck(form);
     } else if (mode === 'channel') {
       await submitChannel(form);
-    } else if (mode === 'site') {
-      await submitSite(form);
     } else if (USER_MODES.has(mode)) {
       done = await users.submit(mode, form);
     } else {
       const id = form.dataset.id ? Number(form.dataset.id) : 0;
-      const sensor = readSensorForm(form);
-      sensor.site = await resolveSite(form);
-      await saveSensor(sensor, id);
+      await saveSensor(readSensorForm(form), id);
       toast(t('common.saved'));
     }
     if (done) modal.close();
+  } catch (err) {
+    error.textContent = err.message;
+  } finally {
+    save.disabled = false;
+  }
+});
+
+// The site editor's own form, handled on its own dialog. It shares no error line
+// and no save button with the dialog above it, which is the point of there being
+// two: a refusal here is written under this window, and the sensor form behind it
+// is exactly as it was.
+$('#site-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const form = event.target;
+  const error = $('#site-error');
+  error.textContent = '';
+  const save = $('#site-save');
+  save.disabled = true;
+  try {
+    await submitSite(form);
+    siteModal.close();
   } catch (err) {
     error.textContent = err.message;
   } finally {
@@ -3219,6 +3300,10 @@ function mapPanel() {
       <p class="muted small">${esc(t('settings.tileHint'))}</p>
       <label class="field"><span>${esc(t('settings.tileAttribution'))}</span>
         <input name="attribution" value="${esc(map.attribution || '')}"${admin ? '' : ' disabled'}></label>
+      <label class="field check"><input type="checkbox" name="borders"
+             ${map.borders === 'off' ? '' : 'checked'}${admin ? '' : ' disabled'}>
+        <span>${esc(t('settings.mapBorders'))}</span></label>
+      <p class="muted small">${esc(t('settings.mapBordersHint'))}</p>
       <div class="form-actions">
         <button class="btn btn-primary" data-action="map-save"${denied('admin')}>${esc(t('common.save'))}</button>
       </div>
@@ -3226,15 +3311,29 @@ function mapPanel() {
     </section>`;
 }
 
-/** openSiteEditor is the small dialog behind "New site" and "Edit". */
-function openSiteEditor(existing) {
+/**
+ * openSiteDialog is the small dialog behind "New site", "Edit", and the sensor
+ * form's "New site…" entry.
+ *
+ * The two callers want different things after it closes, so it takes them as
+ * options rather than guessing: `onSaved` gets the name of a place that was made,
+ * `onClosed` runs when the window went away without one — which is how the sensor
+ * form knows to put its picker back to "No site". `hint` is the line that says
+ * where the window came from, because a dialog that appears over another one
+ * without saying why reads like a mistake.
+ */
+function openSiteDialog(existing, { onSaved, onClosed, hint } = {}) {
   const site = existing || { name: '', kind: 'local', lat: null, lon: null };
   const coord = (value) => (value === null || value === undefined ? '' : String(value));
-  modal.open({
+  const form = $('#site-form');
+  const dialog = $('#modal-site');
+  delete form.dataset.saved;
+  siteModal.open({
     title: existing ? t('sites.edit') : t('sites.new'),
     mode: 'site',
     id: existing ? existing.name : '',
     body: `
+      ${hint ? `<p class="muted small sheet-note">${esc(hint)}</p>` : ''}
       <label class="field adv-hide"><span>${esc(t('sites.name'))}</span>
         <input name="site_name" value="${esc(site.name)}" maxlength="64" required></label>
       <p class="muted small adv-hide">${esc(t('sites.nameHint'))}</p>
@@ -3250,6 +3349,16 @@ function openSiteEditor(existing) {
       </div>
       <p class="muted small">${esc(t('sites.coordsHint'))}</p>`,
   });
+  // The dialog element outlives every opening, so this listener is added per
+  // opening and taken off again by the first close: a listener left behind would
+  // run once for every window that has been closed before.
+  const settled = () => {
+    dialog.removeEventListener('close', settled);
+    const name = form.dataset.saved;
+    if (name) onSaved?.(name);
+    else onClosed?.();
+  };
+  dialog.addEventListener('close', settled);
 }
 
 /**
@@ -3280,6 +3389,9 @@ async function submitSite(form) {
     method: previous ? 'PUT' : 'POST',
     body,
   });
+  // What the window's own close listener reads: the name of the place this
+  // dialog just saved, so a caller can put it to use after the window is gone.
+  form.dataset.saved = body.name;
   await afterSiteChange();
   toast(previous ? t('sites.updated') : t('sites.created'));
 }
@@ -3332,9 +3444,16 @@ async function afterSiteChange() {
 async function saveMap() {
   const panel = $('#map-panel');
   const value = (name) => panel.querySelector(`[name="${name}"]`).value.trim();
+  // .checked, not .value: a checkbox's value is the word "on" whatever its state, so
+  // reading it would turn the layer off every time somebody pressed Save.
+  const borders = panel.querySelector('[name="borders"]');
   await api('/api/map', {
     method: 'PUT',
-    body: { tile_url: value('tile_url'), attribution: value('attribution') },
+    body: {
+      tile_url: value('tile_url'),
+      attribution: value('attribution'),
+      borders: borders && borders.checked ? 'on' : 'off',
+    },
   });
   await loadSettings(true);
   await renderSettings();
@@ -3888,10 +4007,10 @@ async function onSettingsClick(event) {
     } else if (action === 'restore-examples') {
       await restoreExampleData();
     } else if (action === 'site-new') {
-      openSiteEditor(null);
+      openSiteDialog(null);
     } else if (action === 'site-edit') {
       const site = state.sites.find((s) => s.name === button.dataset.name);
-      if (site) openSiteEditor(site);
+      if (site) openSiteDialog(site);
     } else if (action === 'site-delete') {
       const site = state.sites.find((s) => s.name === button.dataset.name);
       if (site) await removeSite(site);
