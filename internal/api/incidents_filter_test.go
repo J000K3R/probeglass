@@ -23,6 +23,18 @@ func newIncidentsFilterFixture(t *testing.T) *incidentsFilterFixture {
 	t.Helper()
 	h := newHarness(t)
 	h.setup()
+
+	// The setup screen leaves four example sensors behind, and one of them carries a
+	// closed outage with a week of history under it. Removing them through the button
+	// that exists for exactly this keeps the fixture the only thing in the table, so
+	// that a count in this file means what it says instead of "whatever the setup
+	// screen happens to invent this month".
+	resp := h.do(http.MethodDelete, "/api/examples", nil, nil)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("remove the example data: %d", resp.StatusCode)
+	}
+
 	ctx := context.Background()
 
 	f := &incidentsFilterFixture{h: h}

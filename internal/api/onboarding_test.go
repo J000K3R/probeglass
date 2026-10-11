@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/j000k3r/weatherglass/internal/config"
+	"github.com/j000k3r/weatherglass/internal/demo"
 	"github.com/j000k3r/weatherglass/internal/doctor"
 	"github.com/j000k3r/weatherglass/internal/model"
 	"github.com/j000k3r/weatherglass/internal/store"
@@ -89,6 +90,65 @@ func TestExampleSensorsAreCreatedOnce(t *testing.T) {
 
 	if n := len(h.listSensors()); n != 4 {
 		t.Fatalf("after a second setup there are %d sensors, want still 4", n)
+	}
+}
+
+// TestSetupLeavesAWeekOfHistoryBehind is the first-run dashboard, which is the one
+// somebody sees before they have trusted the product with anything.
+//
+// It used to be an empty grid twice over. The examples arrived with no history at
+// all, so there was no curve, no uptime column and nothing to look at; and the setup
+// screen never told the already-running scheduler that they existed, so nothing ever
+// probed them either and all four sat on "Pending" until the container was restarted.
+// Both halves are checked here, because either one on its own leaves the dashboard
+// blank.
+func TestSetupLeavesAWeekOfHistoryBehind(t *testing.T) {
+	h := newHarness(t)
+	h.setup()
+	ctx := context.Background()
+
+	// A week of probes per sensor, one fewer than the window would hold — the writer
+	// leaves the retention boundary alone. The count is derived from the constants
+	// rather than written down here, because the week and the spacing are the
+	// dataset's to choose.
+	const examples = 4
+	perSensor := int(time.Duration(exampleDays)*24*time.Hour/demo.Spacing) - 1
+	counts, err := h.store.CountExampleData(ctx)
+	if err != nil {
+		t.Fatalf("count the example data: %v", err)
+	}
+	if counts.Sensors != examples {
+		t.Fatalf("the setup screen wrote %d example sensor(s), want %d",
+			counts.Sensors, examples)
+	}
+	if want := examples * perSensor; counts.Results != want {
+		t.Errorf("the examples carry %d probe result(s), want %d — a week each",
+			counts.Results, want)
+	}
+	if counts.Incidents == 0 {
+		t.Error("no incident was invented, so the uptime bars have no outage in them " +
+			"and the incident log is empty on a dashboard that is meant to show both")
+	}
+
+	// The scheduler is the other half. A snapshot per sensor is what the sensor list
+	// reads, and the status is what a person sees.
+	snaps := h.server.sched.Snapshots()
+	want := map[string]model.Status{
+		"This dashboard (example)":   model.StatusUp,
+		"Internet gateway (example)": model.StatusWarn,
+		"Public DNS (example)":       model.StatusUp,
+		"Example website (example)":  model.StatusUp,
+	}
+	for _, c := range h.listSensors() {
+		snap, ok := snaps[c.ID]
+		if !ok {
+			t.Errorf("the scheduler knows nothing about %q, so the dashboard shows it "+
+				"as pending and nothing ever probes it", c.Name)
+			continue
+		}
+		if snap.Status != want[c.Name] {
+			t.Errorf("%q reads %q, want %q", c.Name, snap.Status, want[c.Name])
+		}
 	}
 }
 
@@ -275,13 +335,22 @@ func TestAcknowledgeASensorWithNoOutageIsAConflict(t *testing.T) {
 	h := newHarness(t)
 	h.setup()
 
-	// One of the example sensors, which is up or unknown and never down.
-	sensors := h.listSensors()
-	if len(sensors) == 0 {
-		t.Fatal("no sensors to acknowledge")
+	// A named example sensor rather than whichever one happens to be first: the four
+	// the setup screen leaves behind are not interchangeable any more — one of them
+	// carries a week of history and one reads flaky — and this test is about a sensor
+	// with no outage, so it should say which one it means.
+	var chosen *model.Sensor
+	for _, c := range h.listSensors() {
+		if c.Name == "This dashboard (example)" {
+			chosen = &c
+			break
+		}
+	}
+	if chosen == nil {
+		t.Fatal("the setup screen created no \"This dashboard\" example sensor")
 	}
 
-	resp := h.do(http.MethodPost, "/api/sensors/"+itoa(sensors[0].ID)+"/ack", nil, origin(h))
+	resp := h.do(http.MethodPost, "/api/sensors/"+itoa(chosen.ID)+"/ack", nil, origin(h))
 	if resp.StatusCode != http.StatusConflict {
 		t.Fatalf("acking a healthy sensor: status = %d, want 409", resp.StatusCode)
 	}

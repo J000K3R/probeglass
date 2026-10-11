@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/j000k3r/weatherglass/internal/model"
 	"github.com/j000k3r/weatherglass/internal/store"
@@ -125,6 +126,134 @@ func TestSeedCreatesSensorsAndHistory(t *testing.T) {
 	}
 	if again.Sensors != 0 || again.Samples != 0 {
 		t.Errorf("the second run wrote %+v; it has to write nothing", again)
+	}
+}
+
+// TestAShortWindowBacksEveryIncidentWithAProbe covers the bug `seed --demo --days 1`
+// used to have, which was the kind that makes a log untrustworthy rather than merely
+// incomplete.
+//
+// The outages in the table are described as "so many hours before now", and the
+// incidents used to be written straight out of those offsets, whatever the window
+// was. With a window shorter than the offset that produced incidents dated *before*
+// the history they were meant to explain, with not a single failing probe anywhere
+// near them — the incident list and the uptime bars above it told two different
+// stories about the same week.
+//
+// An incident is now written from the probes that really failed, first one to last, so
+// an outage the window does not reach produces nothing at all.
+func TestAShortWindowBacksEveryIncidentWithAProbe(t *testing.T) {
+	ctx := context.Background()
+	st := testStore(t)
+
+	const days = 1
+	if _, err := Seed(ctx, st, days); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	oldest := time.Now().UTC().Add(-time.Duration(days) * 24 * time.Hour)
+	incidents, err := st.ListIncidents(ctx, store.IncidentFilter{Limit: 1000})
+	if err != nil {
+		t.Fatalf("list incidents: %v", err)
+	}
+	if len(incidents) == 0 {
+		t.Fatal("a one-day window wrote no incident at all, but the dataset's newest " +
+			"outages are inside it and they are what the bars are meant to show")
+	}
+
+	for _, inc := range incidents {
+		to := time.Now().UTC()
+		if inc.ResolvedAt != nil {
+			to = *inc.ResolvedAt
+		}
+		if inc.StartedAt.Before(oldest) {
+			t.Errorf("incident %d on sensor %d starts at %s, before the %d-day window "+
+				"opened at %s — it points at a moment this history does not cover",
+				inc.ID, inc.SensorID, inc.StartedAt, days, oldest)
+		}
+
+		samples, err := st.Samples(ctx, inc.SensorID, inc.StartedAt, to.Add(time.Second))
+		if err != nil {
+			t.Fatalf("samples for incident %d: %v", inc.ID, err)
+		}
+		failed := 0
+		for _, s := range samples {
+			if s.OK == 0 {
+				failed++
+			}
+		}
+		if failed == 0 {
+			t.Errorf("incident %d on sensor %d claims an outage from %s to %s with no "+
+				"failed probe in it", inc.ID, inc.SensorID, inc.StartedAt, to)
+		}
+	}
+}
+
+// TestABlipIsOneProbeAndNoIncident pins the difference between the two ways a
+// synthetic probe fails. An outage is a stretch of them and belongs in the incident
+// log; a blip is one probe, writes nothing, and is what leaves a sensor reading
+// flaky. Writing an incident for a single failed probe would fill the log with
+// one-minute outages nobody can act on.
+func TestABlipIsOneProbeAndNoIncident(t *testing.T) {
+	ctx := context.Background()
+	st := testStore(t)
+
+	c := model.Sensor{
+		Name: "Blip", Type: model.SensorPing, Target: "192.0.2.1",
+		Interval: 60, Timeout: 5, Retries: 2, Enabled: true,
+		Origin: model.OriginExample,
+	}
+	store.NormaliseSensor(&c)
+	if err := st.CreateSensor(ctx, &c); err != nil {
+		t.Fatalf("create sensor: %v", err)
+	}
+
+	// Two blips: the most recent probe and one a day back.
+	n, err := Write(ctx, st, c, History{
+		Window: 48 * time.Hour, BaseMS: 5, JitterMS: 2,
+		SuccessMsg: "pong", FailMsg: "no reply",
+		Blips: []time.Duration{Spacing, 24 * time.Hour},
+	})
+	if err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if n != int(48*time.Hour/Spacing)-1 {
+		t.Errorf("wrote %d probe(s), want %d", n, int(48*time.Hour/Spacing)-1)
+	}
+
+	incidents, err := st.ListIncidents(ctx, store.IncidentFilter{SensorID: c.ID, Limit: 10})
+	if err != nil {
+		t.Fatalf("list incidents: %v", err)
+	}
+	if len(incidents) != 0 {
+		t.Errorf("%d incident(s) were written for two single failed probes: %+v",
+			len(incidents), incidents)
+	}
+
+	// Both blips landed, on probes and not between them.
+	samples, err := st.Samples(ctx, c.ID, time.Now().UTC().Add(-47*time.Hour), time.Now().UTC())
+	if err != nil {
+		t.Fatalf("samples: %v", err)
+	}
+	failed := 0
+	for _, s := range samples {
+		if s.OK == 0 {
+			failed++
+		}
+	}
+	if failed != 2 {
+		t.Errorf("%d failed probe(s) in the series, want the 2 blips", failed)
+	}
+
+	// The newest one is the one that matters: it is what a sensor restored from this
+	// history reads as, and it is the whole point of a blip.
+	last, err := st.LastResult(ctx, c.ID)
+	if err != nil || last == nil {
+		t.Fatalf("last result: %v, %v", last, err)
+	}
+	if last.Success {
+		t.Error("the most recent probe succeeded, so the sensor would read green; a blip " +
+			"at the end of the window is what leaves it flaky")
 	}
 }
 

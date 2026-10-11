@@ -48,7 +48,10 @@ func TestRestoreExampleDataBringsBackHistory(t *testing.T) {
 	h := newHarness(t)
 	h.setup()
 
-	// What a fresh installation starts with: the lean set the setup step writes.
+	// What a fresh installation starts with: the four the setup step writes. Both
+	// sets arrive with a week of history now — that is what makes the first-run
+	// dashboard worth looking at — so what separates them is how many sensors and
+	// how much of the rest of the dataset comes with them.
 	if n := emptyExamples(t, h); n != 4 {
 		t.Fatalf("the setup step created %d example sensor(s), want the four it is "+
 			"meant to", n)
@@ -58,10 +61,12 @@ func TestRestoreExampleDataBringsBackHistory(t *testing.T) {
 		t.Fatalf("restore: status = %d, want 200", status)
 	}
 
-	// More than four: the button loads the rich dataset, the setup step writes the
-	// lean one. That difference is the user's decision and is pinned here so the two
-	// paths cannot quietly merge. The count comes from the dataset rather than from
-	// a number written down here, because the number is the thing that changes.
+	// More than four: the button loads the whole dataset — sensors in their groups,
+	// on their sites, with the richer histories — where the setup step writes only
+	// the four examples. That difference is the user's decision and is pinned here so
+	// the two paths cannot quietly merge. The count comes from the dataset rather
+	// than from a number written down here, because the number is the thing that
+	// changes.
 	if want := len(demo.Sensors()); restored.Sensors != want {
 		t.Errorf("restored %d sensor(s), want the %d of the rich dataset",
 			restored.Sensors, want)

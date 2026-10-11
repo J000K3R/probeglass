@@ -2,10 +2,13 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/j000k3r/weatherglass/internal/config"
+	"github.com/j000k3r/weatherglass/internal/demo"
 	"github.com/j000k3r/weatherglass/internal/model"
 	"github.com/j000k3r/weatherglass/internal/store"
 )
@@ -61,11 +64,14 @@ func (s *Server) handleSetTourVersion(w http.ResponseWriter, r *http.Request) {
 // example sensors
 // ---------------------------------------------------------------------------
 
-// exampleSensor is one of the sensors a fresh installation starts with.
+// exampleSensor is one of the sensors a fresh installation starts with, together
+// with the past it is given so that the dashboard is not empty when it is first
+// looked at.
 type exampleSensor struct {
-	Name   string
-	Type   model.SensorType
-	Target string
+	Name    string
+	Type    model.SensorType
+	Target  string
+	History demo.History
 }
 
 // exampleSensorInterval is how often the examples probe. Five minutes is slow
@@ -77,9 +83,10 @@ const exampleSensorInterval = 300
 //
 // The point is that a brand-new dashboard is not an empty grid. Somebody who has
 // just set a password has no sensor, no history and no reason to trust the tool
-// yet, and four editable examples — each a different type, each with a real
-// result within a minute — show what the thing does and how it is configured far
-// better than a paragraph of text could.
+// yet, and four editable examples — each a different type, each with a week of
+// past — show what the thing does and how it is configured far better than a
+// paragraph of text could. The history is invented, and saying so is what the
+// "(example)" in every name is for.
 //
 // The first one is Weatherglass itself. That is the important one: it is reached
 // over loopback, so it works in a homelab with no internet and no other host to
@@ -87,23 +94,71 @@ const exampleSensorInterval = 300
 // show. A first-run dashboard that is entirely grey or entirely red teaches the
 // wrong thing about whether the product works.
 //
+// The other three are the three shapes a real installation runs into, and two of
+// them are on purpose not green:
+//
+//   - The example website carries one closed outage a few hours back. Without it
+//     the uptime bars are a solid green block and the incident log is empty, and
+//     somebody would have to take it on faith that either works.
+//   - The internet gateway's last probe failed, which is what the flaky status
+//     looks like: a sensor that has not answered yet but has not used up its
+//     retries either. 192.168.1.1 genuinely does not answer on most networks, so
+//     this is a true statement about the installation rather than a decoration —
+//     and one click on a working gateway address turns it green.
+//
 // They belong to no alert channel. A default that can fire a real message into
 // somebody's chat room before they have configured a single thing is not a
 // helpful default.
 func exampleSensors(dialAddr string) []exampleSensor {
+	window := time.Duration(exampleDays) * 24 * time.Hour
+	// The one failure each of the last-probe and the outage is described against.
+	// demo.Write moves a blip to the nearer probe, so a whole spacing means "the
+	// most recent probe there is".
+	last := demo.Spacing
+
 	return []exampleSensor{
-		{Name: "This dashboard (example)", Type: model.SensorHTTP,
-			Target: "http://" + dialAddr + "/healthz"},
-		{Name: "Internet gateway (example)", Type: model.SensorPing,
-			Target: "192.168.1.1"},
-		{Name: "Public DNS (example)", Type: model.SensorDNS,
-			Target: "one.one.one.one"},
-		{Name: "Example website (example)", Type: model.SensorHTTP,
-			Target: "https://example.org"},
+		{
+			Name: "This dashboard (example)", Type: model.SensorHTTP,
+			Target: "http://" + dialAddr + "/healthz",
+			History: demo.History{
+				Window: window, BaseMS: 3, JitterMS: 1,
+				SuccessMsg: "HTTP 200 OK", FailMsg: "dial tcp: connection refused",
+			},
+		},
+		{
+			Name: "Internet gateway (example)", Type: model.SensorPing,
+			Target: "192.168.1.1",
+			History: demo.History{
+				Window: window, BaseMS: 2, JitterMS: 1,
+				SuccessMsg: "3/3 replies, 0% loss", FailMsg: "100% packet loss",
+				Blips: []time.Duration{last},
+			},
+		},
+		{
+			Name: "Public DNS (example)", Type: model.SensorDNS,
+			Target: "one.one.one.one",
+			History: demo.History{
+				Window: window, BaseMS: 24, JitterMS: 11,
+				SuccessMsg: "1 A record", FailMsg: "no such host",
+			},
+		},
+		{
+			Name: "Example website (example)", Type: model.SensorHTTP,
+			Target: "https://example.org",
+			History: demo.History{
+				Window: window, BaseMS: 148, JitterMS: 45,
+				SuccessMsg: "HTTP 200 OK", FailMsg: "dial tcp: i/o timeout",
+				Outages: []demo.Outage{{
+					Before: 5 * time.Hour, Length: 15 * time.Minute,
+					Cause: "dial tcp: i/o timeout",
+				}},
+			},
+		},
 	}
 }
 
-// createExampleSensors seeds the four examples, and reports how many it created.
+// createExampleSensors seeds the four examples with a week of invented past, and
+// reports how many it created.
 //
 // Two conditions have to hold, and both are about not overruling the user:
 //
@@ -117,6 +172,21 @@ func exampleSensors(dialAddr string) []exampleSensor {
 // A failure here is never fatal to the setup: the password is the thing the user
 // asked to set, and it has already been written by the time this runs. The error
 // is returned so the caller can log it, and the caller ignores it.
+//
+// The order below is the part that matters, and each step is there because of
+// what the next one would otherwise see:
+//
+//  1. Create the sensors disabled. Enabling one hands it to the scheduler, and a
+//     real probe landing in the middle of this would put a live result next to a
+//     week of invented ones — and, on the gateway, in front of the failed probe
+//     that is the whole reason it reads flaky.
+//  2. Write the history.
+//  3. Fold it into the rollups, so the 24h/7d/30d columns and the sparklines have
+//     numbers to show immediately instead of after the next maintenance pass.
+//  4. Enable them and reconcile. This is the step whose absence made the whole
+//     thing inert: the daemon is already running by the time somebody sets a
+//     password, so nothing but this ever told it these sensors exist. They used to
+//     sit in the table unprobed until the container was restarted.
 func (s *Server) createExampleSensors(ctx context.Context, dialAddr string) (int, error) {
 	if len(s.cfg.Sensors) > 0 {
 		return 0, nil
@@ -129,8 +199,9 @@ func (s *Server) createExampleSensors(ctx context.Context, dialAddr string) (int
 		return 0, nil
 	}
 
-	created := 0
-	for _, ex := range exampleSensors(dialAddr) {
+	examples := exampleSensors(dialAddr)
+	created := make([]model.Sensor, 0, len(examples))
+	for _, ex := range examples {
 		c := model.Sensor{
 			Name:     ex.Name,
 			Type:     ex.Type,
@@ -138,7 +209,7 @@ func (s *Server) createExampleSensors(ctx context.Context, dialAddr string) (int
 			Interval: exampleSensorInterval,
 			Timeout:  10,
 			Retries:  2,
-			Enabled:  true,
+			Enabled:  false,
 			Group:    "Examples",
 			Options:  model.Options{},
 			// The mark that makes "remove all the example data" possible later. It
@@ -149,11 +220,35 @@ func (s *Server) createExampleSensors(ctx context.Context, dialAddr string) (int
 		}
 		store.NormaliseSensor(&c)
 		if err := s.store.CreateSensor(ctx, &c); err != nil {
-			return created, err
+			return len(created), err
 		}
-		created++
+		created = append(created, c)
 	}
-	return created, nil
+
+	for i := range created {
+		if _, err := demo.Write(ctx, s.store, created[i], examples[i].History); err != nil {
+			return len(created), fmt.Errorf("invent history for %s: %w", created[i].Name, err)
+		}
+	}
+	if err := s.store.Maintain(ctx, time.Now().UTC()); err != nil {
+		return len(created), fmt.Errorf("roll up the example history: %w", err)
+	}
+
+	for i := range created {
+		created[i].Enabled = true
+		if err := s.store.UpdateSensor(ctx, &created[i]); err != nil {
+			return len(created), err
+		}
+	}
+
+	// Reconcile reads the history back — it is what turns the gateway's last failed
+	// probe into the flaky status and the other three into green — and starts their
+	// probe loops. It is deliberately the last thing here: an example sensor that is
+	// enabled but not reconciled is a row nothing will ever probe.
+	if err := s.sched.Reconcile(ctx); err != nil {
+		return len(created), fmt.Errorf("hand the example sensors to the scheduler: %w", err)
+	}
+	return len(created), nil
 }
 
 // exampleDialAddr is where the examples are told to reach this daemon. It is the
