@@ -49,49 +49,6 @@ const (
 // productModule identifies the daemon's module when looking for its directory.
 const productModule = "github.com/j000k3r/weatherglass"
 
-// seedSites gives the sample sensors two places to live, so that the tree has
-// something to fold and the map has something to draw.
-//
-// It runs in the page and talks to the API the way the settings screen does. The
-// names are exact rather than "everything in this group", because the point of the
-// arrangement is to show all three states at once: a homelab, a hoster, and a
-// sensor whose place nobody has said yet.
-//
-// Evaluate does not wait for a promise, so the last line is a flag the caller can
-// poll — without it, the walk-through would photograph the dashboard in whatever
-// state it happened to be in when the fetch was still in flight.
-const seedSites = `(async () => {
-  const ask = async (path, method, body) => {
-    const res = await fetch(path, {
-      method,
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) throw new Error(method + ' ' + path + ' answered ' + res.status);
-    return res.json();
-  };
-
-  for (const site of [
-    {name: 'Homelab', kind: 'local', lat: 48.1372, lon: 11.5756},
-    {name: 'Hetzner Cloud', kind: 'external', lat: 50.4761, lon: 12.3697},
-  ]) {
-    await ask('/api/sites', 'POST', site);
-  }
-
-  const placed = {
-    'Gateway ping': 'Homelab',
-    'Resolver port': 'Homelab',
-    'Example website': 'Hetzner Cloud',
-    'Example website TLS': 'Hetzner Cloud',
-  };
-  for (const sensor of await ask('/api/sensors', 'GET')) {
-    const site = placed[sensor.name];
-    if (site) await ask('/api/sensors/' + sensor.id, 'PUT', {site});
-  }
-
-  window.__wgSitesReady = true;
-})()`
-
 func main() {
 	out := flag.String("out", "../../weatherglass-docs/static/img",
 		"directory the PNGs are written to")
@@ -369,29 +326,13 @@ func capture(ctx context.Context, base, out string) error {
 
 	// --- the other three views, and the account menu -------------------------
 
-	// Two places, so that the tree has something to fold and the map has
-	// something to draw. They are made through the API rather than through the
-	// settings form because the form is not what these four pictures are about,
-	// and the sensor form is photographed on its own further down.
-	//
-	// The same two names the manual uses, and a real distance apart: the map
-	// picture is worth nothing if both markers land on top of each other.
-	if err := do(ctx, "putting the demo sensors on two sites", eval(seedSites)); err != nil {
-		return err
-	}
-	// The script above is not awaited — Evaluate does not wait for a promise —
-	// so its effect is waited for rather than assumed.
-	if err := waitFor(ctx, `window.__wgSitesReady === true`); err != nil {
-		return fmt.Errorf("putting the demo sensors on two sites: %w", err)
-	}
-	// The dashboard drew itself from the sites it was given at load time, and
-	// there were none; a reload is what a person would do next as well.
-	if err := do(ctx, "reloading with the sites in place",
-		chromedp.Reload(),
-		chromedp.WaitVisible(`#groups .card`),
-	); err != nil {
-		return err
-	}
+	// Nothing has to be arranged here. `seed --demo` above already gives the
+	// sample set two places to live, with real coordinates and sensors on them —
+	// a homelab, a rented server, and sensors at neither — so the tree has
+	// something to fold and the map has something to draw the moment the page
+	// loads. Re-creating those two places through the API would be a duplicate,
+	// and a screenshot of the demo set is worth more than a screenshot of an
+	// arrangement invented for the camera.
 
 	// Each view is reached through the real switcher, not by setting the
 	// preference: the picture then shows what pressing the button shows.
@@ -401,13 +342,12 @@ func capture(ctx context.Context, base, out string) error {
 	}{
 		{layout: "tree", marker: `.site-node`, name: "dashboard-tree"},
 		{layout: "wall", marker: `.wall-group .tile`, name: "dashboard-wall"},
-		// The map's ground comes from a tile server over the network, and a
-		// picture taken the instant it is mounted is a picture of the graticule
-		// with nothing on it. The wait is an `after` action rather than a sleep
-		// here, because the resize that takes the picture re-lays the map out and
-		// asks for the tiles again — waiting before it would wait for the wrong
-		// fetch. When there is no network the same wait buys the honest offline
-		// state, which is what the picture then shows.
+		// The map is drawn from the data rather than from the network: the
+		// coastlines come out of the bundle and no tile address is configured, so
+		// there is nothing to wait for but the layout. The wait is an `after`
+		// action rather than a sleep here, because the resize that takes the
+		// picture re-lays the map out and asks for the view again — waiting before
+		// it would wait for the wrong one.
 		{layout: "map", marker: `.map-canvas`, name: "dashboard-map", settle: 3 * time.Second},
 	} {
 		err := do(ctx, "the "+view.layout+" view",
