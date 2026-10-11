@@ -165,7 +165,15 @@ func applyTo(opts Options, s Settings, k kernel) (Report, error) {
 // field in the wrong place means the wrong capability gets set and nothing says so.
 type capHeader struct {
 	version uint32
-	pid     int32
+	// pid is an input field the kernel reads through the pointer below, not
+	// something it reports back, and 0 means "the calling thread" — which is the
+	// thread each call is about, the single-threaded read here and the per-thread
+	// write further down alike. Left at its zero value deliberately, as the standard
+	// library leaves it; the directive is only there because the analyser cannot see
+	// a field the kernel reads rather than this program.
+	//
+	//nolint:unused // read by the kernel through capPtr, never by this program
+	pid int32
 }
 
 type capData struct {

@@ -528,6 +528,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The test for a silent ping probe asked the network to be honest about it.** It
+  pinged `198.51.100.7`, an address reserved for documentation and routed nowhere,
+  and insisted that nothing answer. On a network where a middlebox does answer —
+  inside a container, for instance — the test went red and named the code for a
+  fault that was in the path. The judgement it was making is now a function of its
+  own, tested directly and in every branch: a host that did not answer, a packet
+  that never left, a probe that was stopped before it could send, and an answer.
+  Reading one of those as another is what the test exists to prevent, and none of it
+  needs a network any more.
+- **The browser test pinned the size of the example dataset.** It insisted the
+  restore button produce exactly five sensors, because five was the number when the
+  test was written; the dataset is thirteen now, so the test failed over a number
+  that had been raised on purpose. It now asserts the relationship it actually cares
+  about — the button loads more than the setup writes, so the two paths cannot merge
+  — and leaves the exact count to the API test, which asks `len(demo.Sensors())`
+  rather than writing the number down. The browser test lives in its own Go module
+  and cannot import that package without pulling the store, and sqlite with it, into
+  a `go.sum` that exists to stay small.
 - **A ping probe never sent a packet on the socket it prefers to use.** The sensor
   opens an unprivileged datagram ICMP socket first, because that is the one that
   works without `NET_RAW` — and then addressed its echo requests with a

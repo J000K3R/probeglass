@@ -175,12 +175,19 @@ func TestExampleDataCanBePutBack(t *testing.T) {
 	if err != nil {
 		t.Fatalf("could not read the restored cards: %v", err)
 	}
-	// Five, not four: the button loads the rich dataset rather than the lean one
-	// the setup writes. That difference is deliberate — it is what the user asked
-	// for — and pinning it here is what keeps the two paths from quietly merging.
-	if restored.Examples != 5 {
-		t.Errorf("the dashboard shows %d restored example sensor(s), want the five of "+
-			"the rich dataset", restored.Examples)
+	// More than the lean set the setup writes: the button loads the rich dataset,
+	// and that difference is deliberate — it is what the user asked for — so the
+	// relationship is what is pinned here, not the number. The number is the thing
+	// that grows: it was five when this test was written and is thirteen now, and a
+	// constant that has to be edited every time somebody adds a sensor to the
+	// dataset teaches people to edit it without reading it. The exact count is
+	// pinned where it can be said exactly, against len(demo.Sensors()) in
+	// internal/api — this module cannot import that package without dragging the
+	// store, and sqlite with it, into a go.sum that exists to stay small.
+	if restored.Examples <= fresh.Examples {
+		t.Errorf("the dashboard shows %d restored example sensor(s), no more than the "+
+			"%d the setup writes; the button is meant to load the larger dataset",
+			restored.Examples, fresh.Examples)
 	}
 	if restored.Marked != restored.Examples {
 		t.Errorf("%d of %d restored cards carry the badge, want all of them",

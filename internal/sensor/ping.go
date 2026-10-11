@@ -259,18 +259,32 @@ func (PingProber) Run(ctx context.Context, c model.Sensor) Outcome {
 		}
 	}
 
-	elapsed := time.Since(start)
+	return pingOutcome(ipaddr.String(), count, sent, loss, rtts,
+		time.Since(start), lastErr, ctx.Err())
+}
+
+// pingOutcome turns what the echo loop saw into the result the scheduler stores.
+//
+// It is split out from Run because it is the part of this prober that carries a
+// judgement rather than a measurement — "no reply" and "could not ask" are
+// different findings and are fixed differently, and a probe that never got a
+// packet out is no evidence about the target at all. A judgement reached through a
+// real socket can only be tested on a network that behaves, and whether the network
+// behaves is not this file's business: a path that answers for an address reserved
+// precisely because nothing may answer for it turns such a test red and names the
+// wrong suspect.
+//
+// ctxErr is passed in rather than read from a context so that the caller decides
+// which context it is answering for, and so that this function stays pure.
+func pingOutcome(addr string, count, sent, loss int, rtts []float64,
+	elapsed time.Duration, lastErr string, ctxErr error) Outcome {
 	if len(rtts) == 0 {
-		// "No reply" and "could not ask" are different findings and are fixed
-		// differently. A probe that never got a packet out is not evidence about
-		// the target at all, and reporting it as silence sends somebody to look
-		// at a firewall that was never the problem.
-		msg := fmt.Sprintf("no ICMP reply from %s (%d/%d lost)", ipaddr.String(), loss, count)
+		msg := fmt.Sprintf("no ICMP reply from %s (%d/%d lost)", addr, loss, count)
 		if sent == 0 {
-			msg = fmt.Sprintf("could not send ICMP to %s: %s", ipaddr.String(),
+			msg = fmt.Sprintf("could not send ICMP to %s: %s", addr,
 				firstNonEmpty(lastErr, "no request left this host"))
-			if ctx.Err() != nil {
-				msg = fmt.Sprintf("ICMP probe to %s was stopped before it could send", ipaddr.String())
+			if ctxErr != nil {
+				msg = fmt.Sprintf("ICMP probe to %s was stopped before it could send", addr)
 			}
 			if looksLikeSocketPermission(lastErr) {
 				msg += " · " + icmpHint
@@ -284,12 +298,12 @@ func (PingProber) Run(ctx context.Context, c model.Sensor) Outcome {
 		}
 	}
 
-	avg, min, max := rttStats(rtts)
+	avg, minV, maxV := rttStats(rtts)
 	return Outcome{
 		Success: true,
 		Latency: time.Duration(avg * float64(time.Millisecond)),
 		Message: fmt.Sprintf("ping %s · avg %.1fms · min %.1fms · max %.1fms · %d/%d replies",
-			ipaddr.String(), avg, min, max, count-loss, count),
+			addr, avg, minV, maxV, count-loss, count),
 	}
 }
 
