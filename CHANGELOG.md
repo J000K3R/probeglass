@@ -84,6 +84,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sensors — an installation driven from YAML is deliberate and is left alone, and
   a setup request repeated in the window before the account is stored does not
   produce a second set.
+- **Those four arrive with a week of history.** Seven days of invented probes at
+  five-minute spacing, folded into the rollups, so the sparklines, the uptime bars
+  and the 24h/7d/30d columns are populated the moment somebody first looks at the
+  dashboard instead of after a week of running. Two of the four are deliberately
+  not green, because a dashboard where nothing has ever happened demonstrates
+  nothing: the example website carries one closed outage a few hours back, which
+  is what the incident log and the red stretch in the chart are there to show, and
+  the gateway's most recent probe failed, which is what the flaky status looks
+  like. The gateway points at `192.168.1.1`, which answers on most home networks
+  and not on many others, so that is a true statement either way — and it is one
+  click to point it at a gateway that does answer.
+- **The map draws its own coastlines, out of the binary.** The dashboard's slippy
+  map no longer needs a tile server to have something under its pins: the world's
+  land is a public-domain outline (Natural Earth 1:110m) committed to the
+  repository, embedded in the binary and decoded in the browser by
+  `internal/web/assets/outline.js`. It is a single SVG path in the map's own world
+  coordinates, moved and scaled by one transform, with
+  `vector-effect: non-scaling-stroke` so the coastline is a pixel wide at every zoom
+  — a wheel click is a transform on one element rather than a few thousand
+  coordinates rewritten. `cmd/worldgen` generates the file from a GeoJSON input it
+  is handed rather than fetching, and writes the source URL, the input's SHA-256 and
+  the tolerance into the file's own header, so what shipped can be reproduced from
+  the data it came from. The layers are ordered coastlines, tiles, pins: an operator
+  who configures a tile server sees their tiles and never notices this, and one
+  whose server stops answering sees the world instead of a grey rectangle. It is
+  coarse — continents are recognisable to about zoom 6 — and the tile URL field is
+  what an operator with a tile server of their own reaches for.
+- **A sensor below its retry threshold is yellow, not invisible.** `warn` is the
+  fifth status: the last probe failed, the configured `retries` are not used up
+  yet, so the sensor is on its way down or already on its way back and there is
+  no honest way to tell those apart yet. It opens no incident and sends no alert
+  — the incident log is for outages, and a message per blip is noise. Before
+  this, the same probe left a sensor that had been up looking green, and after a
+  restart the same sensor read as *Pending*, which is the word for a sensor
+  nothing has ever been heard from. The dashboard's list, cards, wall, tree, map
+  and status donut all carry it, in the colour the uptime bars have used all
+  along.
 - **An interface mode, chosen at setup.** The dashboard can be run *simple* or
   *advanced* (`ui.mode`). Simple hides the areas a casual user does not need —
   the per-type options, channel selection, retries and reminders, tags, the API
@@ -391,6 +428,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The map no longer points at OpenStreetMap's tile servers; the field is empty and
+  that is the off switch.** A fresh installation drew its map from
+  `tile.openstreetmap.org`, and that address is no longer one this project may use:
+  OSM's usage policy does not permit third-party applications, and their answer to one
+  is not an error but an `HTTP 200` carrying a picture that says the app is blocked —
+  which is what a dashboard was showing instead of a coastline. There is no comparable
+  free tile server left, so the default is now **no tile server at all**: `map.tile_url`
+  and `map.attribution` start empty, the map draws the coastlines that ship in the
+  binary, and the browser is not asked for anything. `img-src` stays at `'self' data:`
+  and the content security policy names no third party, which is the part that can be
+  checked from outside. An operator running a tile server of their own — the answer
+  that has actually improved — types its address into **Settings → Map**; the field,
+  the validation and the attribution fallback are unchanged and still there, and a
+  tile server entered there is fetched exactly as before. What changed is which of the
+  two is the default, and what an empty field means: it used to mean "put the standard
+  one back", and now it means "fetch nothing".
 - **The container no longer runs as a fixed uid 500; it starts as root, takes its data
   directory over and drops to `PUID:PGID`.** A bind mount keeps the ownership of the host
   folder, and the platforms Weatherglass is installed on create that folder as root, so a
@@ -528,6 +581,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   including the tab strip, which nothing else in the bar would have caught.
 
 ### Fixed
+
+- **An installation that had ever saved its map settings kept asking OpenStreetMap.**
+  The map form writes the value it is *showing* into the settings row, so pressing Save
+  on a freshly installed dashboard was enough to store `tile.openstreetmap.org` as
+  though an operator had chosen it — and emptying the field later could not undo it,
+  because the default put it straight back. Changing the default therefore does nothing
+  for those installations on its own: the address sits in the database and would go on
+  being fetched. Migration 5 deletes that exact row, and only that exact row — an address
+  somebody chose, a LAN tile server, a `{z}/{x}/{y}` template on another host, all stay
+  untouched. The same check runs on every start rather than only at the migration, so a
+  backup taken before the upgrade and restored afterwards does not put the retired
+  address back; `model.IsRetiredTileURL` is the one place that decides what "retired"
+  means, so the migration and the start-up sweep cannot drift apart.
+- **The example sensors the setup screen created were never probed.** The four rows
+  were written and the running scheduler was never told about them. `Reconcile` is
+  called after every other change to the sensor list — a sensor added, the example
+  data removed, a backup restored — and this one path simply did not call it, so the
+  daemon went on probing the set of sensors it had read at startup. The four examples
+  sat in the table unprobed, each reading *Pending*, until the container was
+  restarted or somebody edited an unrelated sensor. Together with the entry above,
+  which is why the first-run dashboard used to be an empty grey grid.
+
+- **`seed --demo` wrote incidents for outages its own history did not contain.** The
+  synthetic outages in the demo dataset are described as "so many hours before now",
+  and the incidents used to be written straight out of those offsets no matter how
+  long the history was. `seed --demo --days 1` therefore produced incidents dated
+  before the window it had just written, with no failing probe anywhere near them,
+  and the incident list and the uptime bars told two different stories about the same
+  day. An incident is now written from the probes that really failed — the first one
+  to the one that found the service back — so an outage the window does not reach
+  produces nothing. The incident writer also moved out of `internal/demo`'s private
+  table and became a public `History`/`Write` pair, which is where the setup screen
+  gets its week from: there is still exactly one thing in the product that invents
+  probe history.
 
 - **`Reconcile` started probe loops on a scheduler that had never been started, and
   parented them to the caller's HTTP request.** The API handlers call `Reconcile`

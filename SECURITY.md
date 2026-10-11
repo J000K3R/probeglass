@@ -213,52 +213,68 @@ What that does not change: **use SNMP sensors on a trusted network only.** A
 homelab LAN is the intended place; a routed, shared or wireless network is not.
 If the community matters, treat it as compromised the moment it crosses one.
 
-## The map fetches its tiles from a third party
+## The map draws itself, and fetches nothing by default
 
-The dashboard can draw your sites on a real map, and the tiles that make up that
-map are fetched **by the browser**, directly from a tile server. Weatherglass does
-not proxy them: the daemon never contacts a tile server and no tile passes through
-it. The default is OpenStreetMap, which needs no account and no key.
+The dashboard draws your sites on a map. The map's land comes out of the binary —
+coastlines from a public-domain dataset, decoded in the browser — and **out of the box
+nothing about it leaves the machine**. No request is made to any server to draw it, so
+there is nobody to disclose anything to: not your IP address, not your browser, and not
+the part of the world you are looking at. The daemon never contacts a map server either,
+by default or otherwise.
 
-That is a real disclosure, and it is written down here rather than buried in a
-setting's help text: whoever operates the tile server sees the **IP address** of
-whoever is looking at the dashboard, their **browser's user agent**, and the
-**approximate part of the map** in view. On a dashboard whose sites are what it
-draws, that is close to "where this homelab is". On a phone away from home, it is a
-third party learning that the dashboard exists.
+An administrator can still enter a tile URL in **Settings → Map**, and that is a real
+decision with a real cost, so it is written down here rather than buried in a setting's
+help text. Once one is entered the tiles are fetched **by the browser**, directly from
+that server — Weatherglass does not proxy them and no tile passes through the daemon.
+Whoever operates that server then sees the **IP address** of whoever is looking at the
+dashboard, their **browser's user agent**, and the **approximate part of the map** in
+view. On a dashboard whose sites are what it draws, that is close to "where this homelab
+is". On a phone away from home, it is a third party learning that the dashboard exists.
+
+**This is why the default changed.** OpenStreetMap used to be it, and their tile usage
+policy no longer permits use by third-party applications, so a dashboard that still
+pointed there would be shown a block notice instead of a coastline. The field is left
+in place for anybody running a tile server of their own, which is the answer that has
+actually improved.
 
 What Weatherglass does about it:
 
-- **The tile origin is named in the content security policy**, and nothing else is.
-  `setSecurityHeaders` appends the origin of the configured tile URL to `img-src`;
-  the origin is resolved once at start-up and again when the URL is saved, and
-  cached on the server rather than read from the database per request. A remote
-  tile server is therefore reachable deliberately, not by accident, and a
-  same-origin one needs no change to the policy at all.
-- **The URL is validated before it is stored.** It must be `http` or `https` and
-  must contain `{z}`, `{x}` and `{y}`. A URL that does not is refused, not stored
-  and quietly broken.
-- **The setting is administrator-only and installation-wide**, unlike the
-  appearance preferences, which every account owns for itself. A viewer cannot
-  point the map at a server of their choosing, and cannot use the map to make
-  somebody else's browser talk to a host of their choosing.
-- **No tile ever reaches the server.** Nothing about the map is written to the
-  database, a log line or a stored result.
+- **Empty means nothing is fetched, and the content security policy says so.** With no
+  tile URL configured, `img-src` stays at `'self' data:` and the policy names no third
+  party at all. An address that is entered is appended to `img-src`; the origin is
+  resolved at start-up and again when the URL is saved, and cached on the server rather
+  than read from the database per request. A remote tile server is therefore reachable
+  deliberately, not by accident, and a same-origin one needs no change to the policy.
+- **The URL is validated before it is stored.** It must be `http` or `https` and must
+  contain `{z}`, `{x}` and `{y}`. A URL that does not is refused, not stored and quietly
+  broken. The empty string is not validated, because there is nothing to fetch.
+- **The setting is administrator-only and installation-wide**, unlike the appearance
+  preferences, which every account owns for itself. A viewer cannot point the map at a
+  server of their choosing, and cannot use the map to make somebody else's browser talk
+  to a host of their choosing.
+- **No tile ever reaches the server.** Nothing about the map is written to the database,
+  a log line or a stored result.
+- **The retired default is removed, not honoured.** An installation that once saved the
+  map settings has OpenStreetMap's address written into its settings table as though
+  somebody had chosen it. Migration 5 and every subsequent start delete it, so an
+  upgrade does not carry on asking a server that has asked this kind of application to
+  stop — and a pre-migration backup restored later does not put it back.
 
 What that does not protect you from:
 
-- **The tile server's own logs.** It sees what any web server sees. Nothing here
-  changes that, and a homelab on a home network is the case the default is chosen
-  for.
-- **Anything else on that origin.** The policy allows the origin you name, so if
-  you point the map at a host that serves other things, the browser may fetch
-  those too. That is the same trust you extend to any server you type into a
-  setting.
+- **The tile server's own logs**, once you have named one. It sees what any web server
+  sees.
+- **Anything else on that origin.** The policy allows the origin you name, so if you
+  point the map at a host that serves other things, the browser may fetch those too.
+  That is the same trust you extend to any server you type into a setting.
+- **Coarse coastlines.** The bundled dataset is 1:110m: continents are recognisable to
+  about zoom 6, and in a city the coastline is straight lines between distant points.
+  That is the honest limit of a world map small enough to embed, and it is the other
+  half of the reason the tile URL field exists.
 
-If the map's subject is somebody else's infrastructure, or the dashboard is
-reachable from outside your network, run a tile server inside your own network and
-put its address in **Settings → Map**. Nothing about the map needs the public
-internet.
+If the map's subject is somebody else's infrastructure, or the dashboard is reachable
+from outside your network, run a tile server inside your own network and put its address
+in **Settings → Map**. Nothing about the map needs the public internet.
 
 ## The container starts as root, and leaves it before it opens anything
 

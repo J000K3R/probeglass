@@ -357,21 +357,53 @@ The dashboard ships in English. Strings live in a message catalogue
 (`internal/web/assets/i18n.js`), so a new language is a dictionary plus an entry
 in the list of available languages.
 
-## Map tiles
+## The map
 
 Also stored in the database and set in the UI, but **installation-wide** rather
 than per account, and administrator-only:
 
 | Setting | Notes |
 |---|---|
-| `map.tile_url` | default `https://tile.openstreetmap.org/{z}/{x}/{y}.png`; must be `http(s)` and must contain `{z}`, `{x}` and `{y}` (`{s}` is optional) |
-| `map.attribution` | default `© OpenStreetMap contributors`; shown in the corner of the map |
+| `map.tile_url` | **empty by default**, which means the map fetches nothing; when set, must be `http(s)` and must contain `{z}`, `{x}` and `{y}` (`{s}` is optional) |
+| `map.attribution` | empty by default; shown in the corner of the map when a tile URL is set |
 
-The browser fetches the tiles directly, so the tile server sees the viewer's
-address and roughly where they are looking; the daemon never proxies them. Point
-it at a tile server inside your own network for anything more than a homelab. The
-origin is added to the dashboard's content security policy automatically, which is
-what lets the tiles load at all — see `SECURITY.md`.
+**With no tile URL the map draws its own coastlines.** They come from a
+public-domain world outline (Natural Earth 1:110m) that is embedded in the binary
+and decoded in the browser by `internal/web/assets/outline.js`, so a dashboard on a
+network with no internet still shows where its sites are, and nothing about it is
+disclosed to anybody. It is deliberately coarse: continents are recognisable to
+about zoom 6, and in a city the coastline is straight lines between far-apart
+points. Entering a tile URL is what that field is for.
+
+**With a tile URL the browser fetches the tiles directly**, so that server sees the
+viewer's address and roughly where they are looking; the daemon never proxies them.
+OpenStreetMap is no longer usable this way — their tile usage policy stopped
+permitting third-party applications in 2025, and their servers answer with a block
+notice rather than an error. Point the field at a tile server inside your own
+network. The origin is added to the dashboard's content security policy
+automatically, which is what lets the tiles load at all — see `SECURITY.md`.
+
+### Regenerating the coastline data
+
+`internal/web/assets/world.js` is generated and committed. To rebuild it:
+
+```sh
+curl -O https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_land.geojson
+go run ./cmd/worldgen -in ne_110m_land.geojson
+```
+
+`cmd/worldgen` fetches nothing itself. It validates the shape of what it reads,
+simplifies the rings (Douglas-Peucker, 0.02° by default), quantises them to
+thousandths of a degree and writes them delta-coded, and the header of the file it
+writes records the source URL, the SHA-256 of the input, the tolerance and the
+point counts — so a file in the repository can be checked against the data it came
+from. A coarser or finer `-tol` trades size for detail; `-tol 0.005` is roughly
+1:50m and about four times the file. The rings are simplified in degrees, which
+over-simplifies longitude near the poles; at 1:110m the Arctic is coarse either way:
+
+```sh
+go run ./cmd/worldgen -in ne_110m_land.geojson -tol 0.005
+```
 
 ## Validation
 

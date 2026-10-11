@@ -45,8 +45,9 @@ promises; the ordering is what the design already supports cheaply.
   that channel type.
 - [x] **A password strength indicator** at setup and at password change — local,
   dependency-free, advisory only. The server's minimum stays at eight characters.
-- [x] **Four example sensors** on a fresh installation, attached to no channel, so
-  a new dashboard is never an empty grid.
+- [x] **Four example sensors** on a fresh installation, attached to no channel and
+  carrying a week of invented history — including an outage and one sensor reading
+  **Flaky** — so a new dashboard is never an empty grid and never a wall of grey.
 - [x] **A guided tour** of the dashboard, driven by a data list of steps so a new
   feature adds a step rather than a new tour. It zooms into one example sensor and
   names its parts, says out loud that what is on screen is invented, explains the
@@ -83,8 +84,8 @@ promises; the ordering is what the design already supports cheaply.
   sensor without a site behaves exactly as it did before sites existed.
 - [x] **Five views of one dashboard.** Cards and list as before, plus a foldable
   **tree** by site and group, a **wall** of tiles carrying the last forty checks as
-  a heartbeat, and a **map** of your sites on real tiles. One setting, not five
-  pages, with a switcher in the top bar.
+  a heartbeat, and a **map** of your sites. One setting, not five pages, with a
+  switcher in the top bar.
 - [x] **An account menu** in the top bar: who is signed in, their role, the theme,
   density and language switches, a way into Settings and **Sign out** — which used
   to be reachable only from the bottom of the Settings page.

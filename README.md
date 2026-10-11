@@ -80,7 +80,10 @@ frontend pipeline to keep alive.
   declared in YAML.
 - **Dashboard** — five views of the same sensors: cards, a dense list, a foldable
   **tree** by site and group, a **wall** of tiles carrying the last forty checks as
-  a heartbeat, and a **map** of your sites on real OpenStreetMap tiles. One
+  a heartbeat, and a **map** of your sites. The map draws the world's coastlines
+  from a public-domain outline embedded in the binary, so it works on a network
+  with no internet and tells nobody anything; a tile URL in Settings puts real
+  tiles under it for anybody running a tile server of their own. One
   setting, not five pages, with a switcher in the top bar. Per-sensor
   response-time charts, uptime bars, incident timeline. Updates over SSE: a probe
   result redraws the one card it belongs to — the status dot, the latency, the
@@ -99,8 +102,7 @@ frontend pipeline to keep alive.
   hoster. A site has a kind (`local` or `external`) and optional coordinates; it
   groups the tree and the wall, and with coordinates it is drawn on the map.
   Optional throughout — a sensor without a site behaves exactly as it did before
-  sites existed, and a place the tile server cannot reach still shows its markers
-  in the right position.
+  sites existed.
 - **History** — raw samples for 7 days, hourly rollups for 90 days, daily
   rollups forever. Uptime percentages stay correct at every zoom level because
   exactly one resolution answers any given range.
@@ -120,8 +122,10 @@ frontend pipeline to keep alive.
   what it is for and one example, instead of a paragraph under the form.
 - **Not empty on day one** — setup creates four example sensors (this dashboard, a
   gateway, a public resolver, a public website), attached to no channel, so there
-  is something to look at before you have configured anything. They are marked as
-  examples and can be removed in one click from Settings.
+  is something to look at before you have configured anything: they arrive with a
+  week of history, an outage to explain, and one of them reading **Flaky**,
+  which is what the dashboard looks like once it is doing its job. They are marked
+  as examples and can be removed in one click from Settings.
 - **Troubleshooting built in** — `weatherglass doctor` on the command line, and
   the same checks in the dashboard under Settings → Diagnostics, with the
   `docker exec` command to run it yourself.
