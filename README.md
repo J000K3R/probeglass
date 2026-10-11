@@ -200,9 +200,9 @@ docker run --rm -p 8080:8080 -v weatherglass-demo:/data \
   ghcr.io/j000k3r/weatherglass:dev serve --listen :8080
 ```
 
-The demo set creates five sensors covering all four types, a week of plausible
-history including six outages, and **no** alert channels — a seeded install
-never sends you anything, which is the right default for something you are only
+The demo set brings invented sensors of several types, a week of plausible
+history with outages in it, and **no** alert channels — a seeded install never
+sends you anything, which is the right default for something you are only
 looking at. Delete the volume when you are done.
 
 ## Sensors

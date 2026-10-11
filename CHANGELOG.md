@@ -147,9 +147,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   for a sensor you configured — a distinction that matters most on a wall display
   and in a screenshot. The Settings panel no longer disappears once the data is
   removed: it offers `POST /api/examples` instead, which loads the richer demo
-  dataset — five sensors in two groups with an invented week of history — because
-  somebody who deleted everything and asked for it back wants a populated
-  dashboard, not an empty one. The call is idempotent: a name already in the table
+  dataset — more sensors than the setup writes, in their groups, with an invented
+  week of history — because somebody who deleted everything and asked for it back
+  wants a populated dashboard, not an empty one. The call is idempotent: a name
+  already in the table
   is left alone, so pressing it twice creates and invents nothing. On an
   installation whose sensors come from a configuration file it answers `409`, for
   the same reason the setup route is skipped there.
