@@ -62,11 +62,14 @@ func (s *Server) handleDeleteExampleData(w http.ResponseWriter, r *http.Request)
 
 // handleRestoreExampleData answers POST /api/examples.
 //
-// It is the way back from the removal button. What it writes is the richer demo
-// dataset — five sensors across two groups with an invented week of history —
-// rather than the four bare sensors a fresh installation starts with, because
-// somebody who has just deleted everything and asked for it back wants to see
-// what the dashboard looks like with something on it, curves and all.
+// It is the way back from the removal button. What it writes is the rich demo
+// dataset — the one the public demo is generated from, sensors in their groups
+// with an invented week of history — rather than the lean set a fresh
+// installation starts with, because somebody who has just deleted everything and
+// asked for it back wants to see what the dashboard looks like with something on
+// it, curves and all. The two sets are deliberately different and a test keeps
+// them apart; how many sensors each holds is the dataset's business, and is asked
+// of the dataset rather than written down here.
 //
 // Running it twice is harmless: a name that is already in the table is left
 // alone, so the second call creates nothing and invents nothing.
