@@ -1880,8 +1880,6 @@ func TestASiteCanBeMadeWhileTheSensorIsMade(t *testing.T) {
 			"the entries are %v", last, labels)
 	}
 
-	before := read[[]string](t, ctx, sensorFormState, "the sensor form")
-
 	if err := withTimeout(ctx, func(tctx context.Context) error {
 		return chromedp.Do(tctx, pickTheNewSiteEntry)
 	}); err != nil {
@@ -1996,7 +1994,10 @@ func TestASiteCanBeMadeWhileTheSensorIsMade(t *testing.T) {
 		capture(t, ctx, dir, "sensor-form-not-filled-again")
 		t.Fatalf("could not fill in the sensor form: %v", err)
 	}
-	before = read[[]string](t, ctx, sensorFormState, "the sensor form")
+	// What the form holds right now, read after the round trip through the site window:
+	// it is compared with the same reading taken after that window closes, and the point
+	// of the comparison is that the window changed nothing on the form behind it.
+	before := read[[]string](t, ctx, sensorFormState, "the sensor form")
 
 	// The place is named and, this time, given coordinates — the thing the old inline
 	// fields could not do, and the reason one editor is better than two.
