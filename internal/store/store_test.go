@@ -909,3 +909,155 @@ func TestUnwritableHintStaysQuietWhenTheDirectoryIsWritable(t *testing.T) {
 		t.Errorf("unwritableHint on a writable directory = %q, want nothing", got)
 	}
 }
+
+// The map's default tile address used to be OpenStreetMap's, and the form wrote the
+// value it was showing into the row on save — so an installation that opened
+// Settings → Map once and pressed Save has it stored as though somebody had chosen
+// it. When the default moved, every one of those installations would have carried on
+// asking a server that has since stopped answering applications, and carried on being
+// shown a block notice where a coastline should be.
+func TestUpgradingRemovesTheRetiredTileAddress(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "old.db")
+	v1Database(t, path)
+
+	raw, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatalf("open raw database: %v", err)
+	}
+	if _, err := raw.Exec(`
+INSERT INTO settings (key, value, updated_at) VALUES
+    ('map.tile_url', ?, '2026-01-01T00:00:00Z'),
+    ('map.attribution', '© OpenStreetMap contributors', '2026-01-01T00:00:00Z'),
+    ('retention.raw', '168h', '2026-01-01T00:00:00Z');
+`, model.RetiredTileURL); err != nil {
+		t.Fatalf("seed the old settings: %v", err)
+	}
+	_ = raw.Close()
+
+	st, err := Open(path, discardLog())
+	if err != nil {
+		t.Fatalf("upgrade: %v", err)
+	}
+	defer st.Close()
+
+	if got := st.Setting(ctx, model.SettingTileURL, ""); got != "" {
+		t.Errorf("the retired tile address survived the upgrade as %q; the browser would "+
+			"keep asking a server that has told this kind of application to stop", got)
+	}
+	// A credit line for a server nothing is fetched from is a name attached to
+	// somebody else's map — and for OSM it is the credit their terms require of
+	// people actually using their tiles, which is not this installation any more.
+	if got := st.Setting(ctx, model.SettingTileAttribution, ""); got != "" {
+		t.Errorf("the OpenStreetMap attribution survived as %q", got)
+	}
+	if got := st.Setting(ctx, "retention.raw", ""); got != "168h" {
+		t.Errorf("retention.raw = %q, want it untouched: this migration removes one "+
+			"setting, it does not clear the table", got)
+	}
+}
+
+// The other half of that promise, and the half that would be easy to get wrong: it
+// removes that address, not tile addresses. Somebody running their own tile server
+// keeps it across the upgrade, and keeps the origin the content policy allows.
+func TestUpgradingKeepsATileAddressSomebodyChose(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "old.db")
+	v1Database(t, path)
+
+	const mine = "https://tiles.example.org/{z}/{x}/{y}.png"
+	raw, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatalf("open raw database: %v", err)
+	}
+	if _, err := raw.Exec(`
+INSERT INTO settings (key, value, updated_at) VALUES
+    ('map.tile_url', ?, '2026-01-01T00:00:00Z'),
+    ('map.attribution', '© Beispiel', '2026-01-01T00:00:00Z');
+`, mine); err != nil {
+		t.Fatalf("seed the settings: %v", err)
+	}
+	_ = raw.Close()
+
+	st, err := Open(path, discardLog())
+	if err != nil {
+		t.Fatalf("upgrade: %v", err)
+	}
+	defer st.Close()
+
+	if got := st.Setting(ctx, model.SettingTileURL, ""); got != mine {
+		t.Errorf("tile_url = %q after the upgrade, want %q: this migration is about one "+
+			"particular address, not about tile servers in general", got, mine)
+	}
+	if got := st.Setting(ctx, model.SettingTileAttribution, ""); got != "© Beispiel" {
+		t.Errorf("attribution = %q, want the one that goes with a tile server still in use", got)
+	}
+}
+
+// And the case the migration alone cannot cover: it runs exactly once, so a backup
+// taken before it is a way for the row to come back afterwards. Restoring one is an
+// ordinary thing to do here, and it must not be a way to put an address nobody chose
+// back into the settings table.
+func TestTheRetiredTileAddressDoesNotComeBackFromABackup(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "backup.db")
+
+	st, err := Open(path, discardLog())
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	if _, err := st.DB().ExecContext(ctx, `
+INSERT INTO settings (key, value, updated_at) VALUES
+    ('map.tile_url', ?, '2026-01-01T00:00:00Z'),
+    ('map.attribution', '© OpenStreetMap contributors', '2026-01-01T00:00:00Z');
+`, model.RetiredTileURL); err != nil {
+		t.Fatalf("write the restored rows straight into the table: %v", err)
+	}
+	if err := st.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+
+	// Reopening is what a restore does: migrations are all recorded, so nothing but
+	// the startup sweep can notice.
+	again, err := Open(path, discardLog())
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	defer again.Close()
+
+	if got := again.Setting(ctx, model.SettingTileURL, ""); got != "" {
+		t.Errorf("the retired tile address came back with the backup as %q; migrations "+
+			"run once, so nothing else is looking for it", got)
+	}
+	if got := again.Setting(ctx, model.SettingTileAttribution, ""); got != "" {
+		t.Errorf("the attribution came back with the backup as %q", got)
+	}
+}
+
+// IsRetiredTileURL is the comparison under all of the above, and it compares the
+// address, not the shape. A template that merely mentions OpenStreetMap is somebody's
+// deliberate choice of tile server and has to survive.
+func TestIsRetiredTileURL(t *testing.T) {
+	retired := []string{
+		model.RetiredTileURL,
+		"  " + model.RetiredTileURL + "\n", // the value travelled through an HTML form
+	}
+	for _, s := range retired {
+		if !model.IsRetiredTileURL(s) {
+			t.Errorf("IsRetiredTileURL(%q) = false, want true", s)
+		}
+	}
+	for _, s := range []string{
+		"",
+		"https://tiles.example.org/{z}/{x}/{y}.png",
+		"https://tile.openstreetmap.org/{z}/{x}/{y}.png?key=1",
+		"http://tile.openstreetmap.org/{z}/{x}/{y}.png",    // a different address, and their
+		"https://a.tile.openstreetmap.org/{z}/{x}/{y}.png", // subdomain form
+	} {
+		if model.IsRetiredTileURL(s) {
+			t.Errorf("IsRetiredTileURL(%q) = true; this removes one address, not every "+
+				"address that resembles it", s)
+		}
+	}
+}

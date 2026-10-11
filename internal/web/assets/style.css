@@ -38,6 +38,14 @@
   --accent: #60a5fa;
   --accent-ink: #0b1220;
 
+  /* The map's own two colours. They are not the surface ramp: the canvas behind
+     them is already --surface-2, and land that is one step of that same ramp is a
+     shape that vanishes in whichever theme happens to be the wrong way round.
+     Land is painted over the graticule and under the tiles, so it stays readable
+     whether or not anybody configured a tile server. */
+  --map-land: #212c39;
+  --map-coast: #46586e;
+
   --radius: 12px;
   --radius-sm: 8px;
   --pad: 16px;
@@ -81,6 +89,8 @@
 
     --accent: #2563eb;
     --accent-ink: #ffffff;
+    --map-land: #e7eef7;
+    --map-coast: #afc0d4;
   }
 
   :root[data-theme='auto'][data-accent='azure'] { --accent: #2563eb; }
@@ -113,6 +123,8 @@
 
   --accent: #2563eb;
   --accent-ink: #ffffff;
+  --map-land: #e7eef7;
+  --map-coast: #afc0d4;
 }
 
 :root[data-theme='light'][data-accent='azure'] { --accent: #2563eb; }
@@ -786,6 +798,7 @@ main { padding: 20px; max-width: 1500px; margin: 0 auto; }
 .summary-counts .count-n { color: var(--text); font-weight: 650; font-variant-numeric: tabular-nums; }
 .count.s-ok .count-n { color: var(--ok); }
 .count.s-crit .count-n { color: var(--crit); }
+.count.s-warn .count-n { color: var(--warn); }
 .count.s-paused .count-n { color: var(--paused); }
 
 .stat { display: grid; align-content: center; gap: 4px; padding: var(--pad); }
@@ -965,6 +978,7 @@ button.widget-pick-label {
 
 .card.st-up::before { background: var(--ok); }
 .card.st-down::before { background: var(--crit); }
+.card.st-warn::before { background: var(--warn); }
 .card.st-paused::before { background: var(--paused); }
 .card.is-down { border-color: color-mix(in srgb, var(--crit) 45%, var(--border)); }
 /* Example sensors get a quieter tint than a down card: the mark says where the
@@ -1028,6 +1042,7 @@ button.widget-pick-label {
 .cell-name .muted { font-family: var(--mono); font-size: 0.78rem; }
 
 .sensors-table tr.st-down { background: color-mix(in srgb, var(--crit) 6%, transparent); }
+.sensors-table tr.st-warn { background: color-mix(in srgb, var(--warn) 6%, transparent); }
 .row-crit { background: color-mix(in srgb, var(--crit) 7%, transparent); }
 
 .table-wrap {
@@ -1064,6 +1079,7 @@ button.widget-pick-label {
 }
 .pill.st-up { color: var(--ok); background: color-mix(in srgb, var(--ok) 15%, transparent); border-color: color-mix(in srgb, var(--ok) 38%, transparent); }
 .pill.st-down { color: var(--crit); background: color-mix(in srgb, var(--crit) 15%, transparent); border-color: color-mix(in srgb, var(--crit) 40%, transparent); }
+.pill.st-warn { color: var(--warn); background: color-mix(in srgb, var(--warn) 15%, transparent); border-color: color-mix(in srgb, var(--warn) 38%, transparent); }
 .pill.st-paused { color: var(--paused); background: color-mix(in srgb, var(--paused) 15%, transparent); }
 .pill.st-unknown { color: var(--unknown); }
 
@@ -1098,6 +1114,7 @@ button.widget-pick-label {
 .donut-track { stroke: var(--surface-3); }
 .donut-seg.s-ok { stroke: var(--ok); }
 .donut-seg.s-crit { stroke: var(--crit); }
+.donut-seg.s-warn { stroke: var(--warn); }
 .donut-seg.s-unknown { stroke: var(--unknown); }
 .donut-seg.s-paused { stroke: var(--paused); }
 
@@ -1940,6 +1957,7 @@ input:disabled, select:disabled { opacity: 0.55; }
 .tile:hover { background: var(--surface-2); border-color: var(--border-strong); }
 .tile.st-up { border-left-color: var(--ok); }
 .tile.st-down { border-left-color: var(--crit); }
+.tile.st-warn { border-left-color: var(--warn); }
 .tile.st-paused { border-left-color: var(--paused); }
 .tile.is-down { background: color-mix(in srgb, var(--crit) 7%, var(--surface)); }
 
@@ -1963,9 +1981,9 @@ input:disabled, select:disabled { opacity: 0.55; }
 .map-host { position: relative; height: min(72vh, 660px); border: 1px solid var(--border);
   border-radius: var(--radius); overflow: hidden; background: var(--surface-2); }
 
-/* The graticule under the tiles. It is what the map looks like when no tile can
-   be fetched, and it is the reason the markers still make sense there: a place
-   with nothing under it is a puzzle, a place on a grid is a map. */
+/* The graticule under everything. A place with nothing under it is a puzzle, and a
+   place on a grid is a map — which is what makes the markers worth drawing before a
+   single coastline has been laid down. */
 .map-canvas { position: absolute; inset: 0; cursor: grab;
   background-color: var(--surface-2);
   background-image:
@@ -1975,6 +1993,18 @@ input:disabled, select:disabled { opacity: 0.55; }
   touch-action: none;
 }
 .map-canvas.is-dragging { cursor: grabbing; }
+
+/* The coastlines. The SVG is stretched over the canvas in CSS pixels and knows
+   nothing about zoom: map.js writes the path once, in the map's world coordinates,
+   and outline.js puts the view into the group's transform. So a zoom is a transform
+   on one element instead of a few thousand coordinates rewritten, and the coastline
+   stays one pixel wide at every level because the path carries
+   `vector-effect: non-scaling-stroke`. Clipping to the canvas is the default here and
+   is what should happen — the world is wider than the widget at every zoom. */
+.map-outline { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.map-outline path { fill: var(--map-land); stroke: var(--map-coast);
+  stroke-width: 1; stroke-linejoin: round; }
+
 .map-tiles, .map-markers { position: absolute; inset: 0; }
 .map-tile { position: absolute; width: 256px; height: 256px; user-select: none;
   pointer-events: none; }
@@ -2006,6 +2036,7 @@ input:disabled, select:disabled { opacity: 0.55; }
 .site-marker.k-external::after { border-radius: 3px; transform: rotate(45deg); }
 .site-marker.st-up::after { background: var(--ok); }
 .site-marker.st-down::after { background: var(--crit); }
+.site-marker.st-warn::after { background: var(--warn); }
 .site-marker.st-unknown::after { background: var(--unknown); }
 .site-marker.st-paused::after { background: var(--paused); }
 
@@ -2053,6 +2084,7 @@ input:disabled, select:disabled { opacity: 0.55; }
 .legend-dot.k-external { border-radius: 2px; transform: rotate(45deg); }
 .legend-dot.st-up { background: var(--ok); }
 .legend-dot.st-down { background: var(--crit); }
+.legend-dot.st-warn { background: var(--warn); }
 .legend-dot.st-unknown { background: var(--unknown); }
 .legend-dot.st-paused { background: var(--paused); }
 

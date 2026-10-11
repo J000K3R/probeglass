@@ -2,7 +2,9 @@ package web
 
 import (
 	"io/fs"
+	"math"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -123,6 +125,171 @@ func TestEveryWidgetHasAName(t *testing.T) {
 				"the key itself.", id, id)
 		}
 	}
+}
+
+// TestTheEmbeddedCoastlineDecodes reads the coastline the way the browser does.
+//
+// world.js is generated, embedded, and read by nothing else in the build. A file that
+// was truncated — by a merge, by a checkout that ran out of room, by a generator that
+// died halfway through — therefore compiles, ships, and produces a map with no land on
+// it, which is exactly what a map of nowhere looks like. Nothing else in this repository
+// would notice.
+//
+// So the decoder below is a second implementation of the format, written against the
+// format as documented in cmd/worldgen rather than by calling that program's code, and
+// what it checks is the shape of the result: the right number of rings, every point on
+// the planet, and a world that is in fact the whole world rather than a corner of it.
+func TestTheEmbeddedCoastlineDecodes(t *testing.T) {
+	js := readAsset(t, Assets(), "world.js")
+
+	rings := exportInt(t, js, "WORLD_RINGS")
+	scale := exportInt(t, js, "WORLD_SCALE")
+	if scale != 1000 {
+		t.Errorf("WORLD_SCALE = %d; the generator quantises to thousandths of a degree, so a "+
+			"reader that trusts this number is wrong by whatever factor it is", scale)
+	}
+	if rings < 50 {
+		t.Errorf("world.js claims %d ring(s); 1:110m land is well over a hundred landmasses "+
+			"and islands, so this is a file that lost most of itself", rings)
+	}
+
+	data := strings.Trim(exportValue(t, js, "WORLD_DATA"), "'")
+	if len(data) < 1000 {
+		t.Fatalf("WORLD_DATA is %d characters long, which cannot be a world", len(data))
+	}
+	decoded, points := decodeWorld(t, data, rings, scale)
+
+	if points < 1000 {
+		t.Errorf("%d point(s) across %d ring(s); the whole 1:110m land layer is several "+
+			"thousand, so most of the world is missing from the file", points, rings)
+	}
+
+	// Every point has to be somewhere on the planet, and between them they have to
+	// cover it. A decoder off by a factor, or a delta chain that never resets, scores
+	// badly on both of these and on nothing else that is easy to measure.
+	minLon, maxLon := 180.0, -180.0
+	minLat, maxLat := 90.0, -90.0
+	for i, ring := range decoded {
+		if len(ring) < 3 {
+			t.Errorf("ring %d has %d point(s); three is the fewest that encloses any area",
+				i, len(ring))
+			continue
+		}
+		for j, p := range ring {
+			lon, lat := p[0], p[1]
+			if lon < -180 || lon > 180 || lat < -90 || lat > 90 {
+				t.Fatalf("ring %d point %d is at %g,%g, which is off the planet; the delta "+
+					"chain has been misread", i, j, lon, lat)
+			}
+			minLon, maxLon = math.Min(minLon, lon), math.Max(maxLon, lon)
+			minLat, maxLat = math.Min(minLat, lat), math.Max(maxLat, lat)
+		}
+	}
+	if span := maxLon - minLon; span < 300 {
+		t.Errorf("the rings span %.1f° of longitude; a world map spans nearly 360, so this "+
+			"is a corner of one", span)
+	}
+	if span := maxLat - minLat; span < 120 {
+		t.Errorf("the rings span %.1f° of latitude; land reaches from well inside the "+
+			"Arctic to well inside the Antarctic, so this is a corner of a world", span)
+	}
+}
+
+// exportValue reads `export const NAME = value;` out of a generated asset.
+func exportValue(t *testing.T, js, name string) string {
+	t.Helper()
+	m := regexp.MustCompile(`(?m)^export const ` + name + ` = (.+);$`).FindStringSubmatch(js)
+	if m == nil {
+		t.Fatalf("the asset has no `export const %s = ...;` on a line of its own", name)
+	}
+	return m[1]
+}
+
+func exportInt(t *testing.T, js, name string) int {
+	t.Helper()
+	n, err := strconv.Atoi(exportValue(t, js, name))
+	if err != nil {
+		t.Fatalf("export const %s is not a number: %v", name, err)
+	}
+	return n
+}
+
+// decodeWorld is the format from cmd/worldgen, read a second time and on purpose not
+// by calling that code: a decoder that shares its implementation with the encoder
+// agrees with it about any mistake they both make.
+//
+// A number is base 63 written most significant chunk first, closed by a chunk of 63.
+// A ring's first point is absolute and the rest are deltas, so accumulating from zero
+// covers both without a special case. Coordinates are thousandths of a degree.
+func decodeWorld(t *testing.T, data string, rings, scale int) (out [][][2]float64, points int) {
+	t.Helper()
+
+	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+	var code [128]int
+	for i := range code {
+		code[i] = -1
+	}
+	for i := 0; i < len(alphabet); i++ {
+		code[alphabet[i]] = i
+	}
+
+	pos := 0
+	value := func() int64 {
+		t.Helper()
+		var v int64
+		for n := 0; n < 12; n++ {
+			if pos >= len(data) {
+				t.Fatalf("WORLD_DATA ends in the middle of a number at offset %d of %d",
+					pos, len(data))
+			}
+			c := int(data[pos])
+			pos++
+			if c >= len(code) || code[c] < 0 {
+				t.Fatalf("WORLD_DATA has %q (offset %d), which is not in the encoding "+
+					"alphabet; the file and the format have drifted apart", data[pos-1], pos-1)
+			}
+			if code[c] == 63 {
+				return v
+			}
+			v = v*63 + int64(code[c])
+		}
+		t.Fatalf("WORLD_DATA has two hundred digits of number at offset %d and no end to it",
+			pos)
+		return 0
+	}
+	unzigzag := func(u int64) int64 {
+		if u%2 == 1 {
+			return -(u-1)/2 - 1
+		}
+		return u / 2
+	}
+
+	if got := value(); int(got) != rings {
+		t.Fatalf("WORLD_DATA holds %d ring(s), WORLD_RINGS says %d; the file is two files",
+			got, rings)
+	}
+	out = make([][][2]float64, 0, rings)
+	for i := 0; i < rings; i++ {
+		n := int(value())
+		if n <= 0 || n > 100000 {
+			t.Fatalf("ring %d has %d point(s), which is not a number that came out of a "+
+				"coastline", i, n)
+		}
+		ring := make([][2]float64, n)
+		var lon, lat int64
+		for j := 0; j < n; j++ {
+			lon += unzigzag(value())
+			lat += unzigzag(value())
+			ring[j] = [2]float64{float64(lon) / float64(scale), float64(lat) / float64(scale)}
+		}
+		out = append(out, ring)
+		points += n
+	}
+	if pos != len(data) {
+		t.Errorf("WORLD_DATA has %d character(s) left over after the last ring; the file "+
+			"holds more than it says it does", len(data)-pos)
+	}
+	return out, points
 }
 
 func readAsset(t *testing.T, assets fs.FS, name string) string {

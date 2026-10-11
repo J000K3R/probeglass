@@ -92,6 +92,16 @@ func Open(path string, log *slog.Logger) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
+	// Migration 5 does this once, which is once per installation. This does it on
+	// every open, because a backup taken before that migration is a way for the row
+	// to come back afterwards, and restoring one is an ordinary thing to do here.
+	// It is cheap — one indexed lookup in a table with a few dozen rows.
+	if note, err := retireDefaultTileURL(ctx, db); err != nil {
+		log.Warn("could not check the stored map tile address", "err", err)
+	} else if note != "" {
+		log.Info("removed the map tile address this project no longer defaults to",
+			"tile_url", model.RetiredTileURL)
+	}
 	return s, nil
 }
 
@@ -488,6 +498,67 @@ CREATE INDEX IF NOT EXISTS idx_sensors_site ON sensors(site);
 ALTER TABLE sites ADD COLUMN origin TEXT NOT NULL DEFAULT '';
 `,
 	},
+	{
+		version: 5,
+		name:    "retire-osm-tiles",
+		// Nothing to change about the shape of the database: this migration is
+		// about a value that is in the settings table, and about a default that
+		// used to be one. `SELECT 1` is here because Exec still has to run
+		// something, and an empty statement is a parse error rather than a no-op.
+		sql: `SELECT 1;`,
+		after: func(ctx context.Context, tx *sql.Tx) (string, error) {
+			return retireDefaultTileURL(ctx, tx)
+		},
+	},
+}
+
+// rowExecer is the part of *sql.DB and *sql.Tx that the settings sweeps below use.
+//
+// The same code runs in both places — inside the migration transaction, and against
+// the open database at startup — and neither of them cares which it was handed.
+type rowExecer interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
+// retireDefaultTileURL deletes a stored tile address that is the one this project
+// used to ship as its default, and reports what it did for the log.
+//
+// The map form wrote the value it was displaying into the row when it was saved,
+// so an installation that opened Settings → Map and pressed Save once has
+// tile.openstreetmap.org in its settings table as if it had chosen it. With the
+// default gone that row is all that is left of it, and leaving it would mean every
+// one of those installations carried on asking a server that has told this kind of
+// application to stop — and carried on being shown the block notice.
+//
+// Deleting rather than rewriting to a new default, because the new default is
+// empty. An installation that genuinely wants those tiles can type the address
+// back in; it will not be deleted again, since the migration only ever runs once.
+func retireDefaultTileURL(ctx context.Context, db rowExecer) (string, error) {
+	var value string
+	err := db.QueryRowContext(ctx,
+		`SELECT value FROM settings WHERE key = ?`, model.SettingTileURL).Scan(&value)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	if !model.IsRetiredTileURL(value) {
+		return "", nil
+	}
+
+	// The attribution went with the address. A credit line for a tile server that
+	// is no longer being asked for anything is a name on somebody's dashboard that
+	// has nothing to justify it — and for OpenStreetMap specifically it is the
+	// credit that their terms require *of people using their tiles*, which is not
+	// this installation any more.
+	if _, err := db.ExecContext(ctx,
+		`DELETE FROM settings WHERE key IN (?, ?)`,
+		model.SettingTileURL, model.SettingTileAttribution); err != nil {
+		return "", err
+	}
+	return "removed the retired map tile address", nil
 }
 
 func (s *Store) migrate(ctx context.Context) error {

@@ -71,11 +71,16 @@ func (t SensorType) Valid() bool {
 type Status string
 
 const (
-	// StatusUnknown means the sensor has never produced a result yet, or it is
-	// still inside its failure grace period.
+	// StatusUnknown means the sensor has never produced a result yet. It is the
+	// answer to "is it up?" that is not a lie: nothing has been heard from it.
 	StatusUnknown Status = "unknown"
 	StatusUp      Status = "up"
 	StatusDown    Status = "down"
+	// StatusWarn marks a sensor whose last probe failed but whose failure streak
+	// has not reached the configured retries yet — a blip, not an outage. It opens
+	// no incident and sends no alert; the sensor is on its way down or back up, and
+	// this is what it looks like while that is undecided.
+	StatusWarn Status = "warn"
 	// StatusPaused marks sensors that are disabled in the configuration.
 	StatusPaused Status = "paused"
 )
@@ -415,6 +420,7 @@ type Summary struct {
 	Total      int       `json:"total"`
 	Up         int       `json:"up"`
 	Down       int       `json:"down"`
+	Warn       int       `json:"warn"`
 	Paused     int       `json:"paused"`
 	Unknown    int       `json:"unknown"`
 	Uptime24h  float64   `json:"uptime_24h"`
@@ -677,15 +683,40 @@ const (
 	SettingTileAttribution = "map.attribution"
 )
 
-// The map's defaults. OpenStreetMap renders the map without anyone having to run
-// a tile server first, which is what makes the map view usable the moment it is
-// opened. It is also a third party the browser talks to directly, so the tile URL
-// is a visible setting with a plain explanation, and an installation that would
-// rather not is one text field away from pointing it at its own server.
+// The map's defaults, which are both empty, and empty means "fetch nothing".
+//
+// They used to name OpenStreetMap, on the reasoning that a map view with nobody to
+// run a tile server should still show a map. That reasoning expired: OSM's tile
+// usage policy stopped permitting third-party applications in 2025, and their
+// servers now answer a request from one with a block notice — under HTTP 200, so
+// the browser counts it as a tile that loaded and the reader is shown an apology
+// where a coastline should be. The dashboard draws the world itself instead, from
+// a dataset in the binary, and the field below stays for anybody who runs a tile
+// server of their own or has found one that wants the traffic.
+//
+// The constants stay, and stay referenced from the docs, because RetiredTileURL is
+// what an installation that saved the old default has in its row.
 const (
-	DefaultTileURL         = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
-	DefaultTileAttribution = "© OpenStreetMap contributors"
+	DefaultTileURL         = ""
+	DefaultTileAttribution = ""
 )
+
+// RetiredTileURL is the default tile address this project used to ship.
+//
+// The form wrote the value it was showing into the row on save, so an installation
+// that opened Settings → Map once and pressed Save has it stored as though somebody
+// chose it. Every one of those installations would keep asking OSM for tiles, and
+// keep being shown the block notice, after the default moved out from under them.
+// The migration deletes the row; this recognises it, in case the same value arrives
+// again — restored from a backup taken before the migration ran, or typed by hand.
+const RetiredTileURL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+
+// IsRetiredTileURL reports whether a stored tile address is the one this project
+// used to default to. The comparison ignores surrounding whitespace because the
+// value travelled through an HTML form.
+func IsRetiredTileURL(s string) bool {
+	return strings.TrimSpace(s) == RetiredTileURL
+}
 
 // TileURLTemplate is what the map's placeholder substitution understands. A URL
 // containing anything else is a typo, and a typo here fails as a blank map rather

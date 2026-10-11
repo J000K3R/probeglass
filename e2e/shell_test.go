@@ -1085,12 +1085,15 @@ func assignSite(t *testing.T, ctx context.Context, dir, site string) {
 // screen to the tree, the wall and the map, and then breaks the tile server on
 // purpose.
 //
-// The last part is the one worth explaining. A map that draws nothing when the
-// tiles do not arrive is useless in exactly the installation it is meant for —
-// a homelab that is offline, or behind a firewall that allows the dashboard but
-// not a tile server. So the assertion is not "the map looks right"; it is that
-// the places keep their correct positions relative to each other and one
-// sentence says what is missing.
+// The map is checked twice, because it has two jobs and they pull in opposite
+// directions. Out of the box it must fetch nothing: no tile address is configured, so
+// there must be no tile image, no credit line and no complaint about a server nobody
+// asked for — only the coastlines that came in the binary. Once somebody does configure
+// one and it does not answer, the opposite has to hold: the ground goes, the places stay
+// exactly where they were, and one sentence says what is missing. A map that draws
+// nothing when the tiles do not arrive is useless in exactly the installation it is
+// meant for — a homelab that is offline, or behind a firewall that allows the dashboard
+// but not a tile server.
 func TestSitesReachEveryViewAndTheMapIsHonest(t *testing.T) {
 	browser := findBrowser(t)
 	base := startServer(t, buildBinary(t))
@@ -1186,6 +1189,50 @@ func TestSitesReachEveryViewAndTheMapIsHonest(t *testing.T) {
 	clickLayout(t, ctx, dir, "map", `.map-canvas`)
 	before := readMap(t, ctx, dir)
 
+	// --- and asks nobody for anything, out of the box -----------------------
+
+	// The reason the map carries its own coastlines is that a browser looking at this
+	// dashboard should not have to talk to a third party to see where its own house
+	// is. So with no tile address configured there must be no tile image at all — and
+	// the coastlines must actually be there, or "fetches nothing" and "is blank" would
+	// look the same to this check and only one of them is a map.
+	if n := read[int](t, ctx, `document.querySelectorAll('.map-tile').length`,
+		"how many tile images the map built"); n != 0 {
+		capture(t, ctx, dir, "map-tiles-without-a-source")
+		t.Errorf("with no tile address configured the map built %d tile image(s); an empty src "+
+			"asks the browser for the dashboard page itself, once per tile on the screen", n)
+	}
+	if n := read[int](t, ctx, `document.querySelectorAll('.map-outline path').length`,
+		"how many coastline paths the map drew"); n != 1 {
+		capture(t, ctx, dir, "map-outline-missing")
+		t.Fatalf("the map drew %d coastline path(s), want one: every ring is a subpath of a "+
+			"single path, which is what lets them fill as land instead of as overlapping shapes", n)
+	}
+	// A path that exists but carries no coordinates is a map with nothing on it, which
+	// is the failure this whole check is about; the length is in characters, so the
+	// threshold only has to be past "a few".
+	if n := read[int](t, ctx, `(document.querySelector('.map-outline path').getAttribute('d') || '').length`,
+		"how much coastline the map drew"); n < 1000 {
+		capture(t, ctx, dir, "map-outline-empty")
+		t.Errorf("the coastline path is %d character(s) long; the world does not fit in that", n)
+	}
+	if !read[bool](t, ctx, `document.querySelector('.map-attribution').hidden`,
+		"whether the map credits a tile server") {
+		capture(t, ctx, dir, "map-credit-without-a-source")
+		t.Errorf("the map credits a tile server it is not fetching anything from")
+	}
+
+	// And there is nothing to explain either. The note that says a tile server could
+	// not be reached must not be sitting on a fresh installation blaming a server
+	// nobody configured. It is set on a 400 ms timer, so this has to outlast it —
+	// looking for something that is *not* there needs a moment of stillness.
+	time.Sleep(750 * time.Millisecond)
+	if !read[bool](t, ctx, `document.querySelector('.map-note').hidden`,
+		"whether the map is complaining") {
+		capture(t, ctx, dir, "map-note-without-a-source")
+		t.Errorf("the map is reporting an unreachable tile server it was never given")
+	}
+
 	// --- and stays honest with the tile server broken -----------------------
 
 	if err := withTimeout(ctx, func(tctx context.Context) error {
@@ -1208,6 +1255,12 @@ func TestSitesReachEveryViewAndTheMapIsHonest(t *testing.T) {
 		t.Fatalf("could not point the map at an unreachable tile server: %v", err)
 	}
 
+	// The map has to be built again for the new tile source to reach it, and the
+	// switcher only rebuilds the view when the layout actually changes — pressing the
+	// button that is already pressed is not a change. So this goes through another
+	// layout on the way, which is what somebody switching a setting and looking at the
+	// result does anyway.
+	clickLayout(t, ctx, dir, "list", `.sensors-table .row`)
 	clickLayout(t, ctx, dir, "map", `.map-canvas`)
 	eventually(t, ctx, `(() => {
 		const note = document.querySelector('.map-note');

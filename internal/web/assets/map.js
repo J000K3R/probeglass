@@ -1,20 +1,34 @@
 // The map.
 //
 // Sites have coordinates, so they can be drawn where they are. This is a
-// slippy map written out by hand — Web Mercator, tiles fetched straight from a
-// tile server, drag and zoom — because the alternative is a mapping library,
-// and a mapping library is a build step, a dependency and half a megabyte for
-// what is forty lines of arithmetic.
+// slippy map written out by hand — Web Mercator, drag and zoom — because the
+// alternative is a mapping library, and a mapping library is a build step, a
+// dependency and half a megabyte for what is forty lines of arithmetic.
 //
-// Two rules shape the whole file:
+// Underneath the markers it draws the world's coastlines, out of a dataset that
+// lives in this directory rather than off a tile server, and that is a deliberate
+// change of direction rather than a missing feature. The free tile servers a
+// third-party application used to be able to lean on are gone: OpenStreetMap's
+// usage policy stopped allowing them in 2025, and what their servers answer an
+// application now is a picture of a refusal — HTTP 200, so the browser counts it
+// as a tile that loaded, and the reader gets to look at a block notice where a
+// country should be. An operator who does want real tiles can still enter a tile
+// address in Settings and this file honours it. An operator who does not gets a
+// map, and nobody anywhere hears which addresses a homelab is watching.
+//
+// Three rules shape the whole file:
 //
 //   * The markers depend on the projection and on nothing else. Not on a tile
 //     having loaded, not on the network being up. A homelab behind a firewall
-//     that cannot reach the tile server still gets an honest picture: the
-//     graticule the stylesheet paints underneath, every place in the right spot
-//     relative to every other, and one sentence saying the tiles are missing.
-//     An empty grey rectangle with no explanation is the failure mode this is
-//     built to avoid.
+//     still gets an honest picture: the graticule the stylesheet paints
+//     underneath, every place in the right spot relative to every other, and one
+//     sentence saying what is missing. An empty grey rectangle with no
+//     explanation is the failure mode this is built on avoiding.
+//
+//   * The coastlines are under the tiles, so a configured tile server covers
+//     them and an unreachable one uncovers them — the tile images hide
+//     themselves on error, and the world is what is left. The order is the whole
+//     mechanism; nothing here decides when to show one or the other.
 //
 //   * Colour already means status everywhere else in the dashboard, so it means
 //     status here too, and the kind of place — in the house or somewhere else —
@@ -26,6 +40,7 @@ import { t } from './i18n.js';
 import { esc } from './charts.js';
 import { worstStatus } from './layouts.js';
 import { overlayHost } from './tooltip.js';
+import { createOutline } from './outline.js';
 
 const TILE = 256;
 const MIN_ZOOM = 1;
@@ -108,11 +123,14 @@ export function mount(host, opts = {}) {
   canvas.setAttribute('role', 'application');
   canvas.setAttribute('aria-label', t('map.aria'));
 
+  const outline = createOutline();
   const tiles = document.createElement('div');
   tiles.className = 'map-tiles';
   const markers = document.createElement('div');
   markers.className = 'map-markers';
-  canvas.append(tiles, markers);
+  // The order is the design: coastlines, then whatever tiles somebody configured,
+  // then the pins. See the third rule at the top of the file.
+  canvas.append(outline.node, tiles, markers);
 
   const note = document.createElement('p');
   note.className = 'map-note';
@@ -131,11 +149,15 @@ export function mount(host, opts = {}) {
     <span><i class="legend-dot k-local"></i>${esc(t('map.legend.local'))}</span>
     <span><i class="legend-dot k-external"></i>${esc(t('map.legend.external'))}</span>
     <span><i class="legend-dot st-up"></i>${esc(t('status.up'))}</span>
+    <span><i class="legend-dot st-warn"></i>${esc(t('status.warn'))}</span>
     <span><i class="legend-dot st-down"></i>${esc(t('status.down'))}</span>`;
 
   const credit = document.createElement('div');
   credit.className = 'map-attribution';
   credit.innerHTML = attributionMarkup(opts.attribution, opts.tileURL);
+  // With no tile server there is nobody to credit, and an empty bordered box in
+  // the corner reads as something that failed to load.
+  credit.hidden = credit.innerHTML === '';
 
   host.append(canvas, controls, legend, note, credit);
 
@@ -200,19 +222,27 @@ export function mount(host, opts = {}) {
     tilesOK = 0;
     tilesFailed = 0;
 
+    outline.setView(view.z, left, top);
+
+    // Without a tile address there is no image to fetch, and this is not a loop
+    // that quietly finds nothing to do: `src=""` resolves to the page's own
+    // address, so it would have the browser request the dashboard again, once per
+    // tile on the screen, at every zoom step. The tiles layer stays empty instead.
     let tileHTML = '';
-    const x0 = Math.floor(left / TILE);
-    const x1 = Math.floor((left + w) / TILE);
-    const y0 = Math.floor(top / TILE);
-    const y1 = Math.floor((top + h) / TILE);
-    for (let x = x0; x <= x1; x++) {
-      if (x < 0 || x >= span) continue;
-      for (let y = y0; y <= y1; y++) {
-        if (y < 0 || y >= span) continue;
-        const px = (x * TILE - left).toFixed(1);
-        const py = (y * TILE - top).toFixed(1);
-        tileHTML += `<img class="map-tile" alt="" draggable="false" loading="lazy" decoding="async"` +
-          ` style="left:${px}px;top:${py}px" src="${esc(opts.tileURL ? tileAddress(opts.tileURL, view.z, x, y) : '')}">`;
+    if (opts.tileURL) {
+      const x0 = Math.floor(left / TILE);
+      const x1 = Math.floor((left + w) / TILE);
+      const y0 = Math.floor(top / TILE);
+      const y1 = Math.floor((top + h) / TILE);
+      for (let x = x0; x <= x1; x++) {
+        if (x < 0 || x >= span) continue;
+        for (let y = y0; y <= y1; y++) {
+          if (y < 0 || y >= span) continue;
+          const px = (x * TILE - left).toFixed(1);
+          const py = (y * TILE - top).toFixed(1);
+          tileHTML += `<img class="map-tile" alt="" draggable="false" loading="lazy" decoding="async"` +
+            ` style="left:${px}px;top:${py}px" src="${esc(tileAddress(opts.tileURL, view.z, x, y))}">`;
+        }
       }
     }
     tiles.innerHTML = tileHTML;
@@ -373,8 +403,12 @@ export function mount(host, opts = {}) {
     dragging.dx = event.clientX - dragging.x;
     dragging.dy = event.clientY - dragging.y;
     // The whole layer moves as one compositor operation; nothing is recomputed
-    // and no tile is fetched until the finger comes off.
+    // and no tile is fetched until the finger comes off. The coastlines move with
+    // it, on the same three lines of transform: they are a layer of the map like
+    // any other, and a view that jumped back to where it started dragging would be
+    // worse than no map at all.
     const shift = `translate(${dragging.dx}px, ${dragging.dy}px)`;
+    outline.node.style.transform = shift;
     tiles.style.transform = shift;
     markers.style.transform = shift;
   });
@@ -389,6 +423,7 @@ export function mount(host, opts = {}) {
     } catch {
       /* the pointer was already released */
     }
+    outline.node.style.transform = '';
     tiles.style.transform = '';
     markers.style.transform = '';
     view.cx -= dx;
@@ -530,14 +565,18 @@ function placed(site) {
 /**
  * attributionMarkup renders the credit line.
  *
- * The default tiles are OpenStreetMap's, and their licence requires the credit
- * to be visible and to link to the copyright page. When somebody points the map
- * at their own tile server the string they configured is written out as plain
- * text: it is their licence to satisfy, not ours to guess at.
+ * There is nothing to credit unless somebody configured a tile server, so with no
+ * address this returns nothing at all and the corner stays empty. When there is
+ * one, the string they configured is written out as plain text: it is their
+ * licence to satisfy, not ours to guess at — with one exception. A tile address
+ * containing openstreetmap.org is linked to the copyright page, because that
+ * attribution is not optional under OSM's terms and a credit that does not link to
+ * it does not satisfy them.
  */
 function attributionMarkup(attribution, tileURL) {
+  if (!tileURL) return '';
   const text = attribution || '© OpenStreetMap contributors';
-  if (tileURL && tileURL.includes('openstreetmap.org')) {
+  if (tileURL.includes('openstreetmap.org')) {
     return `<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">${esc(text)}</a>`;
   }
   return esc(text);

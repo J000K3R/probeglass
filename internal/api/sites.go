@@ -215,6 +215,11 @@ func isManagedSiteError(err error) bool {
 // make, and the CSP is refreshed with it in the same breath. Forgetting the
 // second half would leave the tiles blocked by a policy that had just been told
 // about them, and the symptom would be a map that is simply blank.
+//
+// An empty address is the off switch, not a request for the default. The default is
+// empty anyway, and the map draws its own coastlines, but the distinction matters to
+// the person clearing the field: they are saying they want nothing fetched, and
+// that has to be what happens rather than a silent return to somebody else's server.
 func (s *Server) handleUpdateMap(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		TileURL     string `json:"tile_url"`
@@ -224,18 +229,23 @@ func (s *Server) handleUpdateMap(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request body: %s", err.Error())
 		return
 	}
+
 	tileURL := strings.TrimSpace(in.TileURL)
-	if tileURL == "" {
-		tileURL = model.DefaultTileURL
+	// validateTileURL is about the placeholders and the scheme, all of which are
+	// about a fetch that is going to happen. With an empty field none is.
+	if tileURL != "" {
+		if err := validateTileURL(tileURL); err != nil {
+			writeError(w, http.StatusBadRequest, "%s", err.Error())
+			return
+		}
 	}
-	if err := validateTileURL(tileURL); err != nil {
-		writeError(w, http.StatusBadRequest, "%s", err.Error())
-		return
-	}
+
+	// No fallback either. The credit line exists to satisfy a tile server's terms,
+	// and the only one whose terms this project has ever had to satisfy is
+	// OpenStreetMap's — whose tiles are no longer being fetched, and whose credit
+	// would therefore be a name attached to somebody else's map. attributionMarkup
+	// in the browser still supplies it when a tile address really does point there.
 	attribution := strings.TrimSpace(in.Attribution)
-	if attribution == "" {
-		attribution = model.DefaultTileAttribution
-	}
 
 	ctx := r.Context()
 	if err := s.store.SetSetting(ctx, model.SettingTileURL, tileURL); err != nil {

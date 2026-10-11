@@ -1671,9 +1671,10 @@ function mountWidgets() {
   });
 }
 
-/** statusWord is the status as a word. The one place the four are named. */
+/** statusWord is the status as a word. The one place the five are named. */
 function statusWord(status) {
-  const key = { up: 'status.up', down: 'status.down', paused: 'status.paused' }[status] || 'status.unknown';
+  const key = { up: 'status.up', down: 'status.down', warn: 'status.warn', paused: 'status.paused' }[status]
+    || 'status.unknown';
   return t(key);
 }
 
@@ -3201,10 +3202,10 @@ function sitesPanel() {
 /**
  * mapPanel is the tile source, and the sentence that has to be read with it.
  *
- * The privacy note is not a footnote here. Choosing a tile server is choosing
- * who learns that this dashboard exists and roughly where it is being looked at
- * from, and that is a decision the person configuring it should be making
- * knowingly rather than discovering later.
+ * Empty is the default and it means "off" rather than "not set": the map draws the
+ * coastline that shipped in the binary and no request leaves the machine. So the note
+ * under the fields is not a footnote — it says what entering an address here costs,
+ * and that is the decision this panel exists to make deliberate.
  */
 function mapPanel() {
   const map = (state.settings && state.settings.map) || {};

@@ -310,19 +310,25 @@ func TestSummaryCarriesSitesAndHeartbeat(t *testing.T) {
 //
 // A tile URL the content policy does not allow produces a map with no tiles and no
 // error anywhere the user can see — a browser reports a CSP refusal only in a
-// console nobody opens. So the origin has to appear in the header, and it has to
-// appear for the default as well as for a configured one.
+// console nobody opens. So the origin has to appear in the header once an address is
+// configured, and it has to be absent while none is: the whole point of shipping no
+// tile address is that the browser asks nobody, and a policy still naming a tile host
+// would be a promise the rest of the code no longer keeps.
 func TestTileURLSettingFollowsIntoTheContentPolicy(t *testing.T) {
 	h := newHarness(t)
 	h.setup()
 
-	// The default is in force before anybody configures anything.
+	// Nothing is configured out of the box, so nothing is permitted.
 	resp := h.do(http.MethodGet, "/api/settings", nil, nil)
 	csp := resp.Header.Get("Content-Security-Policy")
 	readBody(t, resp)
-	if !strings.Contains(csp, "tile.openstreetmap.org") {
-		t.Errorf("with the default tile URL the policy is %q, which blocks every "+
-			"tile the map asks for", csp)
+	if !strings.Contains(csp, "img-src 'self' data:;") {
+		t.Errorf("with no tile server configured the policy is %q; it should allow "+
+			"images from this origin and nothing else, so that the map can draw "+
+			"itself without asking anybody", csp)
+	}
+	if strings.Contains(csp, "openstreetmap.org") {
+		t.Errorf("the policy allows a third party's tiles out of the box: %q", csp)
 	}
 
 	// Point it somewhere else.
@@ -339,9 +345,6 @@ func TestTileURLSettingFollowsIntoTheContentPolicy(t *testing.T) {
 	if !strings.Contains(csp, "https://tiles.example.org") {
 		t.Errorf("after configuring a tile URL the policy is %q, which does not allow it", csp)
 	}
-	if strings.Contains(csp, "tile.openstreetmap.org") {
-		t.Errorf("the policy still allows the old tile host: %q", csp)
-	}
 
 	// And the settings screen can show what is set.
 	var body struct {
@@ -357,15 +360,36 @@ func TestTileURLSettingFollowsIntoTheContentPolicy(t *testing.T) {
 	if body.Map.Attribution != "© Beispiel" {
 		t.Errorf("the settings report the attribution as %q", body.Map.Attribution)
 	}
+
+	// Clearing the field is a decision, not an empty form: the address goes and the
+	// permission goes with it. If the policy kept the origin after this, the setting
+	// would read as "nothing is fetched" while the browser was still allowed to.
+	clear := h.do(http.MethodPut, "/api/map", map[string]any{
+		"tile_url": "", "attribution": "© Beispiel",
+	}, origin(h))
+	if clear.StatusCode != http.StatusOK {
+		t.Fatalf("clear the tile URL: status = %d, body = %s", clear.StatusCode, readBody(t, clear))
+	}
+	resp = h.do(http.MethodGet, "/api/settings", nil, nil)
+	csp = resp.Header.Get("Content-Security-Policy")
+	decode(t, resp, &body)
+	if strings.Contains(csp, "tiles.example.org") {
+		t.Errorf("the policy still allows the removed tile host: %q", csp)
+	}
+	if body.Map.TileURL != "" {
+		t.Errorf("after clearing it the settings report the tile URL as %q", body.Map.TileURL)
+	}
 }
 
-// TestTileURLWithoutPlaceholdersIsRefused turns an empty map into a sentence next
-// to the field that is wrong.
+// TestTileURLIsValidatedOnlyWhenItIsSet turns an empty map into a sentence next to
+// the field that is wrong — and keeps the empty field itself out of that.
 //
-// A template missing {z}/{x}/{y} asks for the same address for every tile there
-// is, which a browser answers by fetching one image and stretching it across the
-// map — a failure with no error attached to it anywhere.
-func TestTileURLWithoutPlaceholdersIsRefused(t *testing.T) {
+// A template missing {z}/{x}/{y} asks for the same address for every tile there is,
+// which a browser answers by fetching one image and stretching it across the map — a
+// failure with no error attached to it anywhere. But none of that applies to an
+// address that is not there, and a form that refuses to let somebody turn the tiles
+// off is a form with a setting nobody can unset.
+func TestTileURLIsValidatedOnlyWhenItIsSet(t *testing.T) {
 	h := newHarness(t)
 	h.setup()
 
@@ -380,6 +404,16 @@ func TestTileURLWithoutPlaceholdersIsRefused(t *testing.T) {
 		readBody(t, resp)
 		if resp.StatusCode != http.StatusBadRequest {
 			t.Errorf("the tile URL %q was accepted: status = %d", bad, resp.StatusCode)
+		}
+	}
+
+	// Whitespace is the same as empty: a field somebody tabbed through and then
+	// cleared must not come back as a validation error.
+	for _, empty := range []string{"", "   ", "\t"} {
+		resp := h.do(http.MethodPut, "/api/map", map[string]any{"tile_url": empty}, origin(h))
+		readBody(t, resp)
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("clearing the tile URL with %q was refused: status = %d", empty, resp.StatusCode)
 		}
 	}
 }
