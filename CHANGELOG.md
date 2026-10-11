@@ -528,6 +528,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`Reconcile` started probe loops on a scheduler that had never been started, and
+  parented them to the caller's HTTP request.** The API handlers call `Reconcile`
+  after every change to the sensor list — a sensor added, the example data removed,
+  a backup restored — and the context they hand it is the request's. A loop that
+  takes that context as its parent dies the moment the response is written, partway
+  through its first probe, and the one probe that lands before then writes a row
+  into a table the same request has just counted. Nothing of this reached a user,
+  because the daemon starts the scheduler before it serves anything; in the API's
+  own tests it made the example-data restore fail in CI now and then, answering
+  `Results: 26209` where the restore itself had said `26208`. `Reconcile` now
+  rebuilds the sensor state — which is what the dashboard reads from it — and stops
+  there, and the loops belong to `Start`, which calls `Reconcile` on the way up. The
+  test suite had been probing the public internet from unit tests without saying
+  so; it no longer does, which is about fifteen seconds of the test job.
+
 - **The test for a silent ping probe asked the network to be honest about it.** It
   pinged `198.51.100.7`, an address reserved for documentation and routed nowhere,
   and insisted that nothing answer. On a network where a middlebox does answer —

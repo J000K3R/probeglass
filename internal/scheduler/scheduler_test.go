@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/j000k3r/weatherglass/internal/event"
 	"github.com/j000k3r/weatherglass/internal/model"
 	"github.com/j000k3r/weatherglass/internal/notify"
 	"github.com/j000k3r/weatherglass/internal/store"
@@ -16,6 +17,10 @@ import (
 
 // newTestScheduler returns a scheduler with a real store in a temporary
 // directory and no alert channels, which is enough to drive the state machine.
+//
+// The broker is real because the probe loops publish to it, and a test that lets
+// one run with a nil broker would take the whole test binary down with a nil
+// dereference in a goroutine.
 func newTestScheduler(t *testing.T) (*Scheduler, *store.Store) {
 	t.Helper()
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -24,7 +29,15 @@ func newTestScheduler(t *testing.T) (*Scheduler, *store.Store) {
 		t.Fatalf("open store: %v", err)
 	}
 	t.Cleanup(func() { st.Close() })
-	return New(st, nil, nil, log), st
+	return New(st, nil, event.NewBroker(), log), st
+}
+
+// runnerCount is how many probe loops the scheduler has running. The caller must
+// not hold the scheduler's lock.
+func runnerCount(s *Scheduler) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.runners)
 }
 
 func newTestSensor(t *testing.T, st *store.Store, retries int) model.Sensor {
@@ -261,5 +274,63 @@ func TestAcknowledgedOutageStopsRemindersUntilUnacknowledged(t *testing.T) {
 	}
 	if tr.current != model.StatusUp {
 		t.Fatalf("recovery: status = %q, want up", tr.current)
+	}
+}
+
+// TestReconcileBeforeStartStartsNoLoops keeps the two halves of the contract
+// apart: Reconcile is reachable from inside an HTTP request, Start owns the
+// loops.
+//
+// The API handlers call Reconcile after every change to the sensor list, and the
+// context they hand it is the request's. A loop that took that context as its
+// parent dies when the response is written — partway through its first probe —
+// and the probe that does land before then writes a row into a table the same
+// request has just counted. That is not hypothetical: it is what made the API's
+// example-data test fail in CI now and then, and nothing in either package said
+// so.
+func TestReconcileBeforeStartStartsNoLoops(t *testing.T) {
+	s, st := newTestScheduler(t)
+	ctx := context.Background()
+
+	// A target that refuses at once, so that if a loop did start, its first probe
+	// would reach the store almost immediately.
+	c := model.Sensor{
+		Name:     "Refuses at once",
+		Type:     model.SensorTCP,
+		Target:   "127.0.0.1:1",
+		Interval: 60,
+		Timeout:  5,
+		Retries:  1,
+		Enabled:  true,
+	}
+	store.NormaliseSensor(&c)
+	if err := st.CreateSensor(ctx, &c); err != nil {
+		t.Fatalf("create sensor: %v", err)
+	}
+
+	if err := s.Reconcile(ctx); err != nil {
+		t.Fatalf("reconcile: %v", err)
+	}
+	if n := runnerCount(s); n != 0 {
+		t.Errorf("Reconcile started %d probe loop(s) on a scheduler that was never "+
+			"started, so their lifetime is the caller's and not the daemon's; the "+
+			"loops belong to Start", n)
+	}
+
+	// The state, unlike the loop, is still rebuilt: it is what the sensor list on
+	// screen reads, and it is why Reconcile is worth calling at all here.
+	if _, ok := s.Snapshots()[c.ID]; !ok {
+		t.Error("Reconcile before Start left the sensor without a state, so the " +
+			"dashboard would show it as unknown until the daemon restarted")
+	}
+
+	// And Start still starts them — the check above must not have turned Reconcile
+	// into a way of never probing at all.
+	if err := s.Start(ctx); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	t.Cleanup(s.Stop)
+	if n := runnerCount(s); n != 1 {
+		t.Errorf("Start left %d probe loop(s) running, want the one for the sensor", n)
 	}
 }

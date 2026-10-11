@@ -127,6 +127,15 @@ func (s *Scheduler) Stop() {
 // Reconcile brings the running loops in line with the stored sensors: it starts
 // loops for new or changed sensors and stops loops for removed or disabled
 // ones. It is safe to call at any time.
+//
+// On a scheduler that was never started it reads the sensors and rebuilds their
+// state, and stops there: running those loops belongs to Start, which calls
+// Reconcile itself on the way up. The API handlers call Reconcile from inside an
+// HTTP request — after a sensor is added, removed, imported or replaced — and a
+// loop that took the request as its parent would die with the response, halfway
+// through its first probe. Which is not hypothetical: it was what this did, and
+// the one probe that got in before the response was flushed was one row in a
+// table a test had just counted.
 func (s *Scheduler) Reconcile(ctx context.Context) error {
 	sensors, err := s.store.ListSensors(ctx)
 	if err != nil {
@@ -175,11 +184,13 @@ func (s *Scheduler) Reconcile(ctx context.Context) error {
 		if _, ok := s.states[id]; !ok {
 			s.restoreState(ctx, c)
 		}
-		// Reconcile is also reachable before Start (and from tests), so fall back
-		// to the caller's context rather than panicking on a nil parent.
+		// Nothing probes before Start. The state above is what the dashboard reads
+		// through Snapshots, and it is rebuilt here so that a sensor added while the
+		// daemon is up is not reported as unknown for the rest of the request; the
+		// loop is Start's business.
 		parent := s.ctx
 		if parent == nil {
-			parent = ctx
+			continue
 		}
 		loopCtx, cancel := context.WithCancel(parent)
 		s.runners[id] = &runner{cancel: cancel, sensor: c}

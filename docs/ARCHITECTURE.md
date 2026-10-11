@@ -142,7 +142,11 @@ that thirty sensors configured at `60s` do not fire in the same millisecond. The
 scheduler does not own the sensor list: `Reconcile` diffs the stored sensors
 against the running loops and starts, restarts, or stops them, and it is called
 after any change made over the API. A sensor edited in the UI therefore changes
-behaviour without a restart.
+behaviour without a restart. The loops, though, belong to `Start`: `Reconcile`
+reaches the scheduler from inside an HTTP request, and a loop parented to that
+request would die with the response, halfway through its first probe. Before the
+daemon has started its scheduler, `Reconcile` rebuilds the sensors' runtime state
+and starts nothing.
 
 Per sensor, the runtime state is: the current status, the consecutive-failure
 count, the open incident, and the time of the last alert. On startup this is
