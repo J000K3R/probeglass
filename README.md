@@ -1,6 +1,24 @@
-# Weatherglass
+<p align="center">
+  <a href="https://j000k3r.github.io/weatherglass-website/">
+    <img src="docs/images/logo.svg" alt="Weatherglass" width="420">
+  </a>
+</p>
 
-> A small, self-hosted watchdog for your homelab.
+<p align="center"><em>A small, self-hosted watchdog for your homelab.</em></p>
+
+<p align="center">
+  <a href="https://github.com/j000k3r/weatherglass/actions/workflows/ci.yml"><img src="https://github.com/j000k3r/weatherglass/actions/workflows/ci.yml/badge.svg" alt="CI" height="20"></a>
+  <a href="https://github.com/j000k3r/weatherglass/releases"><img src="https://img.shields.io/github/v/release/j000k3r/weatherglass?sort=semver" alt="Release" height="20"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT" height="20"></a>
+  <a href="go.mod"><img src="https://img.shields.io/github/go-mod/go-version/j000k3r/weatherglass" alt="Go version" height="20"></a>
+  <a href="Dockerfile"><img src="https://img.shields.io/badge/image-~27%20MB%20(~6%20MB%20compressed)-informational" alt="Image size" height="20"></a>
+  <a href="https://j000k3r.github.io/weatherglass-docs/about"><img src="https://img.shields.io/badge/hobby%20project-no%20support%2C%20no%20warranty-orange" alt="Hobby project" height="20"></a>
+</p>
+
+<p align="center">
+  <b>Website:</b> <a href="https://j000k3r.github.io/weatherglass-website/">j000k3r.github.io/weatherglass-website</a> — what it does, with pictures ·
+  <b>Documentation:</b> <a href="https://j000k3r.github.io/weatherglass-docs/">j000k3r.github.io/weatherglass-docs</a> — installation, configuration, the sensor and channel references, the HTTP API, and troubleshooting
+</p>
 
 **Weatherglass** is a single-container monitoring daemon: it probes your services
 on a schedule, keeps their history, draws the graphs, and shouts at you when
@@ -8,17 +26,41 @@ something breaks. It is built to stay out of the way — one binary, one SQLite
 file, a few megabytes of RAM — while still answering the questions you actually
 ask during an outage: *what is down, since when, and how often has it happened?*
 
-[![CI](https://github.com/j000k3r/weatherglass/actions/workflows/ci.yml/badge.svg)](https://github.com/j000k3r/weatherglass/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/j000k3r/weatherglass?sort=semver)](https://github.com/j000k3r/weatherglass/releases)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Go version](https://img.shields.io/github/go-mod/go-version/j000k3r/weatherglass)](go.mod)
-[![Image size](https://img.shields.io/badge/image-~27%20MB%20(~6%20MB%20compressed)-informational)](Dockerfile)
-[![Hobby project](https://img.shields.io/badge/hobby%20project-no%20support%2C%20no%20warranty-orange)](https://j000k3r.github.io/weatherglass-docs/about)
+---
 
-**Website:** <https://j000k3r.github.io/weatherglass-website/> — what it does,
-with pictures. **Documentation:** <https://j000k3r.github.io/weatherglass-docs/> —
-installation, configuration, the sensor and channel references, the HTTP API, and
-troubleshooting.
+## What it looks like
+
+Every picture below is the real dashboard, filled with the sample data the setup
+wizard creates for you — not a mock-up.
+
+<a href="docs/images/dashboard.png"><img src="docs/images/dashboard.png" alt="The dashboard on the cards view: a ring reading 7 up and 6 paused, tiles for uptime, latency, probes and the start of monitoring, and below them the sensor cards grouped by Internet and Network — each card with its target, the last probe's message, a sparkline and its uptime over 24 hours, 7 days and 30 days." width="100%"></a>
+
+**One page, five views of the same sensors.** The **cards** above are the default.
+A denser **list**, a **tree** that folds by site and group, a **wall** of tiles, and
+the **map** are one click apart in the top bar.
+
+| | |
+|---|---|
+| <a href="docs/images/detail.png"><img src="docs/images/detail.png" alt="One sensor in its own window: the latency of the last 24 hours as a chart with the average and a shaded band, a strip of the checks in the window that is selected, and the individual probes below with their time, result, latency and message." width="100%"></a> | <a href="docs/images/dashboard-tree.png"><img src="docs/images/dashboard-tree.png" alt="The tree view: the same sensors folded under the sites they stand on — Homelab, Rented server, and No site — with a status dot, target, sparkline and uptime on every row." width="100%"></a> |
+| <sub><b>One sensor.</b> Its charts, uptime and incidents for the window you pick — an hour to ninety days — and the raw probes they are drawn from.</sub> | <sub><b>The tree.</b> Everything the installation holds, folded by site and by group, which is how you find one sensor among a hundred.</sub> |
+
+<a href="docs/images/dashboard-wall.png"><img src="docs/images/dashboard-wall.png" alt="The wall view: one tile per sensor, grouped by site, each carrying the last forty checks as a strip of bars, with the latency and the 24-hour uptime beneath them." width="100%"></a>
+
+**The wall** puts every sensor of a site on one screen with its recent history as a
+heartbeat, which is what you want on a monitor on the wall of the room the rack is
+in.
+
+<a href="docs/images/dashboard-map.png"><img src="docs/images/dashboard-map.png" alt="The map on a world view: coastlines, country borders and country names drawn by Weatherglass itself, with the two sites marked — Homelab in Europe and an external server in North America." width="100%"></a>
+
+The **map** draws the world from public-domain data embedded in the binary — no
+tile server, no request to anywhere, and it therefore also works on a network with
+no internet. A tile URL in Settings puts real tiles underneath it, and the borders
+and names are a switch.
+
+<a href="docs/images/dashboard-map-provinces.png"><img src="docs/images/dashboard-map-provinces.png" alt="The same map zoomed in on Germany: the borders of the Bundesländer as thin lines, the lakes and rivers, the names of the provinces and of cities such as Hamburg, Bremen, Hannover and Leipzig, and the Homelab marker sitting on Berlin." width="100%"></a>
+
+Zoomed in, the provinces and their names appear, the water comes with them, and the
+bigger cities fill in what a province-sized name cannot name.
 
 ---
 
@@ -51,6 +93,12 @@ troubleshooting.
 > [**Who makes this, and how**](https://j000k3r.github.io/weatherglass-docs/about).
 
 ---
+
+**Where to go next:** [Why another monitor?](#why-another-monitor) ·
+[Features](#features) · [Quick start](#quick-start) · [Sensors](#sensors) ·
+[Alerts](#alerts) · [Configuration](#configuration) · [HTTP API](#http-api) ·
+[Operating](#operating) · [Development](#development) · [Status](#status) ·
+[License](#license)
 
 ## Why another monitor?
 

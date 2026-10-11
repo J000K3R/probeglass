@@ -6,6 +6,11 @@
 // whenever the interface changes:
 //
 //	cd e2e && go run ./screenshots
+//	make readme-images   # six of them, again, for the README
+//
+// The README does not keep a second set of pictures: `make readme-images` copies
+// the six it shows out of the set this program just wrote, so the two cannot drift
+// apart into two different dashboards.
 //
 // The pictures are taken against the demo data set, because a dashboard with a
 // week of history is what the documentation is trying to show. It is built the
@@ -36,6 +41,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/chromedp/cdproto/emulation"
 	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/chromedp"
 )
@@ -123,11 +129,35 @@ func withBrowser(browser string, fn func(context.Context) error) error {
 	if err := chromedp.Do(ctx); err != nil {
 		return fmt.Errorf("start the browser: %w", err)
 	}
+	if err := preferDark(ctx); err != nil {
+		return err
+	}
 	// The one dialog in the product is window.confirm(), which guards the
 	// removal of the sample data, and a driver that cannot answer it would sit
 	// in front of it until the phase times out.
 	acceptDialogs(ctx)
 	return fn(ctx)
+}
+
+// preferDark tells the browser to report a dark colour scheme, the way a machine
+// whose desktop is dark reports it.
+//
+// The dashboard's theme setting defaults to "auto", which *is* that answer, and
+// most of the pictures are taken before the one step that chooses the theme
+// explicitly. Without this the whole set would come out light on a light machine
+// and dark on a dark one, and the documentation would quietly change appearance
+// depending on who regenerated it and which desktop they happened to be using.
+func preferDark(ctx context.Context) error {
+	_, err := chromedp.Call(ctx, emulation.SetEmulatedMedia, emulation.SetEmulatedMediaParams{
+		// The feature's name is the CSS spelling and cannot be respelled for the
+		// linter: it is a protocol constant, not prose.
+		//nolint:misspell // prefers-color-scheme
+		Features: []*emulation.MediaFeature{{Name: "prefers-color-scheme", Value: "dark"}},
+	})
+	if err != nil {
+		return fmt.Errorf("ask the browser for a dark colour scheme: %w", err)
+	}
+	return nil
 }
 
 // firstRun creates the account and clears out what the install brought with it.

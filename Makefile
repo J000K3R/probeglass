@@ -29,8 +29,14 @@ GO          ?= go
 # out locally and how CI checks it out.
 DEMO_DIR    ?= ../weatherglass-website/site/demo
 
+# The pictures the README shows. They are taken by the same program that fills the
+# documentation's picture directory, and copied from there rather than taken twice:
+# one set of pictures, two places they are read.
+DOCS_IMG    ?= ../weatherglass-docs/static/img
+README_IMG  ?= docs/images
+
 .DEFAULT_GOAL := help
-.PHONY: help build run dev test test-race test-browser cover vet fmt lint tidy seed docker docker-run clean rename check demo demo-check
+.PHONY: help build run dev test test-race test-browser cover vet fmt lint tidy seed docker docker-run clean rename check demo demo-check readme-images
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -84,6 +90,12 @@ demo: ## Regenerate the clickable demo the website serves ($(DEMO_DIR))
 
 demo-check: ## Fail if the published demo is not the one this tree would write
 	./scripts/check-demo.sh $(DEMO_DIR)
+
+readme-images: ## Copy the README's screenshots out of the documentation's set
+	@mkdir -p $(README_IMG)
+	cp $(addprefix $(DOCS_IMG)/,dashboard.png detail.png dashboard-tree.png \
+	   dashboard-wall.png dashboard-map.png dashboard-map-provinces.png) $(README_IMG)/
+	@ls -l $(README_IMG)/*.png | awk '{printf "  %-28s %6d KB\n", $$9, $$5/1024}'
 
 docker: ## Build the container image as $(IMAGE):$(TAG)
 	docker build \

@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 455 96" width="455" height="96"
+     role="img" aria-label="Weatherglass">
+  <title>Weatherglass</title>
+  <!--
+    The mark is the dashboard's own favicon (internal/web/assets/favicon.svg), drawn
+    at 2.4× from the same geometry — one drawing, two sizes, no second original. The
+    name is text, as it is in the social cards of the website and the documentation.
+
+    One colour for both, deliberately: #2f6fe4 is 4.7:1 on white and 4.1:1 on the
+    dark background GitHub uses, so this single file is legible in either theme. A
+    pair of files switched by prefers-color-scheme would follow the *operating
+    system*, not GitHub's own theme switch, and could come up in the wrong one.
+  -->
+  <g transform="translate(10 10) scale(2.4)" fill="none" stroke="#2f6fe4">
+    <circle cx="16" cy="16" r="14" stroke-width="2.5"/>
+    <path d="M16 5.5a10.5 10.5 0 0 1 0 21z" fill="#2f6fe4" opacity=".18" stroke="none"/>
+    <path d="M16 18.5 22.5 10" stroke-width="2.2" stroke-linecap="round"/>
+    <circle cx="16" cy="18.5" r="2.2" fill="#2f6fe4" stroke="none"/>
+    <path d="M16 9.5v1.6M22.4 16h-1.6M16 24.5v-1.6" stroke-width="1.6"
+          stroke-linecap="round" opacity=".55"/>
+  </g>
+  <text x="104" y="64" fill="#2f6fe4" font-size="56" font-weight="700"
+        letter-spacing="-1.5"
+        font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">Weatherglass</text>
+</svg>
