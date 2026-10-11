@@ -40,6 +40,12 @@ type Result struct {
 // site is a place the dataset puts sensors. Coordinates are real places rather
 // than 0/0, because a pin in the Gulf of Guinea is the one thing on the map that
 // would look like a bug.
+//
+// The two of them are also far enough apart to be worth a map. The map starts out
+// zoomed to whatever holds every marker on it, so two places in the same country
+// give a view of one region with the coastlines far off the edge — which is a fine
+// map and a poor demonstration of one. Berlin and Virginia start at a zoom where
+// the world is the thing being drawn.
 type site struct {
 	name      string
 	kind      model.SiteKind
@@ -49,7 +55,7 @@ type site struct {
 
 var sites = []site{
 	{name: "Homelab", kind: model.SiteLocal, lat: 52.5200, lon: 13.4050, sortOrder: 1},
-	{name: "Rented server", kind: model.SiteExternal, lat: 50.4761, lon: 12.3706, sortOrder: 2},
+	{name: "Rented server", kind: model.SiteExternal, lat: 39.0438, lon: -77.4874, sortOrder: 2},
 }
 
 // sensor is one entry of the demo dataset: a target plus the shape of its

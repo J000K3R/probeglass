@@ -110,7 +110,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   who configures a tile server sees their tiles and never notices this, and one
   whose server stops answering sees the world instead of a grey rectangle. It is
   coarse — continents are recognisable to about zoom 6 — and the tile URL field is
-  what an operator with a tile server of their own reaches for.
+  what an operator with a tile server of their own reaches for. The demo dataset's
+  two places are also an ocean apart now, Berlin against the American east coast,
+  because the map opens on the closest zoom that holds every marker: two places in
+  one country gave a view of one country, with the coastlines off the edge and
+  nothing to show for them.
 - **A sensor below its retry threshold is yellow, not invisible.** `warn` is the
   fifth status: the last probe failed, the configured `retries` are not used up
   yet, so the sensor is on its way down or already on its way back and there is
