@@ -79,7 +79,7 @@ func TestGuidedTourActuallyWalks(t *testing.T) {
 	}
 
 	//nolint:misspell // "screenshotDir" is the spelling GitHub uses for the uploaded files
-	screenshotDir := os.Getenv("WEATHERGLASS_E2E_ARTIFACTS")
+	screenshotDir := os.Getenv("PROBEGLASS_E2E_ARTIFACTS")
 	if screenshotDir == "" {
 		screenshotDir = t.TempDir()
 	}
@@ -386,7 +386,7 @@ func TestTheTourTellsTheTruthAboutSampleData(t *testing.T) {
 	}
 
 	//nolint:misspell // "screenshotDir" is the spelling GitHub uses for the uploaded files
-	screenshotDir := os.Getenv("WEATHERGLASS_E2E_ARTIFACTS")
+	screenshotDir := os.Getenv("PROBEGLASS_E2E_ARTIFACTS")
 	if screenshotDir == "" {
 		screenshotDir = t.TempDir()
 	}

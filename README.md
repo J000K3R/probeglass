@@ -1,26 +1,26 @@
 <p align="center">
-  <a href="https://j000k3r.github.io/weatherglass-website/">
-    <img src="docs/images/logo.svg" alt="Weatherglass" width="420">
+  <a href="https://j000k3r.github.io/probeglass-website/">
+    <img src="docs/images/logo.svg" alt="ProbeGlass" width="420">
   </a>
 </p>
 
 <p align="center"><em>A small, self-hosted watchdog for your homelab.</em></p>
 
 <p align="center">
-  <a href="https://github.com/j000k3r/weatherglass/actions/workflows/ci.yml"><img src="https://github.com/j000k3r/weatherglass/actions/workflows/ci.yml/badge.svg" alt="CI" height="20"></a>
-  <a href="https://github.com/j000k3r/weatherglass/releases"><img src="https://img.shields.io/github/v/release/j000k3r/weatherglass?sort=semver" alt="Release" height="20"></a>
+  <a href="https://github.com/j000k3r/probeglass/actions/workflows/ci.yml"><img src="https://github.com/j000k3r/probeglass/actions/workflows/ci.yml/badge.svg" alt="CI" height="20"></a>
+  <a href="https://github.com/j000k3r/probeglass/releases"><img src="https://img.shields.io/github/v/release/j000k3r/probeglass?sort=semver" alt="Release" height="20"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT" height="20"></a>
-  <a href="go.mod"><img src="https://img.shields.io/github/go-mod/go-version/j000k3r/weatherglass" alt="Go version" height="20"></a>
+  <a href="go.mod"><img src="https://img.shields.io/github/go-mod/go-version/j000k3r/probeglass" alt="Go version" height="20"></a>
   <a href="Dockerfile"><img src="https://img.shields.io/badge/image-~27%20MB%20(~6%20MB%20compressed)-informational" alt="Image size" height="20"></a>
-  <a href="https://j000k3r.github.io/weatherglass-docs/about"><img src="https://img.shields.io/badge/hobby%20project-no%20support%2C%20no%20warranty-orange" alt="Hobby project" height="20"></a>
+  <a href="https://j000k3r.github.io/probeglass-docs/about"><img src="https://img.shields.io/badge/hobby%20project-no%20support%2C%20no%20warranty-orange" alt="Hobby project" height="20"></a>
 </p>
 
 <p align="center">
-  <b>Website:</b> <a href="https://j000k3r.github.io/weatherglass-website/">j000k3r.github.io/weatherglass-website</a> — what it does, with pictures ·
-  <b>Documentation:</b> <a href="https://j000k3r.github.io/weatherglass-docs/">j000k3r.github.io/weatherglass-docs</a> — installation, configuration, the sensor and channel references, the HTTP API, and troubleshooting
+  <b>Website:</b> <a href="https://j000k3r.github.io/probeglass-website/">j000k3r.github.io/probeglass-website</a> — what it does, with pictures ·
+  <b>Documentation:</b> <a href="https://j000k3r.github.io/probeglass-docs/">j000k3r.github.io/probeglass-docs</a> — installation, configuration, the sensor and channel references, the HTTP API, and troubleshooting
 </p>
 
-**Weatherglass** is a single-container monitoring daemon: it probes your services
+**ProbeGlass** is a single-container monitoring daemon: it probes your services
 on a schedule, keeps their history, draws the graphs, and shouts at you when
 something breaks. It is built to stay out of the way — one binary, one SQLite
 file, a few megabytes of RAM — while still answering the questions you actually
@@ -50,7 +50,7 @@ the **map** are one click apart in the top bar.
 heartbeat, which is what you want on a monitor on the wall of the room the rack is
 in.
 
-<a href="docs/images/dashboard-map.png"><img src="docs/images/dashboard-map.png" alt="The map on a world view: coastlines, country borders and country names drawn by Weatherglass itself, with the two sites marked — Homelab in Europe and an external server in North America." width="100%"></a>
+<a href="docs/images/dashboard-map.png"><img src="docs/images/dashboard-map.png" alt="The map on a world view: coastlines, country borders and country names drawn by ProbeGlass itself, with the two sites marked — Homelab in Europe and an external server in North America." width="100%"></a>
 
 The **map** draws the world from public-domain data embedded in the binary — no
 tile server, no request to anywhere, and it therefore also works on a network with
@@ -66,7 +66,7 @@ bigger cities fill in what a province-sized name cannot name.
 
 > ## ⚖️ A hobby project, vibe coded, and nobody is liable for anything
 >
-> **Weatherglass is not a product, and it is not written by a professional software
+> **ProbeGlass is not a product, and it is not written by a professional software
 > developer.** It is one person's homelab watchdog: spare time, their own machines,
 > and a codebase written in dialogue with an AI coding agent (Claude Code). It is
 > shared in the hope that somebody else is looking for something similar — that is
@@ -90,7 +90,7 @@ bigger cities fill in what a province-sized name cannot name.
 > you money, keep a second, independent check on the things that matter most.
 >
 > How it came about, how it is written today, and what that means for you:
-> [**Who makes this, and how**](https://j000k3r.github.io/weatherglass-docs/about).
+> [**Who makes this, and how**](https://j000k3r.github.io/probeglass-docs/about).
 
 ---
 
@@ -104,10 +104,10 @@ bigger cities fill in what a province-sized name cannot name.
 
 There are other monitoring tools, and this is not an argument against any of
 them. There is also no shortage of them. It is simply that most of them are a lot
-bigger than a homelab needs, in memory and in moving parts. Weatherglass makes
+bigger than a homelab needs, in memory and in moving parts. ProbeGlass makes
 the opposite bet:
 
-| | Weatherglass | Typical container-based monitor |
+| | ProbeGlass | Typical container-based monitor |
 |---|---|---|
 | Memory at idle | ~3 MB | 200–400 MB |
 | Runtime deps | none (static binary) | Node.js, or a JVM, or a full stack |
@@ -180,7 +180,7 @@ frontend pipeline to keep alive.
   week of history, an outage to explain, and one of them reading **Flaky**,
   which is what the dashboard looks like once it is doing its job. They are marked
   as examples and can be removed in one click from Settings.
-- **Troubleshooting built in** — `weatherglass doctor` on the command line, and
+- **Troubleshooting built in** — `probeglass doctor` on the command line, and
   the same checks in the dashboard under Settings → Diagnostics, with the
   `docker exec` command to run it yourself.
 - **Auth** — first-run setup creates the first account (a username and a
@@ -210,8 +210,8 @@ frontend pipeline to keep alive.
 ### Docker Compose
 
 ```bash
-git clone https://github.com/j000k3r/weatherglass.git
-cd weatherglass
+git clone https://github.com/j000k3r/probeglass.git
+cd probeglass
 docker compose up -d
 ```
 
@@ -222,15 +222,15 @@ wizard.
 
 ```bash
 docker run -d \
-  --name weatherglass \
+  --name probeglass \
   --restart unless-stopped \
   -p 8080:8080 \
-  -v weatherglass-data:/data \
+  -v probeglass-data:/data \
   --cap-add NET_RAW \
-  ghcr.io/j000k3r/weatherglass:dev
+  ghcr.io/j000k3r/probeglass:dev
 ```
 
-`NET_RAW` is only needed for ICMP ping sensors. Without it, Weatherglass falls
+`NET_RAW` is only needed for ICMP ping sensors. Without it, ProbeGlass falls
 back to an unprivileged UDP ping and tells you in the sensor result if that is
 not available either.
 
@@ -252,10 +252,10 @@ make test         # runs the test suite
 ### Try it with demo data
 
 ```bash
-docker run --rm -p 8080:8080 -v weatherglass-demo:/data \
-  ghcr.io/j000k3r/weatherglass:dev seed --demo --days 7
-docker run --rm -p 8080:8080 -v weatherglass-demo:/data \
-  ghcr.io/j000k3r/weatherglass:dev serve --listen :8080
+docker run --rm -p 8080:8080 -v probeglass-demo:/data \
+  ghcr.io/j000k3r/probeglass:dev seed --demo --days 7
+docker run --rm -p 8080:8080 -v probeglass-demo:/data \
+  ghcr.io/j000k3r/probeglass:dev serve --listen :8080
 ```
 
 The demo set brings invented sensors of several types, a week of plausible
@@ -326,8 +326,8 @@ event (down, reminder, recovery, test), and a template that fails to parse or
 execute falls back to it rather than losing the alert.
 
 Generic webhooks POST a JSON payload and, when a secret is configured, sign the
-exact request body with HMAC-SHA256 in the `X-Weatherglass-Signature` header.
-The event name travels in `X-Weatherglass-Event` (`down`, `up`, `reminder`, or
+exact request body with HMAC-SHA256 in the `X-ProbeGlass-Signature` header.
+The event name travels in `X-ProbeGlass-Event` (`down`, `up`, `reminder`, or
 `test`).
 
 Credentials are never returned by the API — the UI shows a `StoredMarker`
@@ -340,15 +340,15 @@ The dashboard stores its settings in the database; the process reads its
 configuration from four places. Later sources win:
 
 1. built-in defaults
-2. a YAML file — `-config PATH`, else `$WEATHERGLASS_CONFIG`, else
-   `<data_dir>/weatherglass.yaml` if that file exists
-3. `WEATHERGLASS_*` environment variables
+2. a YAML file — `-config PATH`, else `$PROBEGLASS_CONFIG`, else
+   `<data_dir>/probeglass.yaml` if that file exists
+3. `PROBEGLASS_*` environment variables
 4. command-line flags
 
 ```yaml
 listen: ":8080"
 data_dir: /data
-base_url: https://weatherglass.lan     # used in links inside alerts
+base_url: https://probeglass.lan     # used in links inside alerts
 log_level: info                        # debug | info | warn | error
 log_format: text                       # text | json
 trust_proxy: false                     # honour X-Forwarded-* from a reverse proxy
@@ -358,17 +358,17 @@ retention:
   hourly: 90d                          # hourly rollups (daily rollups are kept forever)
 ```
 
-Every key has an environment variable: `WEATHERGLASS_LISTEN`,
-`WEATHERGLASS_DATA_DIR`, `WEATHERGLASS_DB`, `WEATHERGLASS_BASE_URL`,
-`WEATHERGLASS_LOG_LEVEL`, `WEATHERGLASS_LOG_FORMAT`,
-`WEATHERGLASS_ADMIN_PASSWORD`, `WEATHERGLASS_TRUST_PROXY`,
-`WEATHERGLASS_RETENTION_RAW`, `WEATHERGLASS_RETENTION_HOURLY`.
+Every key has an environment variable: `PROBEGLASS_LISTEN`,
+`PROBEGLASS_DATA_DIR`, `PROBEGLASS_DB`, `PROBEGLASS_BASE_URL`,
+`PROBEGLASS_LOG_LEVEL`, `PROBEGLASS_LOG_FORMAT`,
+`PROBEGLASS_ADMIN_PASSWORD`, `PROBEGLASS_TRUST_PROXY`,
+`PROBEGLASS_RETENTION_RAW`, `PROBEGLASS_RETENTION_HOURLY`.
 
 Durations accept Go syntax (`30s`, `5m`, `2h`) plus the day and week suffixes
 these settings are naturally written in (`7d`, `90d`, `2w`), or a bare number of
 seconds.
 
-`WEATHERGLASS_ADMIN_PASSWORD` creates an administrator account named `admin` on
+`PROBEGLASS_ADMIN_PASSWORD` creates an administrator account named `admin` on
 a database that has no accounts at all, and is ignored afterwards — handy for
 automated deployments, harmless afterwards.
 
@@ -449,17 +449,17 @@ cannot drive the API even with a valid cookie.
 
 ## Operating
 
-- **Data** lives in a single SQLite file (default `/data/weatherglass.db`,
+- **Data** lives in a single SQLite file (default `/data/probeglass.db`,
   WAL mode). Back up that file, or the whole volume, and you have backed up
   everything — byte for byte, which is still the right backup when you want
   everything. For a portable copy that can be trimmed, **Settings → Backup** writes
   the installation out as one JSON file and reads one back in, and takes a
   byte-exact safety copy of the database before it restores anything. The file
   holds secrets in clear text; [SECURITY.md](SECURITY.md) says what and why.
-- **Health** — the image has a `HEALTHCHECK` that runs `weatherglass
+- **Health** — the image has a `HEALTHCHECK` that runs `probeglass
   healthcheck`, so `docker ps` shows the real state without needing a shell in
   the image.
-- **Diagnosis** — when something is wrong, `docker exec weatherglass weatherglass
+- **Diagnosis** — when something is wrong, `docker exec probeglass probeglass
   doctor` says what: the configuration, the data directory, the database's
   integrity and schema, the stored sensors, and whether the daemon is answering.
   It opens the database read-only and never sends an alert, so it is safe on a
@@ -473,10 +473,10 @@ cannot drive the API even with a valid cookie.
 ## Development
 
 ```
-cmd/weatherglass     entrypoint: serve, version, healthcheck, doctor, seed
+cmd/probeglass     entrypoint: serve, version, healthcheck, doctor, seed
 internal/api         HTTP handlers, sessions, accounts, middleware, SSE
 internal/totp        RFC 6238 one-time passwords, written out in full
-internal/doctor      read-only inspection for `weatherglass doctor`
+internal/doctor      read-only inspection for `probeglass doctor`
 internal/sensor       one engine per sensor type
 internal/notify      alert channels, templating, delivery
 internal/scheduler   one goroutine per sensor, incident lifecycle
@@ -488,7 +488,7 @@ internal/web         embedded dashboard (HTML, CSS, plain ES modules)
 
 `make` on its own lists every task. The useful ones are `make run`,
 `make dev`, `make test`, `make test-race`, `make cover`, `make lint`,
-`make docker`, and `make rename MODULE=github.com/you/weatherglass`.
+`make docker`, and `make rename MODULE=github.com/you/probeglass`.
 
 CI runs `gofmt`, `go vet`, `go test -race`, a build for seven platforms, and
 `golangci-lint`. There is no frontend build step.
@@ -498,9 +498,9 @@ together, [CONTRIBUTING.md](CONTRIBUTING.md) for how to send a patch, and
 [docs/ROADMAP.md](docs/ROADMAP.md) for what is planned next.
 
 The user-facing documentation lives in its own repository and is published from
-there: **<https://j000k3r.github.io/weatherglass-docs/>**. This repository keeps
+there: **<https://j000k3r.github.io/probeglass-docs/>**. This repository keeps
 the documents that belong with the code. The container image is published to the
-GitHub Container Registry, `ghcr.io/j000k3r/weatherglass`, by the release workflow.
+GitHub Container Registry, `ghcr.io/j000k3r/probeglass`, by the release workflow.
 
 ## Status
 
@@ -510,7 +510,7 @@ so additional languages are a dictionary file and a picker entry.
 
 This is a hobby project with no warranty and no support commitment, and the code is
 written in dialogue with an AI coding agent. [Who makes this, and
-how](https://j000k3r.github.io/weatherglass-docs/about) is the honest version, and it
+how](https://j000k3r.github.io/probeglass-docs/about) is the honest version, and it
 is worth two minutes before you install this anywhere that matters.
 
 ## License

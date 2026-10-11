@@ -1,10 +1,15 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 455 96" width="455" height="96"
-     role="img" aria-label="Weatherglass">
-  <title>Weatherglass</title>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 96" width="400" height="96"
+     role="img" aria-label="ProbeGlass">
+  <title>ProbeGlass</title>
   <!--
     The mark is the dashboard's own favicon (internal/web/assets/favicon.svg), drawn
     at 2.4× from the same geometry — one drawing, two sizes, no second original. The
     name is text, as it is in the social cards of the website and the documentation.
+
+    The width is the drawn word, not a round number: the mark ends at x=82 and the
+    text at x=385, so 400 leaves the same ~15px breathing room on both sides. Rename
+    the product and the number has to be measured again — the mark and the text are
+    positioned absolutely, they do not flow.
 
     One colour for both, deliberately: #2f6fe4 is 4.7:1 on white and 4.1:1 on the
     dark background GitHub uses, so this single file is legible in either theme. A
@@ -21,5 +26,5 @@
   </g>
   <text x="104" y="64" fill="#2f6fe4" font-size="56" font-weight="700"
         letter-spacing="-1.5"
-        font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">Weatherglass</text>
+        font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">ProbeGlass</text>
 </svg>

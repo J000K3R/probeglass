@@ -11,11 +11,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/j000k3r/weatherglass/internal/event"
-	"github.com/j000k3r/weatherglass/internal/model"
-	"github.com/j000k3r/weatherglass/internal/notify"
-	"github.com/j000k3r/weatherglass/internal/sensor"
-	"github.com/j000k3r/weatherglass/internal/store"
+	"github.com/j000k3r/probeglass/internal/event"
+	"github.com/j000k3r/probeglass/internal/model"
+	"github.com/j000k3r/probeglass/internal/notify"
+	"github.com/j000k3r/probeglass/internal/sensor"
+	"github.com/j000k3r/probeglass/internal/store"
 )
 
 // ---------------------------------------------------------------------------
@@ -1134,7 +1134,7 @@ func (s *Server) handleTestChannelDraft(w http.ResponseWriter, r *http.Request) 
 func (s *Server) sendChannelTest(w http.ResponseWriter, r *http.Request, ch model.Channel) {
 	sample := model.Sensor{
 		ID:     0,
-		Name:   "Weatherglass test",
+		Name:   "ProbeGlass test",
 		Type:   model.SensorHTTP,
 		Target: "https://example.org",
 	}
@@ -1320,7 +1320,7 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	// These preferences belong to whoever is looking at the dashboard, not to the
-	// installation: two people sharing one Weatherglass are allowed to disagree
+	// installation: two people sharing one ProbeGlass are allowed to disagree
 	// about the theme. So they are written onto the signed-in account.
 	p, ok := principalOf(r)
 	if !ok || p.User == nil {

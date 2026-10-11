@@ -193,7 +193,7 @@ export function createOutline(rings = null) {
     // A map without coastlines is still a map: the graticule, the markers and the
     // projection all still work. A map that throws while being built is a blank
     // screen, which is the failure this whole module exists to avoid.
-    console.error('weatherglass: could not draw the coastlines', error);
+    console.error('probeglass: could not draw the coastlines', error);
     node.classList.add('is-broken');
   }
 

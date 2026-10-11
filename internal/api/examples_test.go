@@ -4,10 +4,10 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/j000k3r/weatherglass/internal/config"
-	"github.com/j000k3r/weatherglass/internal/demo"
-	"github.com/j000k3r/weatherglass/internal/model"
-	"github.com/j000k3r/weatherglass/internal/store"
+	"github.com/j000k3r/probeglass/internal/config"
+	"github.com/j000k3r/probeglass/internal/demo"
+	"github.com/j000k3r/probeglass/internal/model"
+	"github.com/j000k3r/probeglass/internal/store"
 )
 
 // The example data used to be a one-way door: the button in Settings took it

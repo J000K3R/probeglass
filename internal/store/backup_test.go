@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/j000k3r/weatherglass/internal/model"
+	"github.com/j000k3r/probeglass/internal/model"
 )
 
 // ---------------------------------------------------------------------------
@@ -478,7 +478,7 @@ func TestRestoreRefusesWhatItCannotRead(t *testing.T) {
 			})
 		}},
 		{"a file that names no table", func(t *testing.T) []byte {
-			return []byte(`{"format":"weatherglass-backup","format_version":1,"schema_version":3}`)
+			return []byte(`{"format":"probeglass-backup","format_version":1,"schema_version":3}`)
 		}},
 		{"a file with no administrator left", func(t *testing.T) []byte {
 			return rewrite(t, valid(t), func(doc map[string]json.RawMessage) {
@@ -565,7 +565,7 @@ func TestRestoreWritesASafetyCopyBeforeTouchingAnything(t *testing.T) {
 		t.Errorf("the safety copy landed in %q, not beside the database in %q",
 			filepath.Dir(result.SafetyCopy), filepath.Dir(f.store.Path()))
 	}
-	if !strings.HasPrefix(filepath.Base(result.SafetyCopy), "weatherglass-pre-restore-") {
+	if !strings.HasPrefix(filepath.Base(result.SafetyCopy), "probeglass-pre-restore-") {
 		t.Errorf("the safety copy is named %q", filepath.Base(result.SafetyCopy))
 	}
 

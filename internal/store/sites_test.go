@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/j000k3r/weatherglass/internal/model"
+	"github.com/j000k3r/probeglass/internal/model"
 )
 
 func ptr(f float64) *float64 { return &f }

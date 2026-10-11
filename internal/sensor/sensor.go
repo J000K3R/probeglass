@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/j000k3r/weatherglass/internal/model"
+	"github.com/j000k3r/probeglass/internal/model"
 )
 
 // Outcome is the result of a single probe.

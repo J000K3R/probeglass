@@ -2,7 +2,7 @@
 // history of its own, and the code that invents that history.
 //
 // It lives here rather than in the seed command because three callers need the same
-// data: `weatherglass seed --demo`, which fills a fresh database from the shell; the
+// data: `probeglass seed --demo`, which fills a fresh database from the shell; the
 // button in Settings that puts the example data back after somebody has removed it;
 // and the setup screen, which gives the four sensors it creates a week of past so
 // that a brand-new dashboard is not an empty grid. A second copy of the dataset would
@@ -21,8 +21,8 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/j000k3r/weatherglass/internal/model"
-	"github.com/j000k3r/weatherglass/internal/store"
+	"github.com/j000k3r/probeglass/internal/model"
+	"github.com/j000k3r/probeglass/internal/store"
 )
 
 // Result reports what Seed did, so a caller can say it out loud.

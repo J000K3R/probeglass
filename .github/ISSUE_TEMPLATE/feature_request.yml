@@ -1,12 +1,12 @@
 name: Feature request
-description: Suggest an idea or improvement for Weatherglass
+description: Suggest an idea or improvement for ProbeGlass
 title: "[Feature]: "
 labels: [enhancement]
 body:
   - type: markdown
     attributes:
       value: |
-        Thanks for helping improve Weatherglass. Please describe the problem
+        Thanks for helping improve ProbeGlass. Please describe the problem
         you want solved before describing the solution.
 
   - type: textarea
@@ -21,7 +21,7 @@ body:
     id: solution
     attributes:
       label: Proposed solution
-      description: What would you like Weatherglass to do?
+      description: What would you like ProbeGlass to do?
     validations:
       required: true
 

@@ -1,8 +1,8 @@
 package api
 
 import (
-	"github.com/j000k3r/weatherglass/internal/model"
-	"github.com/j000k3r/weatherglass/internal/notify"
+	"github.com/j000k3r/probeglass/internal/model"
+	"github.com/j000k3r/probeglass/internal/notify"
 )
 
 // secretOptionKeys lists the sensor options that hold credentials. They are

@@ -13,7 +13,7 @@ import (
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
 
-	"github.com/j000k3r/weatherglass/internal/model"
+	"github.com/j000k3r/probeglass/internal/model"
 )
 
 // IANA protocol numbers used by ICMP parsing.
@@ -198,7 +198,7 @@ func (PingProber) Run(ctx context.Context, c model.Sensor) Outcome {
 		msg := icmp.Message{
 			Type: echoType,
 			Code: 0,
-			Body: &icmp.Echo{ID: id, Seq: seq, Data: []byte("weatherglass")},
+			Body: &icmp.Echo{ID: id, Seq: seq, Data: []byte("probeglass")},
 		}
 		wire, err := msg.Marshal(nil)
 		if err != nil {

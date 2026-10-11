@@ -1,12 +1,12 @@
 # Compiled binaries and build output.
 #
 # The leading slashes are load-bearing. A pattern without one matches at every
-# level, so a bare `weatherglass` also hid `cmd/weatherglass/` — which is the
+# level, so a bare `probeglass` also hid `cmd/probeglass/` — which is the
 # main package. It was invisible here, where the directory exists on disk, and
 # fatal everywhere else: a fresh clone, and every CI run, failed to build with
-# "stat /src/cmd/weatherglass: directory not found". Keep these anchored to the
+# "stat /src/cmd/probeglass: directory not found". Keep these anchored to the
 # repository root.
-/weatherglass
+/probeglass
 /dist/
 /bin/
 

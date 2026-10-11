@@ -54,7 +54,7 @@ func (d *httpDoer) do(ctx context.Context, method, rawURL string, headers map[st
 	if contentType != "" {
 		req.Header.Set("Content-Type", contentType)
 	}
-	req.Header.Set("User-Agent", "Weatherglass")
+	req.Header.Set("User-Agent", "ProbeGlass")
 	for k, v := range headers {
 		if v != "" {
 			req.Header.Set(k, v)

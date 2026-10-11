@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/j000k3r/weatherglass/internal/demo"
-	"github.com/j000k3r/weatherglass/internal/event"
+	"github.com/j000k3r/probeglass/internal/demo"
+	"github.com/j000k3r/probeglass/internal/event"
 )
 
 // exampleDays is how much history a restored dataset is given. A week is what the

@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/j000k3r/weatherglass/internal/model"
+	"github.com/j000k3r/probeglass/internal/model"
 )
 
 // ExampleData is what a bulk removal of the invented sensors would take with it.

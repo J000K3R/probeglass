@@ -15,7 +15,7 @@ releases are not supported.
 Please report vulnerabilities privately. Do not open a public issue, and do not
 disclose the details publicly until a fix has been released.
 
-Preferred channel: [GitHub Security Advisories](https://github.com/j000k3r/weatherglass/security/advisories/new).
+Preferred channel: [GitHub Security Advisories](https://github.com/j000k3r/probeglass/security/advisories/new).
 A private advisory keeps the report, the discussion and the fix in one place
 that only the maintainers can see until a release is out.
 
@@ -35,7 +35,7 @@ fix.
 
 ## Authentication and authorization
 
-Weatherglass has no global password. Every sign-in is an account, created on the
+ProbeGlass has no global password. Every sign-in is an account, created on the
 setup screen or by an administrator, and every account carries one of three
 ordered roles. A route is assigned the lowest role that may reach it, in one
 table, and that table is the whole authorization policy.
@@ -94,7 +94,7 @@ string of every SNMP sensor; and the credentials of every alert channel: the
 Telegram bot token, the Discord and Slack webhook URLs, the Matrix access token,
 the ntfy token, the webhook's HMAC secret. The map's tile URL is in it too.
 
-This is the one place in Weatherglass where a stored secret is written out
+This is the one place in ProbeGlass where a stored secret is written out
 **unmasked**. Everywhere else `notify.StoredMarker` stands in for it, so that a
 channel's token is never handed back to a browser that already holds the channel.
 A backup that did the same would restore a channel whose token reads
@@ -105,7 +105,7 @@ needed. A backup with masked credentials is not a backup. The unmasking is
 deliberate, it is said plainly on the panel that produces the file, and it is said
 here rather than in a footnote.
 
-What Weatherglass does about it:
+What ProbeGlass does about it:
 
 - **The export is administrator-only**, like every route that can change the
   installation. A viewer and an operator cannot download the file, and cannot
@@ -125,7 +125,7 @@ What Weatherglass does about it:
   logged.
 - **A restore validates before it writes.** `POST /api/restore` also requires an
   administrator, and it checks the format marker and the format and schema
-  versions before touching a single row. A file that is not a Weatherglass backup,
+  versions before touching a single row. A file that is not a ProbeGlass backup,
   or one written by a newer schema, is refused with a message saying so and
   changes nothing.
 - **A restore takes a safety copy first.** `VACUUM INTO` writes a byte-exact copy
@@ -161,7 +161,7 @@ practice, mounting the socket into a container is the same as giving that
 container root on the host. This is stated here, in full, for the same reason the
 API key is: it is a decision an operator has to make knowingly, not discover.
 
-What Weatherglass itself does with the socket:
+What ProbeGlass itself does with the socket:
 
 - The prober issues exactly one request per probe,
   `GET /containers/{target}/json`, and reads `Name`, `State` and `RestartCount`
@@ -187,7 +187,7 @@ What that does **not** protect you from:
 If you want container sensors without that trade, run a socket proxy that allows
 only the read endpoints — the compose file has the plain mount, commented out, so
 that turning it on is a deliberate edit. If you do not watch containers, leave it
-off; nothing else in Weatherglass needs it.
+off; nothing else in ProbeGlass needs it.
 
 ## SNMP v2c is unauthenticated and the community is clear text
 
@@ -199,7 +199,7 @@ ask the same agent anything its own access list allows. Version 3 would fix this
 it is deliberately not implemented, so a monitor that needs authenticated SNMP is
 not this one.
 
-Weatherglass does what it can with the part that is in front of it:
+ProbeGlass does what it can with the part that is in front of it:
 
 - The community is treated as a secret. It is masked in the API like every other
   credential, so it does not appear in a dashboard tooltip, a stored result or a
@@ -237,7 +237,7 @@ because the register in it carries a date. The wording to use is in the file's o
 An administrator can still enter a tile URL in **Settings → Look → Map**, and that is a
 real decision with a real cost, so it is written down here rather than buried in a
 setting's help text. Once one is entered the tiles are fetched **by the browser**, directly from
-that server — Weatherglass does not proxy them and no tile passes through the daemon.
+that server — ProbeGlass does not proxy them and no tile passes through the daemon.
 Whoever operates that server then sees the **IP address** of whoever is looking at the
 dashboard, their **browser's user agent**, and the **approximate part of the map** in
 view. On a dashboard whose sites are what it draws, that is close to "where this homelab
@@ -249,7 +249,7 @@ pointed there would be shown a block notice instead of a coastline. The field is
 in place for anybody running a tile server of their own, which is the answer that has
 actually improved.
 
-What Weatherglass does about it:
+What ProbeGlass does about it:
 
 - **Empty means nothing is fetched, and the content security policy says so.** With no
   tile URL configured, `img-src` stays at `'self' data:` and the policy names no third
@@ -312,13 +312,13 @@ in **Settings → Look → Map**. Nothing about the map needs the public interne
 The image's `USER` is root and its `ENTRYPOINT` starts as root. This is a deliberate
 decision with a real cost, so here it is in full rather than as a line in a Dockerfile.
 
-**Why.** The data directory is normally a bind mount, and on the platforms Weatherglass
+**Why.** The data directory is normally a bind mount, and on the platforms ProbeGlass
 is installed on — the MOS Hub, and anything with a template that mounts an appdata
 folder — that folder is created by the platform, as root, before the container ever
 starts. A process that is not root cannot write into it, and cannot repair it either,
 because only root may change who owns a file. Every comparable image on those platforms
 starts as root, takes its folder over and then drops; that is the entire reason their
-installations work without a `chown` and Weatherglass's did not. It is fixed by doing the
+installations work without a `chown` and ProbeGlass's did not. It is fixed by doing the
 same thing.
 
 **What root is used for, exactly.** Three things, in this order, before the database is
@@ -336,7 +336,7 @@ window is the startup code itself. It is small, and it is not zero, and saying o
 would be the kind of reassurance this file exists to avoid.
 
 **Afterwards.** The drop is permanent: a privileged `setuid` sets the saved uid as well,
-so no code running later, including Weatherglass's own, can return to root. Go applies
+so no code running later, including ProbeGlass's own, can return to root. Go applies
 `setuid` to every OS thread, so there is no thread left behind as root. `CAP_NET_RAW`,
 which ICMP ping needs, is carried across the drop on purpose; if that fails the daemon
 logs which capabilities were lost and keeps running, because a watchdog that refuses to
@@ -369,11 +369,11 @@ Out of scope:
 
 - Misconfiguration of your own homelab, including exposed ports, weak or reused
   credentials, and permissive firewall rules.
-- Vulnerabilities in third-party services or software that Weatherglass merely
+- Vulnerabilities in third-party services or software that ProbeGlass merely
   monitors or talks to.
 
 ## Deployment note
 
-Weatherglass is intended to run on a trusted private network. Do not expose it
+ProbeGlass is intended to run on a trusted private network. Do not expose it
 directly to the public internet. If remote access is required, place it behind a
 reverse proxy and use TLS and strong credentials.

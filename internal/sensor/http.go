@@ -15,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/j000k3r/weatherglass/internal/model"
+	"github.com/j000k3r/probeglass/internal/model"
 )
 
 // HTTPProber probes an HTTP or HTTPS endpoint.
@@ -206,7 +206,7 @@ func (HTTPProber) Run(ctx context.Context, c model.Sensor) Outcome {
 	for k, v := range o.StrMap("headers") {
 		req.Header.Set(k, v)
 	}
-	if ua := o.Str("user_agent", "Weatherglass/"+model.Version); ua != "" {
+	if ua := o.Str("user_agent", "ProbeGlass/"+model.Version); ua != "" {
 		req.Header.Set("User-Agent", ua)
 	}
 	if tok := o.Str("bearer_token", ""); tok != "" {

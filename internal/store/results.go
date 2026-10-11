@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/j000k3r/weatherglass/internal/model"
+	"github.com/j000k3r/probeglass/internal/model"
 )
 
 // UptimeStats summarises a window for one or more sensors.
@@ -182,7 +182,7 @@ func (s *Store) LastResults(ctx context.Context, perSensor int) (map[int64][]mod
 // TrailingFailures reports how many probes failed in the unbroken run at the
 // end of a sensor's history, when that run started, and when the sensor last
 // succeeded. The scheduler uses it to rebuild its state after a restart, so an
-// outage that began while Weatherglass was down is neither lost nor invented.
+// outage that began while ProbeGlass was down is neither lost nor invented.
 func (s *Store) TrailingFailures(ctx context.Context, sensorID int64, limit int) (count int, firstFailure, lastSuccess time.Time, err error) {
 	if limit <= 0 || limit > 5000 {
 		limit = 200

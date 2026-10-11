@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/j000k3r/weatherglass/internal/model"
+	"github.com/j000k3r/probeglass/internal/model"
 )
 
 // Errors the user administration surfaces to the caller.
@@ -470,7 +470,7 @@ func NormaliseRecoveryCode(code string) string {
 // preimage means a hash lifted from one account cannot be replayed against
 // another.
 func hashRecoveryCode(userID int64, code string) string {
-	sum := sha256.Sum256([]byte(fmt.Sprintf("wg-recovery-v1:%d:%s", userID, NormaliseRecoveryCode(code))))
+	sum := sha256.Sum256([]byte(fmt.Sprintf("pg-recovery-v1:%d:%s", userID, NormaliseRecoveryCode(code))))
 	return hex.EncodeToString(sum[:])
 }
 

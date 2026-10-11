@@ -42,7 +42,7 @@ const (
 )
 
 // Issuer is what the authenticator app shows above the account name.
-const Issuer = "Weatherglass"
+const Issuer = "ProbeGlass"
 
 // base32NoPad is the encoding authenticator apps expect: RFC 4648 base32
 // without the "=" padding. Go's stdlib encoder pads by default, so this is a

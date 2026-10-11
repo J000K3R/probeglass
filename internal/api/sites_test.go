@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/j000k3r/weatherglass/internal/model"
+	"github.com/j000k3r/probeglass/internal/model"
 )
 
 // Sites are places sensors live. These tests are about the three promises the
@@ -462,7 +462,7 @@ func TestSitesAreReadableButOnlyWritableByAdmins(t *testing.T) {
 // disabled, so this is not a button anyone can press in a browser — it is the
 // answer somebody gets from a script, a stale tab, or curl. What it must not be is
 // a 200 followed by the change quietly disappearing on the next apply: that is the
-// failure that reads as a bug in Weatherglass rather than as a rule.
+// failure that reads as a bug in ProbeGlass rather than as a rule.
 func TestASiteTheFileOwnsCannotBeEditedFromTheAPI(t *testing.T) {
 	h := newHarness(t)
 	h.setup()

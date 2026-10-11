@@ -12,7 +12,7 @@ import (
 	"testing"
 	"testing/fstest"
 
-	"github.com/j000k3r/weatherglass/internal/web"
+	"github.com/j000k3r/probeglass/internal/web"
 )
 
 // The dashboard is served from the binary, so every page load asks for the same

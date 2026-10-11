@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/j000k3r/weatherglass/internal/config"
-	"github.com/j000k3r/weatherglass/internal/doctor"
+	"github.com/j000k3r/probeglass/internal/config"
+	"github.com/j000k3r/probeglass/internal/doctor"
 )
 
 // doctorTimeout bounds one diagnostic run. doctor.Run already carries a default
@@ -83,7 +83,7 @@ func (s *Server) handleRunDoctor(w http.ResponseWriter, r *http.Request) {
 		"text": res.Text,
 		// The command to paste into a shell for the same output without the
 		// dashboard. Shown in the UI next to the text.
-		"command": "docker exec weatherglass weatherglass doctor",
+		"command": "docker exec probeglass probeglass doctor",
 	})
 }
 

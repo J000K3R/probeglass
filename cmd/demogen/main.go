@@ -52,15 +52,15 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/j000k3r/weatherglass/internal/api"
-	"github.com/j000k3r/weatherglass/internal/config"
-	"github.com/j000k3r/weatherglass/internal/demo"
-	"github.com/j000k3r/weatherglass/internal/event"
+	"github.com/j000k3r/probeglass/internal/api"
+	"github.com/j000k3r/probeglass/internal/config"
+	"github.com/j000k3r/probeglass/internal/demo"
+	"github.com/j000k3r/probeglass/internal/event"
 
-	"github.com/j000k3r/weatherglass/internal/notify"
-	"github.com/j000k3r/weatherglass/internal/scheduler"
-	"github.com/j000k3r/weatherglass/internal/store"
-	"github.com/j000k3r/weatherglass/internal/web"
+	"github.com/j000k3r/probeglass/internal/notify"
+	"github.com/j000k3r/probeglass/internal/scheduler"
+	"github.com/j000k3r/probeglass/internal/store"
+	"github.com/j000k3r/probeglass/internal/web"
 )
 
 // demoPassword is the account the recording signs in as. It never leaves this
@@ -93,7 +93,7 @@ func run() error {
 	ctx := context.Background()
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
 
-	tmp, err := os.MkdirTemp("", "weatherglass-demogen")
+	tmp, err := os.MkdirTemp("", "probeglass-demogen")
 	if err != nil {
 		return err
 	}
@@ -198,12 +198,12 @@ func run() error {
 }
 
 // scrub rewrites the three fields of the settings answer that describe the machine
-// this command ran on rather than Weatherglass.
+// this command ran on rather than ProbeGlass.
 //
 // They are the throwaway database's path inside a temporary directory, the same path
 // under another name, and how long this short-lived process has been up. A visitor
 // who opens the settings screen in the demo would otherwise read
-// /var/folders/sg/076j9…/T/weatherglass-demogen1234/data — which is nobody's business,
+// /var/folders/sg/076j9…/T/probeglass-demogen1234/data — which is nobody's business,
 // means nothing, and is a different string on every run, which would leave the demo's
 // checksum moving for no reason.
 //
@@ -225,7 +225,7 @@ func (r *recorder) scrub() error {
 		return fmt.Errorf("%s has no runtime block", k)
 	}
 	runtime["data_dir"] = "/data"
-	runtime["database"] = "/data/weatherglass.db"
+	runtime["database"] = "/data/probeglass.db"
 	runtime["uptime"] = "102h15m3s"
 
 	// Back through the encoder and not a textual patch of the bytes: the answers are

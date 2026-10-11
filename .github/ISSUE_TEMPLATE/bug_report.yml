@@ -1,5 +1,5 @@
 name: Bug report
-description: Report a problem with Weatherglass
+description: Report a problem with ProbeGlass
 title: "[Bug]: "
 labels: [bug]
 body:
@@ -48,8 +48,8 @@ body:
   - type: input
     id: version
     attributes:
-      label: Weatherglass version
-      description: "Run `docker run --rm j000k3r/weatherglass version` to find out."
+      label: ProbeGlass version
+      description: "Run `docker run --rm j000k3r/probeglass version` to find out."
       placeholder: e.g. 0.1.0
     validations:
       required: true
@@ -57,7 +57,7 @@ body:
   - type: dropdown
     id: deployment
     attributes:
-      label: How is Weatherglass deployed?
+      label: How is ProbeGlass deployed?
       options:
         - Docker Compose
         - docker run

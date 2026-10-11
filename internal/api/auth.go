@@ -18,13 +18,13 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 
-	"github.com/j000k3r/weatherglass/internal/model"
-	"github.com/j000k3r/weatherglass/internal/store"
-	"github.com/j000k3r/weatherglass/internal/totp"
+	"github.com/j000k3r/probeglass/internal/model"
+	"github.com/j000k3r/probeglass/internal/store"
+	"github.com/j000k3r/probeglass/internal/totp"
 )
 
 const (
-	sessionCookie = "weatherglass_session"
+	sessionCookie = "probeglass_session"
 	// sessionTTL is how long a dashboard login stays valid.
 	sessionTTL = 30 * 24 * time.Hour
 	// challengeTTL is how long the half-finished sign-in between the password and
@@ -77,7 +77,7 @@ var bcryptCost = productionBcryptCost
 // generated once, on the first login with a name that does not exist, so the cost
 // is not paid at every start.
 var dummyHash = sync.OnceValues(func() (string, error) {
-	h, err := bcrypt.GenerateFromPassword([]byte("weatherglass no such user"), bcryptCost)
+	h, err := bcrypt.GenerateFromPassword([]byte("probeglass no such user"), bcryptCost)
 	return string(h), err
 })
 
@@ -167,14 +167,14 @@ func (s *Server) loadAuth(ctx context.Context) error {
 	return nil
 }
 
-// bootstrapAdmin creates the first account from WEATHERGLASS_ADMIN_PASSWORD. It
+// bootstrapAdmin creates the first account from PROBEGLASS_ADMIN_PASSWORD. It
 // only ever runs on a database with no users at all, which is the same condition
 // the setup screen checks, so it cannot add an administrator to a running
 // installation.
 func (s *Server) bootstrapAdmin(ctx context.Context, password string) error {
 	hash, err := hashPassword(password)
 	if err != nil {
-		return fmt.Errorf("WEATHERGLASS_ADMIN_PASSWORD: %w", err)
+		return fmt.Errorf("PROBEGLASS_ADMIN_PASSWORD: %w", err)
 	}
 	u := &model.User{Username: "admin", PasswordHash: hash, Role: model.RoleAdmin}
 	if err := s.store.CreateFirstUser(ctx, u); err != nil {
@@ -184,7 +184,7 @@ func (s *Server) bootstrapAdmin(ctx context.Context, password string) error {
 		}
 		return err
 	}
-	s.log.Info("administrator account created from WEATHERGLASS_ADMIN_PASSWORD", "username", u.Username)
+	s.log.Info("administrator account created from PROBEGLASS_ADMIN_PASSWORD", "username", u.Username)
 	return nil
 }
 
@@ -284,7 +284,7 @@ func verifySigned(key []byte, value string) (string, bool) {
 // gives them the same payload.
 func signingKey(secret []byte, purpose string) []byte {
 	mac := hmac.New(sha256.New, secret)
-	mac.Write([]byte("wg-" + purpose + "-v1"))
+	mac.Write([]byte("pg-" + purpose + "-v1"))
 	return mac.Sum(nil)
 }
 

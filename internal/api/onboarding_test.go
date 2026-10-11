@@ -9,11 +9,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/j000k3r/weatherglass/internal/config"
-	"github.com/j000k3r/weatherglass/internal/demo"
-	"github.com/j000k3r/weatherglass/internal/doctor"
-	"github.com/j000k3r/weatherglass/internal/model"
-	"github.com/j000k3r/weatherglass/internal/store"
+	"github.com/j000k3r/probeglass/internal/config"
+	"github.com/j000k3r/probeglass/internal/demo"
+	"github.com/j000k3r/probeglass/internal/doctor"
+	"github.com/j000k3r/probeglass/internal/model"
+	"github.com/j000k3r/probeglass/internal/store"
 )
 
 // ---------------------------------------------------------------------------
@@ -21,7 +21,7 @@ import (
 // ---------------------------------------------------------------------------
 
 // A fresh dashboard must not be an empty grid: the four examples are what show a
-// first-time user what the product does, and one of them points at Weatherglass
+// first-time user what the product does, and one of them points at ProbeGlass
 // itself so that there is always something green to look at.
 func TestSetupCreatesExampleSensors(t *testing.T) {
 	h := newHarness(t)
@@ -446,7 +446,7 @@ func TestDoctorRouteReturnsTheSameTextAsTheCommand(t *testing.T) {
 		t.Errorf("the counts (%d/%d/%d) do not add up to %d findings",
 			out.Summary.OK, out.Summary.Warn, out.Summary.Fail, len(out.Findings))
 	}
-	if out.Command != "docker exec weatherglass weatherglass doctor" {
+	if out.Command != "docker exec probeglass probeglass doctor" {
 		t.Errorf("command = %q, want the docker exec form", out.Command)
 	}
 

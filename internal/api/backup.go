@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/j000k3r/weatherglass/internal/event"
-	"github.com/j000k3r/weatherglass/internal/model"
-	"github.com/j000k3r/weatherglass/internal/store"
+	"github.com/j000k3r/probeglass/internal/event"
+	"github.com/j000k3r/probeglass/internal/model"
+	"github.com/j000k3r/probeglass/internal/store"
 )
 
 // The two admin routes in this file: the configuration and the history as one
@@ -45,7 +45,7 @@ const maxRestoreBytes = 64 << 20
 // the day count, which the store validates before it writes its opening brace. A
 // failure further in — the disk goes away mid-export — truncates the file, and the
 // truncated file is JSON that does not parse. The restore refuses it with "this is
-// not a Weatherglass backup", which is the right answer to a file that stops in the
+// not a ProbeGlass backup", which is the right answer to a file that stops in the
 // middle. That is the real safety net, and it is the reason streaming is acceptable
 // here at all.
 //
@@ -72,7 +72,7 @@ func (s *Server) handleBackup(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Content-Disposition",
-		`attachment; filename="weatherglass-backup-`+time.Now().UTC().Format("2006-01-02")+`.json"`)
+		`attachment; filename="probeglass-backup-`+time.Now().UTC().Format("2006-01-02")+`.json"`)
 	// A backup is a credential. It must not sit in the browser cache, and no proxy
 	// on the way to it should keep a copy either.
 	w.Header().Set("Cache-Control", "no-store")
@@ -211,7 +211,7 @@ func (s *Server) restoreFailed(w http.ResponseWriter, err error) {
 // The store wraps every complaint about a file with ErrBadBackup so that this route can
 // recognise one; the wrapping text is there for errors.Is and for a log line, and it
 // would read as nonsense at the top of a message meant for a person: "not a usable
-// backup: this file is not a Weatherglass backup". What is wanted is the second half.
+// backup: this file is not a ProbeGlass backup". What is wanted is the second half.
 func badBackupMessage(err error) string {
 	return strings.TrimPrefix(err.Error(), store.ErrBadBackup.Error()+": ")
 }

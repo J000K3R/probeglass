@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/j000k3r/weatherglass/internal/model"
+	"github.com/j000k3r/probeglass/internal/model"
 )
 
 // discardLog is the logger every test hands to Open, which is happy with one it
@@ -452,7 +452,7 @@ func TestEnsureSecretIsStable(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// read-only opening, the guarantee weatherglass doctor rests on
+// read-only opening, the guarantee probeglass doctor rests on
 // ---------------------------------------------------------------------------
 
 // TestOpenReadOnlyReadsWithoutWriting is the contract doctor depends on: the
@@ -883,7 +883,7 @@ func TestOpenNamesTheCauseWhenTheDirectoryIsNotWritable(t *testing.T) {
 	// t.TempDir's cleanup has to be able to take it away again.
 	t.Cleanup(func() { os.Chmod(dir, 0o700) })
 
-	_, err := Open(filepath.Join(dir, "weatherglass.db"), discardLog())
+	_, err := Open(filepath.Join(dir, "probeglass.db"), discardLog())
 	if err == nil {
 		t.Fatal("opening a database in a directory with no write bit succeeded")
 	}

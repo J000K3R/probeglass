@@ -5,10 +5,10 @@ import (
 	"flag"
 	"fmt"
 
-	"github.com/j000k3r/weatherglass/internal/config"
-	"github.com/j000k3r/weatherglass/internal/demo"
-	"github.com/j000k3r/weatherglass/internal/privdrop"
-	"github.com/j000k3r/weatherglass/internal/store"
+	"github.com/j000k3r/probeglass/internal/config"
+	"github.com/j000k3r/probeglass/internal/demo"
+	"github.com/j000k3r/probeglass/internal/privdrop"
+	"github.com/j000k3r/probeglass/internal/store"
 )
 
 // seed fills the database with demo data. It exists so the dashboard can be

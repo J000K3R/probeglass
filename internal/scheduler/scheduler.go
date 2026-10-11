@@ -32,11 +32,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/j000k3r/weatherglass/internal/event"
-	"github.com/j000k3r/weatherglass/internal/model"
-	"github.com/j000k3r/weatherglass/internal/notify"
-	"github.com/j000k3r/weatherglass/internal/sensor"
-	"github.com/j000k3r/weatherglass/internal/store"
+	"github.com/j000k3r/probeglass/internal/event"
+	"github.com/j000k3r/probeglass/internal/model"
+	"github.com/j000k3r/probeglass/internal/notify"
+	"github.com/j000k3r/probeglass/internal/sensor"
+	"github.com/j000k3r/probeglass/internal/store"
 )
 
 const (
@@ -246,7 +246,7 @@ func (s *Scheduler) restoreState(ctx context.Context, c model.Sensor) {
 		st.incidentID = open.ID
 		st.lastNotify = time.Now().UTC()
 	case count >= threshold:
-		// The sensor went down while Weatherglass was not running. Reconstruct
+		// The sensor went down while ProbeGlass was not running. Reconstruct
 		// the incident from the results so the outage is not lost.
 		start := firstFail
 		if start.IsZero() {

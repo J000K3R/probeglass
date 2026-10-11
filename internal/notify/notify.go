@@ -16,8 +16,8 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/j000k3r/weatherglass/internal/model"
-	"github.com/j000k3r/weatherglass/internal/store"
+	"github.com/j000k3r/probeglass/internal/model"
+	"github.com/j000k3r/probeglass/internal/store"
 )
 
 // Event names the situation an alert is about.
@@ -211,7 +211,7 @@ const (
 	defaultDownTitle     = "🔴 DOWN: {{.Name}}"
 	defaultUpTitle       = "🟢 RECOVERED: {{.Name}}"
 	defaultReminderTitle = "🔴 STILL DOWN: {{.Name}}"
-	defaultTestTitle     = "Weatherglass test alert"
+	defaultTestTitle     = "ProbeGlass test alert"
 
 	defaultDownBody = `{{.Name}} is DOWN.
 Target: {{.Type}} {{.Target}}
@@ -245,7 +245,7 @@ Down since: {{.DownSince}} ({{.DownFor}})
 Dashboard: {{.URL}}
 {{- end}}`
 
-	defaultTestBody = `This is a test message from Weatherglass.
+	defaultTestBody = `This is a test message from ProbeGlass.
 
 If you can read this, the alert channel is configured correctly.
 Time: {{.Time}}`

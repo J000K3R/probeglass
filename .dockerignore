@@ -13,7 +13,7 @@ data/
 *.db
 *.db-wal
 *.db-shm
-weatherglass
+probeglass
 
 # Docs and tooling that would only invalidate the layer cache
 docs/

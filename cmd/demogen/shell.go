@@ -18,8 +18,8 @@ var demoCSS string
 
 // docsURL and repoURL are what the demo bar links back to.
 const (
-	docsURL = "https://j000k3r.github.io/weatherglass-docs/"
-	repoURL = "https://github.com/j000k3r/weatherglass"
+	docsURL = "https://j000k3r.github.io/probeglass-docs/"
+	repoURL = "https://github.com/j000k3r/probeglass"
 )
 
 // bar is the strip the demo wears above the dashboard.
@@ -36,7 +36,7 @@ const (
 // loading.
 const bar = `<div class="demo-bar" role="note">
   <span class="demo-tag">Demo</span>
-  <span class="demo-text"><strong>Weatherglass with example sensors.</strong>
+  <span class="demo-text"><strong>ProbeGlass with example sensors.</strong>
     This is a recording of the real dashboard, not a live installation. Anything you
     change here applies to this tab only and is not saved.</span>
   <span class="demo-links">
@@ -79,7 +79,7 @@ func rewriteShell(shell string) (string, error) {
 	shell = strings.Replace(shell, "<body>\n", "<body>\n"+bar, 1)
 
 	// The title in a tab full of tabs. The product's own title is just the name.
-	shell = strings.Replace(shell, "<title>Weatherglass</title>",
-		"<title>Weatherglass — demo</title>", 1)
+	shell = strings.Replace(shell, "<title>ProbeGlass</title>",
+		"<title>ProbeGlass — demo</title>", 1)
 	return shell, nil
 }

@@ -1,14 +1,14 @@
-// Command weatherglass is the monitoring daemon: it probes, stores, alerts and
+// Command probeglass is the monitoring daemon: it probes, stores, alerts and
 // serves the dashboard.
 //
 // Subcommands:
 //
-//	weatherglass                     start the daemon (same as "serve")
-//	weatherglass serve [flags]       start the daemon
-//	weatherglass version             print the version
-//	weatherglass healthcheck         probe the local HTTP endpoint, for HEALTHCHECK
-//	weatherglass doctor              report what is wrong with this installation
-//	weatherglass seed --demo         fill the database with demo sensors and history
+//	probeglass                     start the daemon (same as "serve")
+//	probeglass serve [flags]       start the daemon
+//	probeglass version             print the version
+//	probeglass healthcheck         probe the local HTTP endpoint, for HEALTHCHECK
+//	probeglass doctor              report what is wrong with this installation
+//	probeglass seed --demo         fill the database with demo sensors and history
 package main
 
 import (
@@ -29,16 +29,16 @@ import (
 	// back to UTC.
 	_ "time/tzdata"
 
-	"github.com/j000k3r/weatherglass/internal/api"
-	"github.com/j000k3r/weatherglass/internal/config"
-	"github.com/j000k3r/weatherglass/internal/event"
-	"github.com/j000k3r/weatherglass/internal/model"
-	"github.com/j000k3r/weatherglass/internal/notify"
-	"github.com/j000k3r/weatherglass/internal/privdrop"
-	"github.com/j000k3r/weatherglass/internal/scheduler"
-	"github.com/j000k3r/weatherglass/internal/sensor"
-	"github.com/j000k3r/weatherglass/internal/store"
-	"github.com/j000k3r/weatherglass/internal/web"
+	"github.com/j000k3r/probeglass/internal/api"
+	"github.com/j000k3r/probeglass/internal/config"
+	"github.com/j000k3r/probeglass/internal/event"
+	"github.com/j000k3r/probeglass/internal/model"
+	"github.com/j000k3r/probeglass/internal/notify"
+	"github.com/j000k3r/probeglass/internal/privdrop"
+	"github.com/j000k3r/probeglass/internal/scheduler"
+	"github.com/j000k3r/probeglass/internal/sensor"
+	"github.com/j000k3r/probeglass/internal/store"
+	"github.com/j000k3r/probeglass/internal/web"
 )
 
 func main() {
@@ -46,7 +46,7 @@ func main() {
 		// doctor prints its own report, so the sentinel it returns on a failure
 		// is not a message to repeat. Everything else is.
 		if !errors.Is(err, errFindings) {
-			fmt.Fprintf(os.Stderr, "weatherglass: %v\n", err)
+			fmt.Fprintf(os.Stderr, "probeglass: %v\n", err)
 		}
 		os.Exit(1)
 	}
@@ -61,7 +61,7 @@ func run(args []string) error {
 	if len(args) > 0 {
 		switch args[0] {
 		case "version", "-version", "--version":
-			fmt.Printf("weatherglass %s\n", model.BuildInfo())
+			fmt.Printf("probeglass %s\n", model.BuildInfo())
 			return nil
 		case "healthcheck":
 			return healthcheck(args[1:])
@@ -85,24 +85,24 @@ func run(args []string) error {
 }
 
 func usage() {
-	fmt.Print(`weatherglass — a small, self-hosted watchdog for your homelab
+	fmt.Print(`probeglass — a small, self-hosted watchdog for your homelab
 
 Usage:
-  weatherglass [serve] [flags]     start the daemon
-  weatherglass version             print the version and exit
-  weatherglass healthcheck         query the local /healthz endpoint
-  weatherglass doctor              report what is wrong with this installation
-  weatherglass seed --demo         create demo sensors with synthetic history
+  probeglass [serve] [flags]     start the daemon
+  probeglass version             print the version and exit
+  probeglass healthcheck         query the local /healthz endpoint
+  probeglass doctor              report what is wrong with this installation
+  probeglass seed --demo         create demo sensors with synthetic history
 
 Flags for serve:
-  -config PATH     YAML configuration file (default $WEATHERGLASS_CONFIG, else
-                   <data dir>/weatherglass.yaml when it exists)
+  -config PATH     YAML configuration file (default $PROBEGLASS_CONFIG, else
+                   <data dir>/probeglass.yaml when it exists)
   -listen ADDR     address to serve the dashboard on (default :8080)
   -data DIR        directory for the database (default /data)
   -log-level LVL   debug, info, warn or error (default info)
   -log-format FMT  text or json (default text)
 
-Every flag has a WEATHERGLASS_* environment variable equivalent; the environment
+Every flag has a PROBEGLASS_* environment variable equivalent; the environment
 wins over the file. See docs/CONFIGURATION.md.
 
 In a container the daemon starts as root, takes ownership of its data directory
@@ -155,7 +155,7 @@ func serve(args []string) error {
 	// The uid is read from the process rather than from what was asked for: this
 	// line has to be the truth about what is running, because in a container
 	// without a shell it is the only way to see which user the daemon ended up as.
-	logger.Info("starting weatherglass",
+	logger.Info("starting probeglass",
 		"version", model.Version,
 		"listen", cfg.Listen,
 		"data_dir", cfg.DataDir,
@@ -225,7 +225,7 @@ func serve(args []string) error {
 	if err != nil {
 		// The error already names the address and the reason, so this only adds
 		// the one thing it cannot know: what to do about it.
-		return fmt.Errorf("cannot listen on %s — is another copy of Weatherglass already running? (%w)", cfg.Listen, err)
+		return fmt.Errorf("cannot listen on %s — is another copy of ProbeGlass already running? (%w)", cfg.Listen, err)
 	}
 
 	errCh := make(chan error, 1)

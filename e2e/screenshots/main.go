@@ -2,7 +2,7 @@
 //
 // It is a program and not a test because a test must not write into a second
 // repository. This one runs the real daemon, drives the real interface in a real
-// browser and puts the PNGs into weatherglass-docs/static/img. Run it by hand
+// browser and puts the PNGs into probeglass-docs/static/img. Run it by hand
 // whenever the interface changes:
 //
 //	cd e2e && go run ./screenshots
@@ -50,14 +50,14 @@ import (
 // keeping: the database lives in a temporary directory and goes away with it.
 const (
 	accountName     = "jane"
-	accountPassword = "weatherglass-screenshots"
+	accountPassword = "probeglass-screenshots"
 )
 
 // productModule identifies the daemon's module when looking for its directory.
-const productModule = "github.com/j000k3r/weatherglass"
+const productModule = "github.com/j000k3r/probeglass"
 
 func main() {
-	out := flag.String("out", "../../weatherglass-docs/static/img",
+	out := flag.String("out", "../../probeglass-docs/static/img",
 		"directory the PNGs are written to")
 	browser := flag.String("browser", "", "path to a Chromium-based browser")
 	flag.Parse()
@@ -88,7 +88,7 @@ func run(out, browser string) error {
 	if err != nil {
 		return err
 	}
-	data, err := os.MkdirTemp("", "weatherglass-shots-")
+	data, err := os.MkdirTemp("", "probeglass-shots-")
 	if err != nil {
 		return err
 	}
@@ -455,7 +455,7 @@ func capture(ctx context.Context, base, out string) error {
 				name: 'Ops webhook',
 				type: 'webhook',
 				enabled: true,
-				config: { url: 'https://example.org/weatherglass' },
+				config: { url: 'https://example.org/probeglass' },
 			}),
 		})`)); err != nil {
 		return err
@@ -987,7 +987,7 @@ func waitFor(ctx context.Context, expression string) error {
 // findBrowser returns the first Chromium-based browser on this machine.
 func findBrowser() (string, error) {
 	candidates := []string{
-		os.Getenv("WEATHERGLASS_E2E_BROWSER"),
+		os.Getenv("PROBEGLASS_E2E_BROWSER"),
 		"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
 		"/Applications/Chromium.app/Contents/MacOS/Chromium",
 		"/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
@@ -1001,13 +1001,13 @@ func findBrowser() (string, error) {
 			continue
 		}
 		//nolint:gosec // G703: the path is one of the candidates listed above, or the
-		// one the operator named in WEATHERGLASS_E2E_BROWSER. There is no request and
+		// one the operator named in PROBEGLASS_E2E_BROWSER. There is no request and
 		// no untrusted input anywhere near this program.
 		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
 			return candidate, nil
 		}
 	}
-	return "", fmt.Errorf("no Chrome or Chromium found; pass -browser or set WEATHERGLASS_E2E_BROWSER")
+	return "", fmt.Errorf("no Chrome or Chromium found; pass -browser or set PROBEGLASS_E2E_BROWSER")
 }
 
 // browserOptions is the browser the browser test would have used, plus the size
@@ -1072,10 +1072,10 @@ func buildDaemon(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	out := filepath.Join(os.TempDir(), "weatherglass-screenshots")
+	out := filepath.Join(os.TempDir(), "probeglass-screenshots")
 	//nolint:gosec // G204: a fixed `go build` of a path this program found by
 	// walking up to the module root; there is no input from anywhere else.
-	cmd := exec.CommandContext(ctx, "go", "build", "-o", out, "./cmd/weatherglass")
+	cmd := exec.CommandContext(ctx, "go", "build", "-o", out, "./cmd/probeglass")
 	cmd.Dir = root
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {

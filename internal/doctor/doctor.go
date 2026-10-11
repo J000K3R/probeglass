@@ -1,10 +1,10 @@
-// Package doctor inspects a Weatherglass installation and reports what is wrong
+// Package doctor inspects a ProbeGlass installation and reports what is wrong
 // with it.
 //
 // It exists because the hardest failures to debug are the ones where nothing
 // happens: the dashboard does not load, a sensor never turns green, no alert ever
 // arrives. In a container there is no shell and no curl, so the user gets one
-// command — `docker exec <container> weatherglass doctor` — and it has to answer
+// command — `docker exec <container> probeglass doctor` — and it has to answer
 // the question on its own.
 //
 // Two rules shape everything here:
@@ -30,7 +30,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/j000k3r/weatherglass/internal/config"
+	"github.com/j000k3r/probeglass/internal/config"
 )
 
 // Level says how bad a finding is.

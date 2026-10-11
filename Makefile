@@ -1,12 +1,12 @@
-# Weatherglass — developer tasks.
+# ProbeGlass — developer tasks.
 #
 # The Go toolchain is the only hard requirement: the frontend is plain ES
 # modules embedded with //go:embed, so there is nothing to install and no build
 # step between editing a .js file and reloading the page.
 
-BINARY      := weatherglass
-PKG         := github.com/j000k3r/weatherglass
-CMD         := ./cmd/weatherglass
+BINARY      := probeglass
+PKG         := github.com/j000k3r/probeglass
+CMD         := ./cmd/probeglass
 # `--always` is deliberately absent. It falls back to the commit hash when there is no
 # tag to describe, which is the right answer only once this tree *has* tags. Before the
 # first release there is nothing to describe, `git describe` fails, and the version stays
@@ -20,19 +20,19 @@ LDFLAGS     := -s -w \
                -X $(PKG)/internal/model.Commit=$(COMMIT) \
                -X $(PKG)/internal/model.BuildDate=$(BUILD_DATE)
 
-IMAGE       ?= ghcr.io/j000k3r/weatherglass
+IMAGE       ?= ghcr.io/j000k3r/probeglass
 TAG         ?= dev
 GO          ?= go
 
 # Where the clickable demo is published from. The website repository holds it, and
 # the two are expected to sit beside each other — which is how the project is laid
 # out locally and how CI checks it out.
-DEMO_DIR    ?= ../weatherglass-website/site/demo
+DEMO_DIR    ?= ../probeglass-website/site/demo
 
 # The pictures the README shows. They are taken by the same program that fills the
 # documentation's picture directory, and copied from there rather than taken twice:
 # one set of pictures, two places they are read.
-DOCS_IMG    ?= ../weatherglass-docs/static/img
+DOCS_IMG    ?= ../probeglass-docs/static/img
 README_IMG  ?= docs/images
 
 .DEFAULT_GOAL := help
@@ -107,14 +107,14 @@ docker: ## Build the container image as $(IMAGE):$(TAG)
 
 docker-run: docker ## Run the built image on :8080 with a throwaway volume
 	docker run --rm -p 8080:8080 --cap-add NET_RAW \
-	  -v weatherglass-dev:/data $(IMAGE):$(TAG)
+	  -v probeglass-dev:/data $(IMAGE):$(TAG)
 
 clean: ## Remove build output and local data
 	rm -rf bin coverage.out
 	@echo "kept ./data — remove it by hand if you want the demo history gone"
 
-rename: ## Rewrite the module path: make rename MODULE=github.com/you/weatherglass
-	@test -n "$(MODULE)" || { echo "usage: make rename MODULE=github.com/you/weatherglass"; exit 1; }
+rename: ## Rewrite the module path: make rename MODULE=github.com/you/probeglass
+	@test -n "$(MODULE)" || { echo "usage: make rename MODULE=github.com/you/probeglass"; exit 1; }
 	$(GO) mod edit -module $(MODULE)
 	grep -rl '$(PKG)' --include='*.go' --include='*.md' --include='*.yml' . \
 	  | xargs sed -i.bak 's|$(PKG)|$(MODULE)|g'

@@ -52,7 +52,7 @@ const (
 func artifactsDir(t *testing.T) string {
 	t.Helper()
 	//nolint:misspell // "artifacts" is the spelling GitHub uses for the uploaded files
-	if dir := os.Getenv("WEATHERGLASS_E2E_ARTIFACTS"); dir != "" {
+	if dir := os.Getenv("PROBEGLASS_E2E_ARTIFACTS"); dir != "" {
 		return dir
 	}
 	return t.TempDir()

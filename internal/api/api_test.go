@@ -15,12 +15,12 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 
-	"github.com/j000k3r/weatherglass/internal/config"
-	"github.com/j000k3r/weatherglass/internal/event"
-	"github.com/j000k3r/weatherglass/internal/model"
-	"github.com/j000k3r/weatherglass/internal/notify"
-	"github.com/j000k3r/weatherglass/internal/scheduler"
-	"github.com/j000k3r/weatherglass/internal/store"
+	"github.com/j000k3r/probeglass/internal/config"
+	"github.com/j000k3r/probeglass/internal/event"
+	"github.com/j000k3r/probeglass/internal/model"
+	"github.com/j000k3r/probeglass/internal/notify"
+	"github.com/j000k3r/probeglass/internal/scheduler"
+	"github.com/j000k3r/probeglass/internal/store"
 )
 
 // TestMain drops bcrypt to its cheapest setting for the whole package.
@@ -84,7 +84,7 @@ func newHarnessWith(t *testing.T, log *slog.Logger) *harness {
 
 	cfg := config.Default()
 	cfg.DBPath = path
-	cfg.BaseURL = "http://weatherglass.test"
+	cfg.BaseURL = "http://probeglass.test"
 
 	broker := event.NewBroker()
 	sched := scheduler.New(st, nil, broker, log)
@@ -528,7 +528,7 @@ func TestAPIKeyAuthenticatesWithoutACookie(t *testing.T) {
 
 	// The key is read into memory when the server is built, so store it first
 	// and then build a fresh server, which is what a restart would do.
-	const key = "wg_test_api_key_1234567890"
+	const key = "pg_test_api_key_1234567890"
 	if err := h.store.SetSetting(context.Background(), model.SettingAPIKey, key); err != nil {
 		t.Fatalf("store api key: %v", err)
 	}

@@ -40,7 +40,7 @@ func (s *slackNotifier) Type() string { return "slack" }
 func (s *slackNotifier) Send(ctx context.Context, msg Message) error {
 	text := "*" + msg.Title + "*\n" + msg.Body
 	if msg.URL != "" {
-		text += "\n<" + msg.URL + "|Open in Weatherglass>"
+		text += "\n<" + msg.URL + "|Open in ProbeGlass>"
 	}
 	payload := map[string]any{
 		"text":         truncateRunes(text, 3500),

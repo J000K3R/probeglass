@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/j000k3r/weatherglass/internal/model"
+	"github.com/j000k3r/probeglass/internal/model"
 )
 
 // ---------------------------------------------------------------------------
@@ -208,7 +208,7 @@ func TestRenderDefaultTemplates(t *testing.T) {
 		{EventDown, "DOWN: Gateway ping", []string{"Gateway ping is DOWN", "192.168.1.1", "Group: Network", "100% packet loss", "Dashboard: http://homelab:8080/#/sensor/1"}},
 		{EventReminder, "STILL DOWN: Gateway ping", []string{"still DOWN", "Down since"}},
 		{EventUp, "RECOVERED: Gateway ping", []string{"back UP", "Was down for: 9m 0s", "Latency: 12 ms"}},
-		{EventTest, "Weatherglass test alert", []string{"test message", "configured correctly"}},
+		{EventTest, "ProbeGlass test alert", []string{"test message", "configured correctly"}},
 	}
 	for _, tc := range cases {
 		msg := sampleMessage(tc.event)
@@ -317,15 +317,15 @@ func TestWebhookSendsSignedJSON(t *testing.T) {
 		if ct := r.header.Get("Content-Type"); ct != "application/json" {
 			t.Errorf("Content-Type = %q", ct)
 		}
-		if ev := r.header.Get("X-Weatherglass-Event"); ev != "down" {
-			t.Errorf("X-Weatherglass-Event = %q, want down", ev)
+		if ev := r.header.Get("X-ProbeGlass-Event"); ev != "down" {
+			t.Errorf("X-ProbeGlass-Event = %q, want down", ev)
 		}
 
 		// The signature must cover the exact bytes that were sent.
 		mac := hmac.New(sha256.New, []byte(secret))
 		mac.Write(r.body)
 		want := "sha256=" + hex.EncodeToString(mac.Sum(nil))
-		if sig := r.header.Get("X-Weatherglass-Signature"); sig != want {
+		if sig := r.header.Get("X-ProbeGlass-Signature"); sig != want {
 			t.Errorf("signature = %q, want %q", sig, want)
 		}
 
@@ -369,7 +369,7 @@ func TestWebhookWithoutSecretSendsNoSignature(t *testing.T) {
 	}
 	select {
 	case h := <-header:
-		if sig := h.Get("X-Weatherglass-Signature"); sig != "" {
+		if sig := h.Get("X-ProbeGlass-Signature"); sig != "" {
 			t.Errorf("unsigned webhook carried a signature: %q", sig)
 		}
 	case <-time.After(5 * time.Second):

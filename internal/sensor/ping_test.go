@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/j000k3r/weatherglass/internal/model"
+	"github.com/j000k3r/probeglass/internal/model"
 )
 
 // The destination of an echo request has a different type on each of the two

@@ -1,6 +1,6 @@
 # Architecture
 
-Weatherglass is one process: an HTTP server, a scheduler, and a SQLite file. This
+ProbeGlass is one process: an HTTP server, a scheduler, and a SQLite file. This
 document explains how the pieces fit together and why they were cut this way.
 It is written for someone about to change the code, not for an end user —
 [CONFIGURATION.md](CONFIGURATION.md) covers the knobs.
@@ -8,10 +8,10 @@ It is written for someone about to change the code, not for an end user —
 ## Shape of the process
 
 ```
-cmd/weatherglass        flags, wiring, graceful shutdown
+cmd/probeglass        flags, wiring, graceful shutdown
   ├── internal/config   defaults → YAML → environment → flags → validate
   ├── internal/privdrop the data directory is handed over, then root is given up
-  ├── internal/doctor   read-only inspection, for `weatherglass doctor`
+  ├── internal/doctor   read-only inspection, for `probeglass doctor`
   ├── internal/store    one *sql.DB, schema, queries, accounts, rollups, retention
   ├── internal/scheduler  one goroutine per enabled sensor
   │     └── internal/sensor   http | tcp | ping | dns
@@ -198,7 +198,7 @@ name, clears the group, and resets the interval to its default.
 Authentication resolves the request to a `principal`: an account, or the API key.
 There are two credentials:
 
-- **Session cookie** — `weatherglass_session`, value
+- **Session cookie** — `probeglass_session`, value
   `v2.<userID>.<tokenEpoch>.<expiryUnix>.<hmac>` signed with `auth.session_secret`
   and generated on first start. Every authenticated request re-reads the account
   row and compares the epoch with the one in the cookie, which is the whole reason
@@ -240,7 +240,7 @@ memory, and the second-factor step has a limiter of its own keyed by account rat
 than by address: the password is already known by then, and the six digits are what
 is being guessed at. `/api/setup` runs once: a fresh database has no accounts, the
 dashboard shows a setup screen, and the endpoint refuses with a `409` once an
-account exists. A password in `WEATHERGLASS_ADMIN_PASSWORD` creates the first
+account exists. A password in `PROBEGLASS_ADMIN_PASSWORD` creates the first
 account — named `admin`, with the admin role — and is then ignored.
 
 Secrets never leave the server. `internal/api/mask.go` replaces every field the
@@ -458,12 +458,12 @@ is a bind mount on the platforms this is installed on, created by the platform a
 root, and only root can change who owns a file. `internal/privdrop` hands the
 directory to `PUID:PGID`, becomes that user and verifies it, all before the
 database is opened; see "Privileges" below. Because there is no shell, the image's
-`HEALTHCHECK` runs the binary itself (`weatherglass healthcheck`), which makes a
+`HEALTHCHECK` runs the binary itself (`probeglass healthcheck`), which makes a
 `GET /healthz` and exits non-zero on failure.
 
 `docker buildx bake`-style multi-arch publishing and the release archives are
 driven from `.github/workflows/release.yml`, with the version, commit, and build
-date stamped into `internal/model` via `-ldflags`, so `weatherglass version` and
+date stamped into `internal/model` via `-ldflags`, so `probeglass version` and
 `/api/version` report exactly which build is running.
 
 ## Privileges
@@ -475,7 +475,7 @@ only root can hand it to somebody else. So the container starts as root, sets `U
 creates the data directory if it is missing, `lchown`s it and its contents to `PUID:PGID`
 (`lchown`, and never through a symlink), and then becomes that user with
 `setgroups`/`setgid`/`setuid`, verifying with `geteuid` afterwards and refusing to
-continue if it is still root. Everything after the call in `cmd/weatherglass` — the store,
+continue if it is still root. Everything after the call in `cmd/probeglass` — the store,
 the scheduler, the API — is unprivileged, and a privileged `setuid` sets the saved uid, so
 nothing can go back.
 

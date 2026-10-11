@@ -20,7 +20,7 @@ const COMMON = new Set([
   '12345678', '123456789', '1234567890', 'qwertyui', 'qwerty123',
   'iloveyou', 'admin123', 'admin1234', 'letmein1', 'welcome1',
   'sunshine', 'princess', 'football', 'baseball', 'monkey123',
-  'dragon123', 'abc12345', 'homelab', 'homelab123', 'weatherglass',
+  'dragon123', 'abc12345', 'homelab', 'homelab123', 'probeglass',
 ]);
 
 const LEVELS = ['weak', 'fair', 'good', 'strong'];

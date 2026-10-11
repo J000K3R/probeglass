@@ -7,10 +7,10 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/j000k3r/weatherglass/internal/config"
-	"github.com/j000k3r/weatherglass/internal/demo"
-	"github.com/j000k3r/weatherglass/internal/model"
-	"github.com/j000k3r/weatherglass/internal/store"
+	"github.com/j000k3r/probeglass/internal/config"
+	"github.com/j000k3r/probeglass/internal/demo"
+	"github.com/j000k3r/probeglass/internal/model"
+	"github.com/j000k3r/probeglass/internal/store"
 )
 
 // ---------------------------------------------------------------------------
@@ -88,7 +88,7 @@ const exampleSensorInterval = 300
 // paragraph of text could. The history is invented, and saying so is what the
 // "(example)" in every name is for.
 //
-// The first one is Weatherglass itself. That is the important one: it is reached
+// The first one is ProbeGlass itself. That is the important one: it is reached
 // over loopback, so it works in a homelab with no internet and no other host to
 // point at, and the dashboard therefore always has at least one green sensor to
 // show. A first-run dashboard that is entirely grey or entirely red teaches the

@@ -6,7 +6,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/j000k3r/weatherglass/internal/model"
+	"github.com/j000k3r/probeglass/internal/model"
 )
 
 // exampleSensorSet is a small stand-in for the dataset the Settings button

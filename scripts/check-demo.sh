@@ -29,7 +29,7 @@
 # every run until somebody stopped reading it.
 set -eu
 
-demo=${1:-../weatherglass-website/site/demo}
+demo=${1:-../probeglass-website/site/demo}
 
 if [ ! -f "$demo/fingerprint.txt" ]; then
 	echo "check-demo: $demo/fingerprint.txt is missing." >&2

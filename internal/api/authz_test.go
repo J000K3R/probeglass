@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/j000k3r/weatherglass/internal/model"
-	"github.com/j000k3r/weatherglass/internal/store"
-	"github.com/j000k3r/weatherglass/internal/totp"
+	"github.com/j000k3r/probeglass/internal/model"
+	"github.com/j000k3r/probeglass/internal/store"
+	"github.com/j000k3r/probeglass/internal/totp"
 )
 
 // ---------------------------------------------------------------------------

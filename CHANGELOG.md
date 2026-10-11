@@ -63,22 +63,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a screenshot on failure. It lives in its own module, `e2e/`, so that the browser
   driver never enters the product's dependency list. Run it with
   `make test-browser`.
-- **`weatherglass doctor`.** One command that says what is wrong with an
-  installation, built for the container: `docker exec weatherglass weatherglass
+- **`probeglass doctor`.** One command that says what is wrong with an
+  installation, built for the container: `docker exec probeglass probeglass
   doctor`. It reports the configuration, the data directory, the database's size,
   integrity and schema version, whether the stored sensors and channels still
   validate, and whether the daemon is answering — and exits non-zero if any of it
   is fatal. It opens the database read-only and never sends an alert, because a
   diagnostic that quietly repairs what it was asked to report, or fires a real
   message into a chat room, is worse than no diagnostic at all. It replaces the
-  `weatherglass config check` the documentation had been promising.
+  `probeglass config check` the documentation had been promising.
 - **A fresh installation is not empty.** First-run setup creates four example
   sensors — the dashboard's own health endpoint, a gateway ping, a public
   resolver, and a public website — grouped under *Examples* and marked
   `(example)` in the name. They are ordinary sensors: editable, pausable,
   deletable, and attached to no channel, so a new installation never sends a
   notification before its owner has decided where notifications should go. The
-  first one points at Weatherglass itself, which means the dashboard is never
+  first one points at ProbeGlass itself, which means the dashboard is never
   entirely red on a machine that has no route to the internet. They are created
   only when the sensor table is empty and the configuration file declares no
   sensors — an installation driven from YAML is deliberate and is left alone, and
@@ -161,7 +161,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a shortcut for whatever that sensor currently has open — which answers `409`
   when nothing is down, rather than quietly doing nothing.
 - **Diagnostics run from the dashboard.** The Settings screen has a panel that
-  runs the same checks `weatherglass doctor` runs on the command line and shows
+  runs the same checks `probeglass doctor` runs on the command line and shows
   both the individual results and the literal text the command prints, alongside
   the `docker exec` command to run it yourself. `POST /api/doctor`, because it
   reads the whole database and opens a socket — a `GET` would be cacheable and
@@ -405,7 +405,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Cache-Control: no-store`; `POST /api/restore` takes the file as the request body,
   capped at 64 MiB, because the project has no multipart path and this is not the
   place to invent one. Before anything is replaced the file is checked — a document
-  that is not a `weatherglass-backup`, or one from a newer schema, is refused and
+  that is not a `probeglass-backup`, or one from a newer schema, is refused and
   nothing is written — and a byte-exact `VACUUM INTO` safety copy is taken beside
   the database; if that copy cannot be written, the restore stops. A table the file
   does not mention is left alone, so restoring a configuration never wipes history,
@@ -517,6 +517,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The project is called ProbeGlass.** It was Weatherglass, and that read like a
+  weather app, which is the one thing it is not: it answers whether the things in
+  a homelab are alive. What it does is unchanged; the name changes everywhere at
+  once — the module path, the binary and with it every documented command, the
+  container image, all `PROBEGLASS_*` environment variables, the data files
+  (`probeglass.db`, `probeglass.yaml`), the session cookie, the issuer an
+  authenticator app shows, the webhook headers (`X-ProbeGlass-Event`,
+  `X-ProbeGlass-Signature`) and the backup envelope. The old name is read nowhere:
+  there is no opener for a `weatherglass.db`, no importer for a
+  `weatherglass-backup-*.json` and no listener for the old header. Upgrading is
+  therefore a short list of hand-steps, and two of them fail quietly — a stale
+  compose file goes on setting `WEATHERGLASS_*`, which is now not read at all, and
+  a data file left under its old name is not found, so the new version starts with
+  an empty database. The rest: rename the data file in the volume, switch webhook
+  receivers to the new headers, and issue the recovery codes again, because the
+  salt that hashes them is derived from the name.
+
 - **The settings icon is a gear.** It was a circle with eight strokes around it, which
   is a sun. Settings is not a brightness control, and in a bar whose other three icons
   are also drawn by hand the one icon nobody could name was the one that mattered most.
@@ -549,7 +566,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   one back", and now it means "fetch nothing".
 - **The container no longer runs as a fixed uid 500; it starts as root, takes its data
   directory over and drops to `PUID:PGID`.** A bind mount keeps the ownership of the host
-  folder, and the platforms Weatherglass is installed on create that folder as root, so a
+  folder, and the platforms ProbeGlass is installed on create that folder as root, so a
   container that started as 500 could not write in it and could not fix it either — only
   root can change who owns a file. That is why a first install needed `chmod 777` on the
   appdata folder, and why every comparable image on those platforms works without a
@@ -562,7 +579,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `CAP_NET_RAW` is carried across the drop on purpose, so a ping sensor keeps working; if
   that fails the daemon reports the lost capability and carries on. [SECURITY.md](SECURITY.md)
   states what the root moment costs.
-- **The startup log line and `weatherglass doctor` now name the uid.** The daemon logs the
+- **The startup log line and `probeglass doctor` now name the uid.** The daemon logs the
   `uid` and `gid` it actually ended up as, and doctor reports both its own identity and the
   daemon's side by side, because under `docker exec` those two numbers differ and the
   answer to "why can it not write" depends on which one is meant.
@@ -581,7 +598,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   along with the global `ui.*` settings, which move onto that account. The
   migration runs only on a database that has no accounts at all, so it cannot
   overwrite an installation that has already been through it. A password left in
-  `WEATHERGLASS_ADMIN_PASSWORD` still bootstraps an account named `admin`, now
+  `PROBEGLASS_ADMIN_PASSWORD` still bootstraps an account named `admin`, now
   with the admin role, on a database with no accounts.
 - **Help text beside the fields became `?` buttons.** See above: the paragraphs
   are gone, and the answer to "what is this field?" is one click away instead of
@@ -849,7 +866,7 @@ the structure in place to grow.
 - **Authentication** — first-run setup screen, bcrypt password hashing,
   HMAC-signed session cookies, an API key for scripts, cross-site protection for
   cookie-authenticated writes, and an in-memory login rate limit.
-- **Configuration** — YAML file, `WEATHERGLASS_*` environment variables, and
+- **Configuration** — YAML file, `PROBEGLASS_*` environment variables, and
   command-line flags with a documented precedence order, plus day and week
   duration suffixes for retention settings.
 - **Declarative sensors and channels** — declare them in the configuration file
@@ -874,5 +891,5 @@ the structure in place to grow.
 - The session cookie is `HttpOnly` and `SameSite=Strict` and deliberately omits
   `Secure`, because homelab installs commonly serve plain HTTP on the LAN.
 
-[Unreleased]: https://github.com/j000k3r/weatherglass/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/j000k3r/weatherglass/releases/tag/v0.1.0
+[Unreleased]: https://github.com/j000k3r/probeglass/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/j000k3r/probeglass/releases/tag/v0.1.0

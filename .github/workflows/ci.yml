@@ -58,7 +58,7 @@ jobs:
         run: |
           for target in linux/amd64 linux/arm64 linux/arm darwin/amd64 darwin/arm64 windows/amd64 freebsd/amd64; do
             GOOS=${target%/*} GOARCH=${target#*/} CGO_ENABLED=0 \
-              go build -trimpath -o /dev/null ./cmd/weatherglass
+              go build -trimpath -o /dev/null ./cmd/probeglass
             echo "ok ${target}"
           done
 
@@ -87,11 +87,11 @@ jobs:
       # anything out, so it has to be looked at.
       - name: Dashboard renders in a real browser
         env:
-          WEATHERGLASS_E2E_BROWSER: ${{ steps.chrome.outputs.chrome }}
+          PROBEGLASS_E2E_BROWSER: ${{ steps.chrome.outputs.chrome }}
           # Without this the test would skip when no browser is found, and a
           # skipped test in a green job reads exactly like a passing one.
-          WEATHERGLASS_E2E_REQUIRE_BROWSER: "1"
-          WEATHERGLASS_E2E_ARTIFACTS: ${{ runner.temp }}/e2e-artifacts
+          PROBEGLASS_E2E_REQUIRE_BROWSER: "1"
+          PROBEGLASS_E2E_ARTIFACTS: ${{ runner.temp }}/e2e-artifacts
         run: cd e2e && go test ./... -count=1 -v -timeout=10m
 
       # Worth more than the stack trace when the failure is "the spinner is
@@ -183,7 +183,7 @@ jobs:
         with:
           context: .
           load: true
-          tags: weatherglass:smoke
+          tags: probeglass:smoke
           cache-from: type=gha
           cache-to: type=gha,mode=max
           build-args: |

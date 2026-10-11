@@ -28,7 +28,7 @@ import (
 
 	_ "modernc.org/sqlite" // pure-Go driver: no CGO, so cross-compiling stays trivial
 
-	"github.com/j000k3r/weatherglass/internal/model"
+	"github.com/j000k3r/probeglass/internal/model"
 )
 
 // timeFormat is a fixed-width UTC layout. Fixed width matters: it makes the
@@ -130,7 +130,7 @@ func Open(path string, log *slog.Logger) (*Store, error) {
 // nonsense. Inside the image the two are the same number, and it is the one the
 // container documentation quotes.
 func unwritableHint(dir string) string {
-	f, err := os.CreateTemp(dir, ".weatherglass-write-test-*")
+	f, err := os.CreateTemp(dir, ".probeglass-write-test-*")
 	if err == nil {
 		name := f.Name()
 		f.Close()
@@ -194,7 +194,7 @@ func newStore(db *sql.DB, log *slog.Logger) *Store {
 
 // LatestSchemaVersion is the schema version this binary migrates a database to.
 // A database below it is migrated on the next start; one above it was written by
-// a newer Weatherglass than this binary.
+// a newer ProbeGlass than this binary.
 func LatestSchemaVersion() int {
 	if len(migrations) == 0 {
 		return 0

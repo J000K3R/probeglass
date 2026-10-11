@@ -25,7 +25,7 @@ promises; the ordering is what the design already supports cheaply.
 
 ## Done — unreleased
 
-- [x] `weatherglass doctor` — one command that reports what is wrong with an
+- [x] `probeglass doctor` — one command that reports what is wrong with an
   installation and changes nothing: the configuration, the data directory, the
   database's size, integrity and schema, whether the stored sensors and channels
   still validate, and whether the daemon is answering. Built for the container,
@@ -151,14 +151,14 @@ Ordered by value per unit of work.
 - [ ] **Import and export, for the configuration file.** The dashboard can already
   write the whole installation out as JSON and read it back in — sensors, channels,
   sites, accounts, and as much history as you ask for. What this item still wants is
-  the **other direction**: writing the `weatherglass.yaml` a file-driven installation
+  the **other direction**: writing the `probeglass.yaml` a file-driven installation
   is configured from, so the versioned part of a setup stops being something
   maintained by hand.
 
 ## Later — 0.3.x and beyond
 
 - [ ] **A `/metrics` endpoint**, so a homelab that already runs a monitoring stack
-  can scrape Weatherglass instead of duplicating the checks it already makes.
+  can scrape ProbeGlass instead of duplicating the checks it already makes.
 - [ ] **Public status page.** A read-only view on its own path and its own
   token, safe to share outside the LAN, with the incidents you choose to publish.
 - [ ] **SLA reports.** Monthly uptime per sensor and per group as a printable
@@ -174,18 +174,18 @@ Ordered by value per unit of work.
 
 ## Out of scope
 
-- **Agents and infrastructure discovery.** Weatherglass watches what you tell it
+- **Agents and infrastructure discovery.** ProbeGlass watches what you tell it
   to watch; it is not a service-discovery or inventory tool.
 - **Windows and macOS service installation.** The binary builds for both, but
   the packaging target is a Linux container.
-- **A full SNMP poller.** Weatherglass reads single OIDs over v2c, because that is
+- **A full SNMP poller.** ProbeGlass reads single OIDs over v2c, because that is
   what a switch, a router or a NAS is asked for. What stays out is the rest of it:
   a MIB walk, trap receivers, v3 with its authentication and privacy protocols, and
   the table-and-rate model that a serious poller is built around. A homelab that
   needs those wants a different program, and the generic webhook is the bridge.
 - **Multi-tenancy.** One instance, one homelab. Several people can have accounts
   on it with different roles, but they all see the same sensors, the same history
-  and the same incidents — Weatherglass assumes one group of people who trust each
+  and the same incidents — ProbeGlass assumes one group of people who trust each
   other with the dashboard. Isolating two organisations from each other is a
   different product, and running two containers is the answer to wanting two.
 - **Plugins loaded at runtime.** The sensor and channel interfaces are the

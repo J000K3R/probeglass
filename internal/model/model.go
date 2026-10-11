@@ -11,8 +11,8 @@ import (
 )
 
 // These three are stamped in at build time with
-// -ldflags "-X github.com/j000k3r/weatherglass/internal/model.Version=vX.Y.Z".
-// They are what "weatherglass version" and the About panel report, and they
+// -ldflags "-X github.com/j000k3r/probeglass/internal/model.Version=vX.Y.Z".
+// They are what "probeglass version" and the About panel report, and they
 // exist so a bug report can name the exact revision that produced it.
 var (
 	Version   = "0.1.0-dev"

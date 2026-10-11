@@ -92,7 +92,7 @@
 
   /* --------------------------------------------------------- the responses */
 
-  var NOT_HERE = 'This is a demo: it is a recording of Weatherglass with example '
+  var NOT_HERE = 'This is a demo: it is a recording of ProbeGlass with example '
     + 'data and no installation behind it, so nothing can be changed here.';
 
   var NOT_RECORDED = 'This is a demo. This request was not part of the recording, '

@@ -29,10 +29,10 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
     go build \
       -trimpath \
       -ldflags "-s -w \
-        -X github.com/j000k3r/weatherglass/internal/model.Version=${VERSION} \
-        -X github.com/j000k3r/weatherglass/internal/model.Commit=${COMMIT} \
-        -X github.com/j000k3r/weatherglass/internal/model.BuildDate=${BUILD_DATE}" \
-      -o /out/weatherglass ./cmd/weatherglass
+        -X github.com/j000k3r/probeglass/internal/model.Version=${VERSION} \
+        -X github.com/j000k3r/probeglass/internal/model.Commit=${COMMIT} \
+        -X github.com/j000k3r/probeglass/internal/model.BuildDate=${BUILD_DATE}" \
+      -o /out/probeglass ./cmd/probeglass
 
 # An empty directory whose ownership the runtime image can copy. Docker copies
 # the ownership of a copied directory, which is how /data ends up writable by
@@ -55,14 +55,14 @@ RUN mkdir -p /out/data
 # and the reason an install of one of those needs no chown.
 FROM gcr.io/distroless/static-debian12:nonroot
 
-LABEL org.opencontainers.image.title="Weatherglass" \
+LABEL org.opencontainers.image.title="ProbeGlass" \
       org.opencontainers.image.description="Lightweight self-hosted monitoring for the homelab: service sensors, a dashboard, long-term history and alerts." \
-      org.opencontainers.image.url="https://github.com/j000k3r/weatherglass" \
-      org.opencontainers.image.source="https://github.com/j000k3r/weatherglass" \
-      org.opencontainers.image.documentation="https://github.com/j000k3r/weatherglass/blob/main/README.md" \
+      org.opencontainers.image.url="https://github.com/j000k3r/probeglass" \
+      org.opencontainers.image.source="https://github.com/j000k3r/probeglass" \
+      org.opencontainers.image.documentation="https://github.com/j000k3r/probeglass/blob/main/README.md" \
       org.opencontainers.image.licenses="MIT"
 
-COPY --from=build /out/weatherglass /usr/local/bin/weatherglass
+COPY --from=build /out/probeglass /usr/local/bin/probeglass
 
 # Everything mutable lives under /data: the SQLite database and its WAL. A copied
 # directory carries its ownership along, so a named volume created from this image is
@@ -83,14 +83,14 @@ USER 0:0
 ENV PUID=500 \
     PGID=500 \
     UMASK=022 \
-    WEATHERGLASS_DATA_DIR=/data
+    PROBEGLASS_DATA_DIR=/data
 VOLUME ["/data"]
 EXPOSE 8080
 
 # The binary probes itself: distroless has no curl, and adding one would defeat
 # the point of a distroless image.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD ["/usr/local/bin/weatherglass", "healthcheck"]
+    CMD ["/usr/local/bin/probeglass", "healthcheck"]
 
-ENTRYPOINT ["/usr/local/bin/weatherglass"]
+ENTRYPOINT ["/usr/local/bin/probeglass"]
 CMD ["serve", "--listen", ":8080"]

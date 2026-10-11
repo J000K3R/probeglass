@@ -204,7 +204,7 @@ export function mount(host, opts = {}) {
   }).catch((error) => {
     // The coastlines, the graticule and the pins are all still here, which is why
     // this is a console line and not a failed map.
-    console.error('weatherglass: could not draw the water, the borders and the names', error);
+    console.error('probeglass: could not draw the water, the borders and the names', error);
   });
 
   const note = document.createElement('p');

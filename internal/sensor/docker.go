@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/j000k3r/weatherglass/internal/model"
+	"github.com/j000k3r/probeglass/internal/model"
 )
 
 // DockerProber watches one container on the host the daemon runs on.

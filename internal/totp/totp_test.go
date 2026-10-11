@@ -206,7 +206,7 @@ func TestURIEscaping(t *testing.T) {
 	for _, want := range []string{
 		"otpauth://totp/",
 		"secret=JBSWY3DPEHPK3PXP",
-		"issuer=Weatherglass",
+		"issuer=ProbeGlass",
 		"algorithm=SHA1",
 		"digits=6",
 		"period=30",
@@ -220,7 +220,7 @@ func TestURIEscaping(t *testing.T) {
 	}
 	// The colon between issuer and account is structural: an app splits the
 	// label on it to tell the two apart.
-	if !strings.Contains(uri, "Weatherglass:") {
+	if !strings.Contains(uri, "ProbeGlass:") {
 		t.Errorf("URI %q lost the issuer/account separator", uri)
 	}
 }

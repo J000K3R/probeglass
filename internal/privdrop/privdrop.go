@@ -64,7 +64,7 @@ type Settings struct {
 // default. These three decide which user the process becomes, and a PUID that was
 // ignored without a word is the exact failure this package was written to remove:
 // the daemon would run as 500 while the operator believed it ran as what they
-// typed. That is the treatment WEATHERGLASS_LOG_LEVEL gets; the retention
+// typed. That is the treatment PROBEGLASS_LOG_LEVEL gets; the retention
 // durations, which swallow a typo and keep the default, are the counter-example.
 func ParseSettings(getenv func(string) string) (Settings, error) {
 	s := Settings{UID: DefaultUID, GID: DefaultGID, Umask: DefaultUmask}

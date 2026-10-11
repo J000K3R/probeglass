@@ -102,7 +102,7 @@ func TestLiveUpdatesPatchTheBoardWithoutAReload(t *testing.T) {
 	// board could have brought itself up to date.
 	if err := withTimeout(ctx, func(tctx context.Context) error {
 		return chromedp.Do(tctx, chromedp.Evaluate[chromedp.Void](
-			`window.__weatherglassAlive = 'the page was never reloaded'`))
+			`window.__probeglassAlive = 'the page was never reloaded'`))
 	}); err != nil {
 		t.Fatalf("could not mark the page: %v", err)
 	}
@@ -115,13 +115,13 @@ func TestLiveUpdatesPatchTheBoardWithoutAReload(t *testing.T) {
 	// to see, and a test that loses that race reports a working board as broken.
 	if err := withTimeout(ctx, func(tctx context.Context) error {
 		return chromedp.Do(tctx, chromedp.Evaluate[chromedp.Void](`
-			window.__weatherglassFlashes = [];
+			window.__probeglassFlashes = [];
 			new MutationObserver((records) => {
 			  for (const record of records) {
 			    const el = record.target;
 			    if (record.attributeName === 'class' && el.classList &&
 			        el.classList.contains('is-flash')) {
-			      window.__weatherglassFlashes.push(Number(el.dataset.id));
+			      window.__probeglassFlashes.push(Number(el.dataset.id));
 			    }
 			  }
 			}).observe(document.querySelector('#groups'),
@@ -164,7 +164,7 @@ func TestLiveUpdatesPatchTheBoardWithoutAReload(t *testing.T) {
 			"patching one sensor moved it", name)
 	}
 
-	flash := read[[]int](t, ctx, `window.__weatherglassFlashes || []`,
+	flash := read[[]int](t, ctx, `window.__probeglassFlashes || []`,
 		"the nodes the board has flashed")
 	if !slices.Contains(flash, id) {
 		capture(t, ctx, dir, "live-no-flash")
@@ -201,7 +201,7 @@ func TestLiveUpdatesPatchTheBoardWithoutAReload(t *testing.T) {
 
 	// --- the page itself -------------------------------------------------------
 
-	if alive := read[string](t, ctx, `window.__weatherglassAlive || ''`, "the page's own marker"); alive == "" {
+	if alive := read[string](t, ctx, `window.__probeglassAlive || ''`, "the page's own marker"); alive == "" {
 		capture(t, ctx, dir, "live-reloaded-the-page")
 		t.Errorf("the board brought itself up to date by reloading; a probe landing is not " +
 			"a reason to throw the page away")

@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/j000k3r/weatherglass/internal/event"
-	"github.com/j000k3r/weatherglass/internal/store"
+	"github.com/j000k3r/probeglass/internal/event"
+	"github.com/j000k3r/probeglass/internal/store"
 )
 
 // Acknowledging is not pausing.

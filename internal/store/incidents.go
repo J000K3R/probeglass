@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/j000k3r/weatherglass/internal/model"
+	"github.com/j000k3r/probeglass/internal/model"
 )
 
 const incidentColumns = `id, sensor_id, started_at, resolved_at, cause,

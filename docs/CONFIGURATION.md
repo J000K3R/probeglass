@@ -1,14 +1,14 @@
 # Configuration reference
 
-Weatherglass reads configuration from four sources. Later sources override
+ProbeGlass reads configuration from four sources. Later sources override
 earlier ones, key by key:
 
 1. **Built-in defaults**
-2. **A YAML file** — the `-config` flag, else `$WEATHERGLASS_CONFIG`, else
-   `<data_dir>/weatherglass.yaml` when that file exists. A missing file is fine
+2. **A YAML file** — the `-config` flag, else `$PROBEGLASS_CONFIG`, else
+   `<data_dir>/probeglass.yaml` when that file exists. A missing file is fine
    unless you named it explicitly, in which case startup fails rather than
    silently running with defaults.
-3. **`WEATHERGLASS_*` environment variables**
+3. **`PROBEGLASS_*` environment variables**
 4. **Command-line flags**
 
 Everything the dashboard can change — sensors, alert channels, theme — lives in
@@ -20,22 +20,22 @@ re-applied on every start.
 
 | Key | Environment | Default | Notes |
 |---|---|---|---|
-| `listen` | `WEATHERGLASS_LISTEN` | `:8080` | host:port to serve on |
-| `data_dir` | `WEATHERGLASS_DATA_DIR` | `./data` in a checkout, `/data` in the image | holds the database and the default config file |
-| `db_path` | `WEATHERGLASS_DB` | `<data_dir>/weatherglass.db` | full path to the SQLite file |
-| `base_url` | `WEATHERGLASS_BASE_URL` | empty | public URL, used in links inside alerts; a trailing slash is trimmed |
-| `log_level` | `WEATHERGLASS_LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error` |
-| `log_format` | `WEATHERGLASS_LOG_FORMAT` | `text` | `text` or `json` |
-| `trust_proxy` | `WEATHERGLASS_TRUST_PROXY` | `false` | honour `X-Forwarded-For` / `X-Forwarded-Proto` |
-| — | `WEATHERGLASS_ADMIN_PASSWORD` | unset | creates an administrator account named `admin` on a database with no accounts; ignored afterwards |
-| — | `WEATHERGLASS_CONFIG` | unset | path to the YAML file |
+| `listen` | `PROBEGLASS_LISTEN` | `:8080` | host:port to serve on |
+| `data_dir` | `PROBEGLASS_DATA_DIR` | `./data` in a checkout, `/data` in the image | holds the database and the default config file |
+| `db_path` | `PROBEGLASS_DB` | `<data_dir>/probeglass.db` | full path to the SQLite file |
+| `base_url` | `PROBEGLASS_BASE_URL` | empty | public URL, used in links inside alerts; a trailing slash is trimmed |
+| `log_level` | `PROBEGLASS_LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error` |
+| `log_format` | `PROBEGLASS_LOG_FORMAT` | `text` | `text` or `json` |
+| `trust_proxy` | `PROBEGLASS_TRUST_PROXY` | `false` | honour `X-Forwarded-For` / `X-Forwarded-Proto` |
+| — | `PROBEGLASS_ADMIN_PASSWORD` | unset | creates an administrator account named `admin` on a database with no accounts; ignored afterwards |
+| — | `PROBEGLASS_CONFIG` | unset | path to the YAML file |
 
 Truthy values for boolean environment variables are `1`, `true`, `yes`, and `on`
 (case-insensitive); everything else is false.
 
 ### The container user: `PUID`, `PGID`, `UMASK`
 
-These three do not belong to the `WEATHERGLASS_*` family, and there is no line in the
+These three do not belong to the `PROBEGLASS_*` family, and there is no line in the
 configuration file for them, because they are not settings of the daemon — they are about
 the user it runs as, which is decided before it starts.
 
@@ -60,7 +60,7 @@ moment costs and why it is spent that way.
 - `PUID=0` and `PGID=0` mean "stay root for the whole run". Supported, logged loudly, not
   recommended.
 - A value that cannot be parsed **stops the start** when the process is root, the same
-  treatment `WEATHERGLASS_LOG_LEVEL` gets and unlike an unparseable retention duration,
+  treatment `PROBEGLASS_LOG_LEVEL` gets and unlike an unparseable retention duration,
   which keeps its default. A `PUID` that was quietly ignored would leave the daemon
   running as 500 while its operator believed otherwise, which is the exact failure these
   variables exist to remove.
@@ -71,7 +71,7 @@ moment costs and why it is spent that way.
 ```yaml
 listen: ":8080"
 data_dir: /data
-base_url: https://weatherglass.lan
+base_url: https://probeglass.lan
 log_level: info
 log_format: text
 trust_proxy: false
@@ -188,7 +188,7 @@ silent no-alert. All names are validated before anything is written.
 | `method` | `GET` | `GET`, `HEAD`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS` |
 | `expected_status` | `200-399` | `200`, `204,301`, `200-299`, or `2xx` |
 | `headers` | — | map of request headers |
-| `user_agent` | `Weatherglass/<version>` | overrides the User-Agent |
+| `user_agent` | `ProbeGlass/<version>` | overrides the User-Agent |
 | `basic_auth_user`, `basic_auth_pass` | — | HTTP basic auth |
 | `bearer_token` | — | sent as `Authorization: Bearer …` |
 | `body` | — | request body for POST/PUT/PATCH |
@@ -243,7 +243,7 @@ a certificate that has run out, or an authority this host does not trust.
 **Docker container** (`type: docker`)
 
 Watches one container on the host whose Docker socket is mounted into the
-Weatherglass container. The target is a container name or id. The probe reads the
+ProbeGlass container. The target is a container name or id. The probe reads the
 Docker Engine API over the unix socket with a single `GET /containers/{target}/json`
 and nothing else: it never starts, stops or changes a container.
 
@@ -377,7 +377,7 @@ province names, city names, and Austria's political districts from Statistik Aus
 are, and nothing about it is disclosed to anybody. Ten of the eleven are public
 domain Natural Earth data; **the districts are the exception and carry a licence**:
 Statistik Austria publishes them under CC BY 4.0, which asks to be named when the
-work is shown. Whoever runs a Weatherglass map with the Austrian districts on it
+work is shown. Whoever runs a ProbeGlass map with the Austrian districts on it
 should name Statistik Austria — the file's own header carries the wording, and so
 does the dashboard documentation. The layers are stacked in that order, and the
 stacking is the design: the coastlines first, then the water inside
@@ -491,7 +491,7 @@ Because a bad configuration stops the container rather than starting it
 half-working, `docker compose up` after a typo tells you immediately instead of
 failing to alert you three weeks later.
 
-To check a file without starting anything, run `weatherglass doctor --config
+To check a file without starting anything, run `probeglass doctor --config
 PATH`. The `config` line says whether the file parses and the `config sensors` line
 says whether every sensor and channel in it would be accepted — the same validation
 as above, applied by the same code. It also reports a declaration that has not

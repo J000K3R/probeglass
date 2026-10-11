@@ -9,7 +9,7 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/j000k3r/weatherglass/internal/model"
+	"github.com/j000k3r/probeglass/internal/model"
 )
 
 // Sites are the places sensors live: the homelab, or a server somebody rents.

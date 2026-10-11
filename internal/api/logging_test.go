@@ -99,7 +99,7 @@ func TestServerErrorIsLoggedAndKeepsTheCause(t *testing.T) {
 	h := newHarnessWith(t, logs.logger())
 	h.setup()
 
-	const key = "wg_test_api_key_1234567890"
+	const key = "pg_test_api_key_1234567890"
 	ts := h.keyedServer(key)
 
 	// Pull the database out from under the handler. Any store call from here on
@@ -158,7 +158,7 @@ func TestServerErrorDoesNotLeakTheCauseToTheClient(t *testing.T) {
 	h := newHarnessWith(t, logs.logger())
 	h.setup()
 
-	const key = "wg_test_api_key_1234567890"
+	const key = "pg_test_api_key_1234567890"
 	ts := h.keyedServer(key)
 
 	if err := h.store.Close(); err != nil {

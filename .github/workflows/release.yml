@@ -10,7 +10,7 @@ permissions:
 
 env:
   GOTOOLCHAIN: local
-  IMAGE_NAME: weatherglass
+  IMAGE_NAME: probeglass
   # The namespace every document in this project names, and the one the image is
   # published under. `make rename` rewrites the Go module path but deliberately
   # leaves the image name alone, so a fork that publishes under its own account has
@@ -45,20 +45,20 @@ jobs:
           set -euo pipefail
           mkdir -p dist
           ldflags="-s -w \
-            -X github.com/j000k3r/weatherglass/internal/model.Version=${VERSION} \
-            -X github.com/j000k3r/weatherglass/internal/model.Commit=${COMMIT} \
-            -X github.com/j000k3r/weatherglass/internal/model.BuildDate=${BUILD_DATE}"
+            -X github.com/j000k3r/probeglass/internal/model.Version=${VERSION} \
+            -X github.com/j000k3r/probeglass/internal/model.Commit=${COMMIT} \
+            -X github.com/j000k3r/probeglass/internal/model.BuildDate=${BUILD_DATE}"
           for target in linux/amd64 linux/arm64 linux/armv7 darwin/amd64 darwin/arm64 windows/amd64 freebsd/amd64; do
             os=${target%/*}
             arch=${target#*/}
             goarch=${arch%v7}
             goarm=""
             [ "${arch}" = "armv7" ] && goarm="GOARM=7"
-            name="weatherglass_${VERSION}_${os}_${arch}"
+            name="probeglass_${VERSION}_${os}_${arch}"
             out="dist/${name}"
             mkdir -p "${out}"
             env CGO_ENABLED=0 GOOS="${os}" GOARCH="${goarch}" ${goarm} \
-              go build -trimpath -ldflags "${ldflags}" -o "${out}/weatherglass" ./cmd/weatherglass
+              go build -trimpath -ldflags "${ldflags}" -o "${out}/probeglass" ./cmd/probeglass
             cp README.md LICENSE "${out}/"
             (cd dist && zip -qr "${name}.zip" "${name}" && rm -rf "${name}")
           done

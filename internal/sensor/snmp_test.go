@@ -14,7 +14,7 @@ import (
 
 	"github.com/gosnmp/gosnmp"
 
-	"github.com/j000k3r/weatherglass/internal/model"
+	"github.com/j000k3r/probeglass/internal/model"
 )
 
 // ---------------------------------------------------------------------------

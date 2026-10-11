@@ -17,7 +17,7 @@
 //	cd e2e && go test ./... -v
 //
 // A browser is required. If none is found the test skips, unless
-// WEATHERGLASS_E2E_REQUIRE_BROWSER=1, which turns that skip into a failure. CI
+// PROBEGLASS_E2E_REQUIRE_BROWSER=1, which turns that skip into a failure. CI
 // sets it so that a missing browser can never quietly mean "no coverage".
 package e2e
 
@@ -37,7 +37,7 @@ import (
 
 	"github.com/chromedp/chromedp"
 
-	"github.com/j000k3r/weatherglass/internal/model"
+	"github.com/j000k3r/probeglass/internal/model"
 )
 
 const (
@@ -49,7 +49,7 @@ const (
 	phaseTimeout = 45 * time.Second
 
 	// The form enforces minlength="8".
-	testPassword = "weatherglass-e2e-password"
+	testPassword = "probeglass-e2e-password"
 	// The account the first run creates. It is the name every acknowledgement
 	// this test makes is recorded under, and the name it has to sign back in with.
 	testUser = "e2e-operator"
@@ -124,7 +124,7 @@ func TestDashboardIsActuallyUsable(t *testing.T) {
 	}()
 
 	//nolint:misspell // "artifacts" is the spelling GitHub uses for the uploaded files
-	screenshotDir := os.Getenv("WEATHERGLASS_E2E_ARTIFACTS")
+	screenshotDir := os.Getenv("PROBEGLASS_E2E_ARTIFACTS")
 	if screenshotDir == "" {
 		screenshotDir = t.TempDir()
 	}
@@ -564,7 +564,7 @@ func findBrowser(t *testing.T) string {
 	t.Helper()
 
 	var candidates []string
-	if p := os.Getenv("WEATHERGLASS_E2E_BROWSER"); p != "" {
+	if p := os.Getenv("PROBEGLASS_E2E_BROWSER"); p != "" {
 		candidates = append(candidates, p)
 	}
 	candidates = append(candidates,
@@ -593,11 +593,11 @@ func findBrowser(t *testing.T) string {
 		return ""
 	}
 
-	if os.Getenv("WEATHERGLASS_E2E_REQUIRE_BROWSER") == "1" {
-		t.Fatal("no Chromium-based browser found, and WEATHERGLASS_E2E_REQUIRE_BROWSER=1: " +
+	if os.Getenv("PROBEGLASS_E2E_REQUIRE_BROWSER") == "1" {
+		t.Fatal("no Chromium-based browser found, and PROBEGLASS_E2E_REQUIRE_BROWSER=1: " +
 			"this job exists to render the dashboard, so a run without a browser is not a pass")
 	}
-	t.Skip("no Chromium-based browser found; install one, or point WEATHERGLASS_E2E_BROWSER at it")
+	t.Skip("no Chromium-based browser found; install one, or point PROBEGLASS_E2E_BROWSER at it")
 	return ""
 }
 
@@ -629,12 +629,12 @@ func buildBinary(t *testing.T) string {
 	if err != nil {
 		t.Fatalf("locate the module root: %v", err)
 	}
-	out := filepath.Join(t.TempDir(), "weatherglass")
+	out := filepath.Join(t.TempDir(), "probeglass")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "go", "build", "-o", out, "./cmd/weatherglass")
+	cmd := exec.CommandContext(ctx, "go", "build", "-o", out, "./cmd/probeglass")
 	cmd.Dir = root
 	if combined, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("go build: %v\n%s", err, combined)

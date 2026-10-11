@@ -59,7 +59,7 @@ func (d *discordNotifier) Type() string { return "discord" }
 func (d *discordNotifier) Send(ctx context.Context, msg Message) error {
 	username := d.username
 	if username == "" {
-		username = "Weatherglass"
+		username = "ProbeGlass"
 	}
 	payload := map[string]any{
 		"username": username,
@@ -68,7 +68,7 @@ func (d *discordNotifier) Send(ctx context.Context, msg Message) error {
 			"description": truncateRunes(msg.Body, 3800),
 			"color":       colourFor(msg.Event), //nolint:misspell // Discord's field name, not prose
 			"timestamp":   msg.Time.Format(time.RFC3339),
-			"footer":      map[string]any{"text": "Weatherglass · " + string(msg.Event)},
+			"footer":      map[string]any{"text": "ProbeGlass · " + string(msg.Event)},
 		}},
 	}
 	_, err := d.client.doJSON(ctx, http.MethodPost, d.webhookURL, nil, payload)

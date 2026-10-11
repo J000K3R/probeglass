@@ -7,8 +7,8 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/j000k3r/weatherglass/internal/model"
-	"github.com/j000k3r/weatherglass/internal/store"
+	"github.com/j000k3r/probeglass/internal/model"
+	"github.com/j000k3r/probeglass/internal/store"
 )
 
 // Sites are the places sensors live. The handlers here are the same shape as the

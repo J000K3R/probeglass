@@ -12,12 +12,12 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/j000k3r/weatherglass/internal/config"
-	"github.com/j000k3r/weatherglass/internal/model"
-	"github.com/j000k3r/weatherglass/internal/notify"
-	"github.com/j000k3r/weatherglass/internal/privdrop"
-	"github.com/j000k3r/weatherglass/internal/sensor"
-	"github.com/j000k3r/weatherglass/internal/store"
+	"github.com/j000k3r/probeglass/internal/config"
+	"github.com/j000k3r/probeglass/internal/model"
+	"github.com/j000k3r/probeglass/internal/notify"
+	"github.com/j000k3r/probeglass/internal/privdrop"
+	"github.com/j000k3r/probeglass/internal/sensor"
+	"github.com/j000k3r/probeglass/internal/store"
 )
 
 // run carries the state of one pass.
@@ -53,7 +53,7 @@ func (r *run) addHint(level Level, label, detail, hint string) {
 // checkBuild names the binary. It never fails; knowing which version produced
 // the rest of the report is the first thing anyone reading it needs.
 func (r *run) checkBuild() {
-	r.add(OK, "build", "weatherglass "+model.BuildInfo())
+	r.add(OK, "build", "probeglass "+model.BuildInfo())
 }
 
 func (r *run) checkConfig() {
@@ -119,7 +119,7 @@ func (r *run) checkDataDir() {
 		if parent == probe {
 			r.addHint(Fail, "data dir",
 				dir+" does not exist, and neither does any ancestor to create it in",
-				"point -data or WEATHERGLASS_DATA_DIR at a directory that exists")
+				"point -data or PROBEGLASS_DATA_DIR at a directory that exists")
 			return
 		}
 		probe = parent
@@ -175,7 +175,7 @@ func (r *run) openDatabase(ctx context.Context) bool {
 			// container races this command. Calling it a failure would make a
 			// healthy new deployment look broken.
 			r.addHint(Warn, "database", r.cfg.DBPath+" does not exist yet",
-				"the daemon creates it on first start; `weatherglass seed --demo` fills a demo one")
+				"the daemon creates it on first start; `probeglass seed --demo` fills a demo one")
 			return false
 		}
 		r.addHint(Fail, "database", fmt.Sprintf("%s: %v", r.cfg.DBPath, err),
@@ -250,11 +250,11 @@ func (r *run) checkIntegrity(ctx context.Context) {
 func (r *run) checkSchema(ctx context.Context) {
 	got, err := r.st.SchemaVersion(ctx)
 	if err != nil {
-		// A file with no schema_migrations table is not a Weatherglass database
+		// A file with no schema_migrations table is not a ProbeGlass database
 		// at all, or is truncated. That falls out of the query for free, so
 		// there is no second way of asking the same question.
 		r.addHint(Fail, "schema", fmt.Sprintf("could not read the schema version: %v", err),
-			"this does not look like a Weatherglass database; check db_path")
+			"this does not look like a ProbeGlass database; check db_path")
 		return
 	}
 	want := store.LatestSchemaVersion()
@@ -266,7 +266,7 @@ func (r *run) checkSchema(ctx context.Context) {
 			"the next start of the daemon applies the missing migration")
 	default:
 		r.addHint(Fail, "schema", fmt.Sprintf("version %d, but this binary only knows %d", got, want),
-			"this database was written by a newer Weatherglass; upgrade the binary")
+			"this database was written by a newer ProbeGlass; upgrade the binary")
 	}
 }
 

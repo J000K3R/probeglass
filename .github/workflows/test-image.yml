@@ -37,10 +37,10 @@ concurrency:
 env:
   GOTOOLCHAIN: local
   # The image is spelled out in full, and in lower case, rather than built from
-  # `github.repository`: that would be "J000K3R/weatherglass", and a registry refuses a
+  # `github.repository`: that would be "J000K3R/probeglass", and a registry refuses a
   # repository name containing capitals. release.yml derives the same name from
   # IMAGE_NAMESPACE for the same reason.
-  IMAGE: ghcr.io/j000k3r/weatherglass
+  IMAGE: ghcr.io/j000k3r/probeglass
 
 jobs:
   image:

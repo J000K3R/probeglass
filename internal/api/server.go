@@ -20,12 +20,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/j000k3r/weatherglass/internal/config"
-	"github.com/j000k3r/weatherglass/internal/event"
-	"github.com/j000k3r/weatherglass/internal/model"
-	"github.com/j000k3r/weatherglass/internal/notify"
-	"github.com/j000k3r/weatherglass/internal/scheduler"
-	"github.com/j000k3r/weatherglass/internal/store"
+	"github.com/j000k3r/probeglass/internal/config"
+	"github.com/j000k3r/probeglass/internal/event"
+	"github.com/j000k3r/probeglass/internal/model"
+	"github.com/j000k3r/probeglass/internal/notify"
+	"github.com/j000k3r/probeglass/internal/scheduler"
+	"github.com/j000k3r/probeglass/internal/store"
 )
 
 // Server holds the HTTP dependencies.
@@ -59,7 +59,7 @@ type Server struct {
 	logins     *loginLimiter
 	totpLogins *loginLimiter
 
-	// doctor serialises `weatherglass doctor` runs started from the dashboard and
+	// doctor serialises `probeglass doctor` runs started from the dashboard and
 	// remembers the last one. It is the only endpoint here that reads the whole
 	// database and dials the daemon's own health endpoint, and repeated clicks
 	// must not turn into repeated full passes.

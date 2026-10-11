@@ -22,7 +22,7 @@
   if (!boot) return;
 
   window.setTimeout(function () {
-    if (window.__weatherglassBooted) return;
+    if (window.__probeglassBooted) return;
     // boot() may have replaced the contents already without flagging success;
     // only the untouched spinner is a failure.
     if (!boot.querySelector('.spinner')) return;
@@ -39,7 +39,7 @@
     const text = document.createElement('p');
     text.className = 'form-error';
     text.textContent =
-      'The server has not answered yet. Check that Weatherglass is running, then reload the page.';
+      'The server has not answered yet. Check that ProbeGlass is running, then reload the page.';
     panel.append(text);
 
     const help = document.createElement('p');

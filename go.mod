@@ -1,4 +1,4 @@
-module github.com/j000k3r/weatherglass
+module github.com/j000k3r/probeglass
 
 go 1.27.1
 

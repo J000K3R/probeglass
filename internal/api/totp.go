@@ -9,8 +9,8 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"rsc.io/qr"
 
-	"github.com/j000k3r/weatherglass/internal/store"
-	"github.com/j000k3r/weatherglass/internal/totp"
+	"github.com/j000k3r/probeglass/internal/store"
+	"github.com/j000k3r/probeglass/internal/totp"
 )
 
 // recoveryCodeCount is how many one-time codes are issued when the second factor

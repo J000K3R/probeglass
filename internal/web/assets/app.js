@@ -1,4 +1,4 @@
-// Weatherglass dashboard.
+// ProbeGlass dashboard.
 //
 // Plain ES modules, no framework: the whole UI is a few hundred lines of DOM
 // building on top of a REST API and one Server-Sent Events stream. State lives
@@ -572,7 +572,7 @@ async function boot() {
   } finally {
     // Tells watchdog.js to stand down: whatever happened, the user is now
     // looking at a real screen rather than at the spinner.
-    window.__weatherglassBooted = true;
+    window.__probeglassBooted = true;
   }
 }
 
@@ -3657,7 +3657,7 @@ async function renderSettings() {
       </div>
       <div id="doctor-result"></div>
       <div class="key-row">
-        <code id="doctor-command">docker exec weatherglass weatherglass doctor</code>
+        <code id="doctor-command">docker exec probeglass probeglass doctor</code>
         <button class="btn" data-action="copy-doctor">${esc(t('settings.copy'))}</button>
       </div>
     </section>
@@ -3822,7 +3822,7 @@ async function downloadBackup(button) {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = filenameFrom(res.headers.get('Content-Disposition')) || 'weatherglass-backup.json';
+    link.download = filenameFrom(res.headers.get('Content-Disposition')) || 'probeglass-backup.json';
     document.body.append(link);
     link.click();
     link.remove();

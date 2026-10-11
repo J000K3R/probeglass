@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/j000k3r/weatherglass/internal/model"
+	"github.com/j000k3r/probeglass/internal/model"
 )
 
 const channelColumns = `id, name, type, config, enabled, managed, created_at, updated_at`

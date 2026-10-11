@@ -14,7 +14,7 @@ import (
 
 	"golang.org/x/net/dns/dnsmessage"
 
-	"github.com/j000k3r/weatherglass/internal/model"
+	"github.com/j000k3r/probeglass/internal/model"
 )
 
 func validSensor(c model.Sensor) model.Sensor {
@@ -136,7 +136,7 @@ func TestHTTPRunAgainstLocalServer(t *testing.T) {
 		case "/teapot":
 			w.WriteHeader(http.StatusTeapot)
 		case "/body":
-			w.Header().Set("X-Server-Name", "weatherglass-test")
+			w.Header().Set("X-Server-Name", "probeglass-test")
 			_, _ = w.Write([]byte("hello homelab"))
 		case "/echo":
 			// Echoing the request back keeps the assertion in the outcome
@@ -171,13 +171,13 @@ func TestHTTPRunAgainstLocalServer(t *testing.T) {
 			// actually went out on the wire.
 			name:    "credentials and headers are sent",
 			target:  srv.URL + "/echo",
-			options: model.Options{"bearer_token": "s3cr3t", "user_agent": "wg-test", "headers": map[string]any{"X-Homelab": "yes"}, "body_contains": "auth=Bearer s3cr3t ua=wg-test homelab=yes"},
+			options: model.Options{"bearer_token": "s3cr3t", "user_agent": "pg-test", "headers": map[string]any{"X-Homelab": "yes"}, "body_contains": "auth=Bearer s3cr3t ua=pg-test homelab=yes"},
 			wantOK:  true,
 		},
 		{
 			name:    "the default user agent identifies the daemon",
 			target:  srv.URL + "/echo",
-			options: model.Options{"body_contains": "ua=Weatherglass/"},
+			options: model.Options{"body_contains": "ua=ProbeGlass/"},
 			wantOK:  true,
 		},
 		{
@@ -235,7 +235,7 @@ func TestHTTPRunAgainstLocalServer(t *testing.T) {
 		{
 			name:    "expected_headers hit",
 			target:  srv.URL + "/body",
-			options: model.Options{"expected_headers": map[string]any{"X-Server-Name": "weatherglass"}},
+			options: model.Options{"expected_headers": map[string]any{"X-Server-Name": "probeglass"}},
 			wantOK:  true,
 		},
 		{

@@ -28,7 +28,7 @@ import (
 	"time"
 
 	"github.com/chromedp/chromedp"
-	"github.com/j000k3r/weatherglass/internal/model"
+	"github.com/j000k3r/probeglass/internal/model"
 )
 
 // headerView is the strip as it is on screen: which widgets are on it, in what

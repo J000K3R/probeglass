@@ -142,20 +142,20 @@ func TestChownPaths(t *testing.T) {
 	if err := os.Mkdir(nested, 0o750); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(nested, "weatherglass.db"), nil, 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(nested, "probeglass.db"), nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
 
 	// The database in the data directory is covered by the walk, and the walk
 	// descends, so one in a subdirectory of it is covered too.
-	paths, err := chownPaths(dir, filepath.Join(dir, "weatherglass.db"))
+	paths, err := chownPaths(dir, filepath.Join(dir, "probeglass.db"))
 	if err != nil {
 		t.Fatalf("chownPaths: %v", err)
 	}
 	want := map[string]bool{
-		dir:                                      true,
-		nested:                                   true,
-		filepath.Join(nested, "weatherglass.db"): true,
+		dir:                                    true,
+		nested:                                 true,
+		filepath.Join(nested, "probeglass.db"): true,
 	}
 	if len(paths) != len(want) {
 		t.Fatalf("chownPaths listed %v, want exactly the directory and its contents", paths)
@@ -169,7 +169,7 @@ func TestChownPaths(t *testing.T) {
 	// A database on another volume gets its own entries — including the
 	// write-ahead log and shared-memory files SQLite creates next to it — and none
 	// of the directory it happens to sit in.
-	elsewhere := filepath.Join(resolve(t, t.TempDir()), "weatherglass.db")
+	elsewhere := filepath.Join(resolve(t, t.TempDir()), "probeglass.db")
 	paths, err = chownPaths(dir, elsewhere)
 	if err != nil {
 		t.Fatalf("chownPaths: %v", err)
@@ -239,7 +239,7 @@ func TestWalkPathsDoesNotFollowSymlinks(t *testing.T) {
 
 func TestWalkPathsResolvesALinkedRoot(t *testing.T) {
 	real := resolve(t, t.TempDir())
-	if err := os.WriteFile(filepath.Join(real, "weatherglass.db"), nil, 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(real, "probeglass.db"), nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	link := filepath.Join(t.TempDir(), "data")

@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/j000k3r/weatherglass/internal/model"
+	"github.com/j000k3r/probeglass/internal/model"
 )
 
 // Backup and restore, the JSON way.
@@ -55,7 +55,7 @@ import (
 const (
 	// BackupFormat is the marker every file has to carry. A file without it is not
 	// read at all, however much its contents look like a backup.
-	BackupFormat = "weatherglass-backup"
+	BackupFormat = "probeglass-backup"
 	// BackupFormatVersion is the version of the document layout. A file from a
 	// newer layout is refused rather than half-read.
 	BackupFormatVersion = 1
@@ -727,7 +727,7 @@ func (s *Store) Restore(ctx context.Context, r io.Reader, opts RestoreOptions) (
 		// The read error is kept underneath: a body over the caller's limit arrives
 		// here as http.MaxBytesError, and the route has to be able to tell that
 		// apart from a file that is simply not JSON.
-		return result, fmt.Errorf("%w: this is not a Weatherglass backup: %w", ErrBadBackup, err)
+		return result, fmt.Errorf("%w: this is not a ProbeGlass backup: %w", ErrBadBackup, err)
 	}
 	if err := checkBackupDoc(&doc); err != nil {
 		return result, err
@@ -764,16 +764,16 @@ func (s *Store) Restore(ctx context.Context, r io.Reader, opts RestoreOptions) (
 // with it rather than which check failed.
 func checkBackupDoc(doc *BackupDoc) error {
 	if doc.Format != BackupFormat {
-		return fmt.Errorf("%w: this file is not a Weatherglass backup (it says %q)",
+		return fmt.Errorf("%w: this file is not a ProbeGlass backup (it says %q)",
 			ErrBadBackup, doc.Format)
 	}
 	if doc.FormatVersion > BackupFormatVersion {
 		return fmt.Errorf("%w: this backup was written in format version %d, and this version reads up to %d: "+
-			"update Weatherglass and try again", ErrBadBackup, doc.FormatVersion, BackupFormatVersion)
+			"update ProbeGlass and try again", ErrBadBackup, doc.FormatVersion, BackupFormatVersion)
 	}
 	if doc.SchemaVersion > LatestSchemaVersion() {
 		return fmt.Errorf("%w: this backup comes from a newer database schema (%d, this is %d): "+
-			"update Weatherglass and try again", ErrBadBackup, doc.SchemaVersion, LatestSchemaVersion())
+			"update ProbeGlass and try again", ErrBadBackup, doc.SchemaVersion, LatestSchemaVersion())
 	}
 	if doc.Settings == nil && doc.Sites == nil && doc.Channels == nil && doc.Sensors == nil &&
 		doc.Users == nil && doc.Incidents == nil && doc.Hourly == nil && doc.Daily == nil {
@@ -797,7 +797,7 @@ func (s *Store) safetyCopy(dir string) (string, error) {
 	if dir == "" {
 		dir = filepath.Dir(current)
 	}
-	name := fmt.Sprintf("weatherglass-pre-restore-%s.db", time.Now().UTC().Format("20060102-150405"))
+	name := fmt.Sprintf("probeglass-pre-restore-%s.db", time.Now().UTC().Format("20060102-150405"))
 	target := filepath.Join(dir, name)
 
 	// Removed first: VACUUM INTO refuses to overwrite, and a leftover file from an

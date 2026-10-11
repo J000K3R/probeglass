@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/j000k3r/weatherglass/internal/model"
+	"github.com/j000k3r/probeglass/internal/model"
 )
 
 const sensorColumns = `id, name, type, target, interval_s, timeout_s, retries, enabled,

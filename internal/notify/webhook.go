@@ -12,7 +12,7 @@ import (
 )
 
 // webhookNotifier posts a structured JSON payload to an arbitrary endpoint.
-// It is the escape hatch for services Weatherglass does not speak natively:
+// It is the escape hatch for services ProbeGlass does not speak natively:
 // Home Assistant, Node-RED, n8n, a shell script behind a tiny HTTP server, ...
 type webhookNotifier struct {
 	url        string
@@ -125,12 +125,12 @@ func (w *webhookNotifier) Send(ctx context.Context, msg Message) error {
 		return permanentError("encode payload: %v", err)
 	}
 	headers := map[string]string{
-		"X-Weatherglass-Event": string(msg.Event),
+		"X-ProbeGlass-Event": string(msg.Event),
 	}
 	if w.hmacSecret != "" {
 		mac := hmac.New(sha256.New, []byte(w.hmacSecret))
 		mac.Write(body)
-		headers["X-Weatherglass-Signature"] = "sha256=" + hex.EncodeToString(mac.Sum(nil))
+		headers["X-ProbeGlass-Signature"] = "sha256=" + hex.EncodeToString(mac.Sum(nil))
 	}
 	_, err = w.client.do(ctx, w.method, w.url, headers, "application/json", body)
 	return err

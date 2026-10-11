@@ -1,4 +1,4 @@
-// Package config loads Weatherglass configuration from a YAML file and the
+// Package config loads ProbeGlass configuration from a YAML file and the
 // environment. The environment always wins, which keeps container deployments
 // simple while still allowing a sensored-in config file for the sensor
 // definitions themselves.
@@ -25,7 +25,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/j000k3r/weatherglass/internal/model"
+	"github.com/j000k3r/probeglass/internal/model"
 )
 
 // Duration is a time.Duration that unmarshals from either a Go duration string
@@ -129,7 +129,7 @@ type ChannelSpec struct {
 // ToSensor converts a declared sensor into the stored form.
 //
 // It lives here, next to the spec, so that the daemon and the diagnostic share
-// one conversion: a configuration file that `weatherglass doctor` accepts has to
+// one conversion: a configuration file that `probeglass doctor` accepts has to
 // be the same one `serve` applies, and two copies of these fifteen lines would
 // drift apart at the first new field.
 //
@@ -243,7 +243,7 @@ func Default() *Config {
 }
 
 // Load resolves the configuration. path may be empty, in which case
-// $WEATHERGLASS_CONFIG is consulted and then <data_dir>/weatherglass.yaml is
+// $PROBEGLASS_CONFIG is consulted and then <data_dir>/probeglass.yaml is
 // used if it exists.
 // Overrides carries values from command line flags, which take precedence over
 // both the configuration file and the environment. A zero value means "not set".
@@ -257,7 +257,7 @@ type Overrides struct {
 }
 
 // Load builds the configuration. Precedence, lowest first: built-in defaults,
-// the YAML file, WEATHERGLASS_* environment variables, explicit overrides from
+// the YAML file, PROBEGLASS_* environment variables, explicit overrides from
 // command line flags.
 //
 // It is Resolve plus Validate: a configuration that would not start the daemon
@@ -278,7 +278,7 @@ func Load(path string, overrides Overrides) (*Config, error) {
 //
 // It exists for reporting commands. Load fails hard on a broken file, which is
 // right for serve and wrong for anything whose job is to say what is broken: the
-// reader of `weatherglass doctor` most needs the paths exactly when the file is
+// reader of `probeglass doctor` most needs the paths exactly when the file is
 // unparseable, and a nil config would leave the command unable to name the data
 // directory it was asked about.
 //
@@ -289,11 +289,11 @@ func Resolve(path string, overrides Overrides) (*Config, error) {
 	cfg := Default()
 
 	if path == "" {
-		path = os.Getenv("WEATHERGLASS_CONFIG")
+		path = os.Getenv("PROBEGLASS_CONFIG")
 	}
 	if path == "" {
-		if dd := os.Getenv("WEATHERGLASS_DATA_DIR"); dd != "" {
-			path = filepath.Join(dd, "weatherglass.yaml")
+		if dd := os.Getenv("PROBEGLASS_DATA_DIR"); dd != "" {
+			path = filepath.Join(dd, "probeglass.yaml")
 		}
 	}
 
@@ -344,10 +344,10 @@ func loadFile(cfg *Config, path string) error {
 	//
 	//nolint:gosec // G703: reading the configuration file the operator named is
 	// the entire purpose of this function. The path comes from -config, from
-	// WEATHERGLASS_CONFIG, or from the data directory — never from a request.
+	// PROBEGLASS_CONFIG, or from the data directory — never from a request.
 	b, err := os.ReadFile(path)
 	if err != nil {
-		if os.IsNotExist(err) && os.Getenv("WEATHERGLASS_CONFIG") == "" {
+		if os.IsNotExist(err) && os.Getenv("PROBEGLASS_CONFIG") == "" {
 			return nil
 		}
 		return fmt.Errorf("read config %s: %w", path, err)
@@ -410,36 +410,36 @@ func rejectRenamedKeys(b []byte) error {
 }
 
 func applyEnv(cfg *Config) {
-	if v := os.Getenv("WEATHERGLASS_LISTEN"); v != "" {
+	if v := os.Getenv("PROBEGLASS_LISTEN"); v != "" {
 		cfg.Listen = v
 	}
-	if v := os.Getenv("WEATHERGLASS_DATA_DIR"); v != "" {
+	if v := os.Getenv("PROBEGLASS_DATA_DIR"); v != "" {
 		cfg.DataDir = v
 	}
-	if v := os.Getenv("WEATHERGLASS_DB"); v != "" {
+	if v := os.Getenv("PROBEGLASS_DB"); v != "" {
 		cfg.DBPath = v
 	}
-	if v := os.Getenv("WEATHERGLASS_BASE_URL"); v != "" {
+	if v := os.Getenv("PROBEGLASS_BASE_URL"); v != "" {
 		cfg.BaseURL = v
 	}
-	if v := os.Getenv("WEATHERGLASS_LOG_LEVEL"); v != "" {
+	if v := os.Getenv("PROBEGLASS_LOG_LEVEL"); v != "" {
 		cfg.LogLevel = v
 	}
-	if v := os.Getenv("WEATHERGLASS_LOG_FORMAT"); v != "" {
+	if v := os.Getenv("PROBEGLASS_LOG_FORMAT"); v != "" {
 		cfg.LogFormat = v
 	}
-	if v := os.Getenv("WEATHERGLASS_ADMIN_PASSWORD"); v != "" {
+	if v := os.Getenv("PROBEGLASS_ADMIN_PASSWORD"); v != "" {
 		cfg.AdminPassword = v
 	}
-	if v := os.Getenv("WEATHERGLASS_TRUST_PROXY"); v != "" {
+	if v := os.Getenv("PROBEGLASS_TRUST_PROXY"); v != "" {
 		cfg.TrustProxy = truthy(v)
 	}
-	if v := os.Getenv("WEATHERGLASS_RETENTION_RAW"); v != "" {
+	if v := os.Getenv("PROBEGLASS_RETENTION_RAW"); v != "" {
 		if d, err := ParseDuration(v); err == nil {
 			cfg.Retention.Raw = Duration(d)
 		}
 	}
-	if v := os.Getenv("WEATHERGLASS_RETENTION_HOURLY"); v != "" {
+	if v := os.Getenv("PROBEGLASS_RETENTION_HOURLY"); v != "" {
 		if d, err := ParseDuration(v); err == nil {
 			cfg.Retention.Hourly = Duration(d)
 		}
@@ -459,7 +459,7 @@ func (c *Config) finalise() {
 		c.DataDir = "./data"
 	}
 	if c.DBPath == "" {
-		c.DBPath = filepath.Join(c.DataDir, "weatherglass.db")
+		c.DBPath = filepath.Join(c.DataDir, "probeglass.db")
 	}
 	if c.Listen == "" {
 		c.Listen = ":8080"

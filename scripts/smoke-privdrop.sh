@@ -12,17 +12,17 @@
 # folder had been 500:500 all along, and the chown it believes it is testing would be
 # theatre.
 #
-# Usage: IMAGE=weatherglass:smoke scripts/smoke-privdrop.sh
+# Usage: IMAGE=probeglass:smoke scripts/smoke-privdrop.sh
 #
 # It needs docker and passwordless sudo: the folders have to belong to root, and root is
 # exactly who the runner is not.
 
 set -euo pipefail
 
-IMAGE=${IMAGE:-weatherglass:smoke}
-BINARY=/usr/local/bin/weatherglass
+IMAGE=${IMAGE:-probeglass:smoke}
+BINARY=/usr/local/bin/probeglass
 CAP=--cap-add=NET_RAW
-WORK=$(mktemp -d "${TMPDIR:-/tmp}/wg-smoke.XXXXXX")
+WORK=$(mktemp -d "${TMPDIR:-/tmp}/pg-smoke.XXXXXX")
 CONTAINERS=""
 
 cleanup() {
@@ -74,20 +74,20 @@ echo "smoke: the container takes /data over and gives up root"
 # --- 1. the proof -------------------------------------------------------------------------
 # A fresh folder owned by root, mounted as it comes. A container that started as 500 would
 # die here with "unable to open database file (14)" — which is what this image did before.
-name=wg-smoke-drop
+name=pg-smoke-drop
 CONTAINERS="$CONTAINERS $name"
 dir=$(fresh_root_dir "$WORK/drop")
 docker run -d --name "$name" $CAP -v "$dir:/data" "$IMAGE" >/dev/null
 wait_for "$name" "dashboard listening"
 
 logs_have "$name" "uid=500 gid=500" \
-  || fail "the daemon does not run as 500: $(docker logs "$name" 2>&1 | grep 'starting weatherglass')"
+  || fail "the daemon does not run as 500: $(docker logs "$name" 2>&1 | grep 'starting probeglass')"
 pass "it starts on a root-owned folder and runs as uid=500 gid=500"
 
-[ -f "$dir/weatherglass.db" ] || fail "no database in $dir"
+[ -f "$dir/probeglass.db" ] || fail "no database in $dir"
 [ "$(owner "$dir")" = "500:500" ] || fail "$dir is $(owner "$dir"), want 500:500"
-[ "$(owner "$dir/weatherglass.db")" = "500:500" ] \
-  || fail "$dir/weatherglass.db is $(owner "$dir/weatherglass.db"), want 500:500"
+[ "$(owner "$dir/probeglass.db")" = "500:500" ] \
+  || fail "$dir/probeglass.db is $(owner "$dir/probeglass.db"), want 500:500"
 pass "the folder and the database belong to 500:500 on the host"
 
 # --- 2. the drop is real ------------------------------------------------------------------
@@ -133,12 +133,12 @@ pass "with --user it still fails, names the cause, and changes no ownership (exi
 # The data directory is a path that does not exist yet, so the daemon has to create it:
 # that makes the mode deterministic — MkdirAll(0750) under umask 077 is 0700 — where the
 # mode of a SQLite file would depend on the driver.
-name=wg-smoke-puid
+name=pg-smoke-puid
 CONTAINERS="$CONTAINERS $name"
 dir=$(fresh_root_dir "$WORK/puid")
 docker run -d --name "$name" $CAP \
   -e PUID=1234 -e PGID=1234 -e UMASK=077 \
-  -e WEATHERGLASS_DATA_DIR=/data/sub \
+  -e PROBEGLASS_DATA_DIR=/data/sub \
   -v "$dir:/data" "$IMAGE" >/dev/null
 wait_for "$name" "dashboard listening"
 
@@ -149,7 +149,7 @@ logs_have "$name" "uid=1234 gid=1234" || fail "PUID=1234 did not take effect"
 pass "PUID, PGID and UMASK are applied to a directory the daemon creates itself"
 
 # --- 5. and root can be asked for ---------------------------------------------------------
-name=wg-smoke-root
+name=pg-smoke-root
 CONTAINERS="$CONTAINERS $name"
 dir=$(fresh_root_dir "$WORK/root")
 docker run -d --name "$name" $CAP -e PUID=0 -e PGID=0 -v "$dir:/data" "$IMAGE" >/dev/null

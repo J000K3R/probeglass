@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/j000k3r/weatherglass/internal/model"
+	"github.com/j000k3r/probeglass/internal/model"
 )
 
 // Kind classifies an event so clients can filter cheaply.

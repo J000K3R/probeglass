@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/j000k3r/weatherglass/internal/model"
-	"github.com/j000k3r/weatherglass/internal/store"
+	"github.com/j000k3r/probeglass/internal/model"
+	"github.com/j000k3r/probeglass/internal/store"
 )
 
 // handleSearch answers the box in the top bar.

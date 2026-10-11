@@ -8,16 +8,16 @@ import (
 	"time"
 )
 
-// cleanEnv removes every WEATHERGLASS_* variable the loader reads. t.Setenv
+// cleanEnv removes every PROBEGLASS_* variable the loader reads. t.Setenv
 // restores the previous value when the test ends.
 func cleanEnv(t *testing.T) {
 	t.Helper()
 	for _, key := range []string{
-		"WEATHERGLASS_CONFIG", "WEATHERGLASS_LISTEN", "WEATHERGLASS_DATA_DIR",
-		"WEATHERGLASS_DB", "WEATHERGLASS_BASE_URL", "WEATHERGLASS_LOG_LEVEL",
-		"WEATHERGLASS_LOG_FORMAT", "WEATHERGLASS_ADMIN_PASSWORD",
-		"WEATHERGLASS_TRUST_PROXY", "WEATHERGLASS_RETENTION_RAW",
-		"WEATHERGLASS_RETENTION_HOURLY",
+		"PROBEGLASS_CONFIG", "PROBEGLASS_LISTEN", "PROBEGLASS_DATA_DIR",
+		"PROBEGLASS_DB", "PROBEGLASS_BASE_URL", "PROBEGLASS_LOG_LEVEL",
+		"PROBEGLASS_LOG_FORMAT", "PROBEGLASS_ADMIN_PASSWORD",
+		"PROBEGLASS_TRUST_PROXY", "PROBEGLASS_RETENTION_RAW",
+		"PROBEGLASS_RETENTION_HOURLY",
 	} {
 		t.Setenv(key, "")
 	}
@@ -25,7 +25,7 @@ func cleanEnv(t *testing.T) {
 
 func writeConfig(t *testing.T, body string) string {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "weatherglass.yaml")
+	path := filepath.Join(t.TempDir(), "probeglass.yaml")
 	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
@@ -41,7 +41,7 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.Listen != ":8080" {
 		t.Errorf("listen = %q, want :8080", cfg.Listen)
 	}
-	if cfg.DBPath != filepath.Join("./data", "weatherglass.db") {
+	if cfg.DBPath != filepath.Join("./data", "probeglass.db") {
 		t.Errorf("db path = %q", cfg.DBPath)
 	}
 	if cfg.Retention.Raw.D() != 7*24*time.Hour {
@@ -76,8 +76,8 @@ channels:
     config:
       topic: homelab
 `)
-	t.Setenv("WEATHERGLASS_LISTEN", ":9100")
-	t.Setenv("WEATHERGLASS_LOG_LEVEL", "error")
+	t.Setenv("PROBEGLASS_LISTEN", ":9100")
+	t.Setenv("PROBEGLASS_LOG_LEVEL", "error")
 
 	cfg, err := Load(path, Overrides{Listen: ":9200"})
 	if err != nil {
@@ -195,8 +195,8 @@ func TestRetentionAcceptsDayNotationInTheFile(t *testing.T) {
 
 func TestRetentionFromEnvironment(t *testing.T) {
 	cleanEnv(t)
-	t.Setenv("WEATHERGLASS_RETENTION_RAW", "48h")
-	t.Setenv("WEATHERGLASS_RETENTION_HOURLY", "8760h")
+	t.Setenv("PROBEGLASS_RETENTION_RAW", "48h")
+	t.Setenv("PROBEGLASS_RETENTION_HOURLY", "8760h")
 
 	cfg, err := Load("", Overrides{})
 	if err != nil {
@@ -217,9 +217,9 @@ func TestMissingExplicitConfigIsAnError(t *testing.T) {
 		t.Errorf("a missing default config should not be fatal: %v", err)
 	}
 	// ...but a requested one that is missing must stop startup.
-	t.Setenv("WEATHERGLASS_CONFIG", filepath.Join(t.TempDir(), "absent.yaml"))
+	t.Setenv("PROBEGLASS_CONFIG", filepath.Join(t.TempDir(), "absent.yaml"))
 	if _, err := Load("", Overrides{}); err == nil {
-		t.Error("a missing WEATHERGLASS_CONFIG file was ignored")
+		t.Error("a missing PROBEGLASS_CONFIG file was ignored")
 	}
 }
 

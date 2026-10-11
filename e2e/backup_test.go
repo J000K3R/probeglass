@@ -148,7 +148,7 @@ func TestTheBackupButtonAsksForWhatTheMenusSay(t *testing.T) {
 			"saving it", got.Dispo)
 	}
 	serverName := strings.TrimSuffix(strings.TrimPrefix(got.Dispo, `attachment; filename="`), `"`)
-	if !strings.HasPrefix(serverName, "weatherglass-backup-") || !strings.HasSuffix(serverName, ".json") {
+	if !strings.HasPrefix(serverName, "probeglass-backup-") || !strings.HasSuffix(serverName, ".json") {
 		t.Errorf("the server named the file %q, which is not a backup name", got.Dispo)
 	}
 	if got.Filename != serverName {
@@ -170,7 +170,7 @@ func TestTheBackupButtonAsksForWhatTheMenusSay(t *testing.T) {
 		capture(t, ctx, dir, "backup-not-json")
 		t.Fatalf("the downloaded file is not the JSON it is named as: %v", err)
 	}
-	if file.Format != "weatherglass-backup" {
+	if file.Format != "probeglass-backup" {
 		t.Errorf("the file's format marker is %q; the restore path refuses anything else, "+
 			"so a backup that says something different cannot be put back", file.Format)
 	}

@@ -12,7 +12,7 @@ import (
 // none of them is a terminal where colour helps — while all three are places a
 // fixed layout survives intact and can be grepped.
 func (r Report) Render(w io.Writer) {
-	fmt.Fprintln(w, "weatherglass doctor")
+	fmt.Fprintln(w, "probeglass doctor")
 	fmt.Fprintln(w)
 
 	for _, f := range r.Findings {

@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/j000k3r/weatherglass/internal/model"
+	"github.com/j000k3r/probeglass/internal/model"
 )
 
 // The dashboard switches between its three screens — the boot spinner, the

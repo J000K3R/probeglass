@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/j000k3r/weatherglass/internal/model"
+	"github.com/j000k3r/probeglass/internal/model"
 )
 
 // postRaw sends a body exactly as it is, without the harness's JSON encoding.
@@ -126,7 +126,7 @@ func TestBackupDownloadLooksLikeADownload(t *testing.T) {
 	if !strings.HasPrefix(disposition, "attachment;") {
 		t.Errorf("Content-Disposition = %q, want an attachment", disposition)
 	}
-	want := "weatherglass-backup-" + time.Now().UTC().Format("2006-01-02") + ".json"
+	want := "probeglass-backup-" + time.Now().UTC().Format("2006-01-02") + ".json"
 	if !strings.Contains(disposition, want) {
 		t.Errorf("Content-Disposition = %q, want it to name %q", disposition, want)
 	}
@@ -134,7 +134,7 @@ func TestBackupDownloadLooksLikeADownload(t *testing.T) {
 	if cc := resp.Header.Get("Cache-Control"); cc != "no-store" {
 		t.Errorf("Cache-Control = %q, want no-store", cc)
 	}
-	if h.server.cfg.BaseURL != "http://weatherglass.test" {
+	if h.server.cfg.BaseURL != "http://probeglass.test" {
 		t.Fatal("the harness changed under this test")
 	}
 
@@ -143,7 +143,7 @@ func TestBackupDownloadLooksLikeADownload(t *testing.T) {
 		t.Fatalf("the download is not JSON: %v", err)
 	}
 	var format string
-	if err := json.Unmarshal(doc["format"], &format); err != nil || format != "weatherglass-backup" {
+	if err := json.Unmarshal(doc["format"], &format); err != nil || format != "probeglass-backup" {
 		t.Errorf("format = %q (%v)", format, err)
 	}
 
@@ -300,10 +300,10 @@ func TestRestoreRefusesABadFileWithoutChangingAnything(t *testing.T) {
 		// be refused before a single row is touched.
 		{"JSON that is not a backup", []byte(`{"format":"some-other-tool"}`), http.StatusBadRequest},
 		{"a file from a newer version", []byte(
-			`{"format":"weatherglass-backup","format_version":99,"schema_version":3,"settings":{}}`),
+			`{"format":"probeglass-backup","format_version":99,"schema_version":3,"settings":{}}`),
 			http.StatusBadRequest},
 		{"a file from a newer schema", []byte(
-			`{"format":"weatherglass-backup","format_version":1,"schema_version":99,"settings":{}}`),
+			`{"format":"probeglass-backup","format_version":1,"schema_version":99,"settings":{}}`),
 			http.StatusBadRequest},
 	} {
 		resp := h.postRaw("/api/restore", c.body, origin(h))
@@ -343,7 +343,7 @@ func TestRestoreRefusesAFileThatIsTooLarge(t *testing.T) {
 	// A body that is over the limit but still starts like a backup, so that the size
 	// is the only thing wrong with it. It is never decoded: the reader stops at the
 	// cap.
-	huge := append([]byte(`{"format":"weatherglass-backup","pad":"`),
+	huge := append([]byte(`{"format":"probeglass-backup","pad":"`),
 		bytes.Repeat([]byte("x"), (64<<20)+1024)...)
 
 	resp := h.postRaw("/api/restore", huge, origin(h))

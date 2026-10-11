@@ -13,9 +13,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/j000k3r/weatherglass/internal/config"
-	"github.com/j000k3r/weatherglass/internal/model"
-	"github.com/j000k3r/weatherglass/internal/store"
+	"github.com/j000k3r/probeglass/internal/config"
+	"github.com/j000k3r/probeglass/internal/model"
+	"github.com/j000k3r/probeglass/internal/store"
 )
 
 // ---------------------------------------------------------------------------
@@ -46,12 +46,12 @@ func finding(t *testing.T, r Report, label string) Finding {
 }
 
 // testConfig builds a configuration without reading the environment, so the
-// tests do not depend on whatever WEATHERGLASS_* variables the machine running
+// tests do not depend on whatever PROBEGLASS_* variables the machine running
 // them happens to export.
 func testConfig(dir string) *config.Config {
 	cfg := config.Default()
 	cfg.DataDir = dir
-	cfg.DBPath = filepath.Join(dir, "weatherglass.db")
+	cfg.DBPath = filepath.Join(dir, "probeglass.db")
 	// Nothing listens on port 1, so the daemon check warns unless a test points
 	// it at a server of its own.
 	cfg.Listen = "127.0.0.1:1"
@@ -203,7 +203,7 @@ func TestBrokenConfigStillReports(t *testing.T) {
 	report := Run(context.Background(), Options{
 		Config: cfg,
 		ConfigErr: errors.New(
-			`parse config /data/weatherglass.yaml: yaml: line 2: did not find expected '-' indicator`),
+			`parse config /data/probeglass.yaml: yaml: line 2: did not find expected '-' indicator`),
 		HealthAddr: "127.0.0.1:1",
 		Timeout:    5 * time.Second,
 	})
@@ -325,7 +325,7 @@ func containsLabel(r Report, label string) bool {
 
 func TestRenderShowsHintsAndSummary(t *testing.T) {
 	r := Report{Findings: []Finding{
-		{Level: OK, Label: "build", Detail: "weatherglass test"},
+		{Level: OK, Label: "build", Detail: "probeglass test"},
 		{Level: Warn, Label: "users", Detail: "the accounts table is empty",
 			Hint: "open the dashboard to run the setup screen again"},
 		{Level: Fail, Label: "integrity", Detail: "quick_check failed"},
@@ -333,7 +333,7 @@ func TestRenderShowsHintsAndSummary(t *testing.T) {
 
 	out := rendered(r)
 	for _, want := range []string{
-		"weatherglass doctor",
+		"probeglass doctor",
 		"ok    build",
 		"warn  users",
 		"hint: open the dashboard to run the setup screen again",
