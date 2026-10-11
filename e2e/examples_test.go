@@ -60,6 +60,7 @@ type exampleCountView struct {
 	Sensors   int `json:"sensors"`
 	Results   int `json:"results"`
 	Incidents int `json:"incidents"`
+	Sites     int `json:"sites"`
 }
 
 func TestExampleDataCanBePutBack(t *testing.T) {
@@ -151,6 +152,18 @@ func TestExampleDataCanBePutBack(t *testing.T) {
 			"way back offered in Settings: %v", err)
 	}
 
+	// The sensors are the visible half. The places they stood on are the other
+	// one, and they are the half a person would not notice had been left behind:
+	// a pin on the map for a place whose sensors are gone is a mark for something
+	// that is not there, and the button that removes the examples says it removes
+	// them together.
+	dropped := readAsync[exampleCountView](t, ctx, exampleCounts, "the example data counts")
+	if dropped.Sites != 0 {
+		capture(t, ctx, screenshotDir, "places-left-behind")
+		t.Errorf("the removed example data left %d place(s) behind; the sensors and the "+
+			"places they stood on are one set, and the button takes both", dropped.Sites)
+	}
+
 	// --- phase 3: put them back ----------------------------------------------
 
 	err = withTimeout(ctx, func(tctx context.Context) error {
@@ -214,5 +227,15 @@ func TestExampleDataCanBePutBack(t *testing.T) {
 	if counts.Incidents == 0 {
 		t.Error("the restored example sensors have no incidents; the outages in the " +
 			"dataset are what the incident log and the uptime bars are meant to show")
+	}
+	// And the places came back with them. The count is not pinned: how many places
+	// the rich dataset stands on is a fact about that dataset, and it is said
+	// exactly against demo.Places() where that package can be imported. What is
+	// pinned here is that the way back is a way back — the examples are on the map
+	// again, not only on the dashboard.
+	if counts.Sites == 0 {
+		t.Error("the restored example data has no places; the sensors came back onto a " +
+			"map with nothing on it, and the button that loads the examples is supposed " +
+			"to load all of them")
 	}
 }

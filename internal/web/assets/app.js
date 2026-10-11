@@ -3211,14 +3211,14 @@ function backupPanel() {
 }
 
 function examplePanel() {
-  const data = state.exampleData || { sensors: 0, results: 0, incidents: 0 };
+  const data = state.exampleData || { sensors: 0, results: 0, incidents: 0, sites: 0 };
   const has = data.sensors > 0;
   return `
     <section class="panel" id="examples-panel" data-panel="examples" data-group="monitor">
       <h2>${esc(t('examples.title'))}</h2>
       <p class="muted">${esc(t('examples.hint'))}</p>
       ${has ? `
-      <p class="muted small">${esc(t('examples.count', { sensors: data.sensors, results: data.results, incidents: data.incidents }))}</p>
+      <p class="muted small">${esc(t('examples.count', { sensors: data.sensors, results: data.results, incidents: data.incidents, sites: data.sites || 0 }))}</p>
       <div class="form-actions">
         <button class="btn btn-danger" data-action="drop-examples"${denied('admin')}>${esc(t('examples.remove'))}</button>
       </div>` : `
@@ -3241,10 +3241,11 @@ function examplePanel() {
 function sitesPanel() {
   const sites = state.sites || [];
   const rows = sites.map((site) => `
-    <tr data-name="${esc(site.name)}">
+    <tr data-name="${esc(site.name)}" data-origin="${esc(site.origin || '')}">
       <td><span class="site-kind-cell">
         <i class="legend-dot k-${esc(site.kind)}" aria-hidden="true"></i>
         <b>${esc(site.name)}</b>
+        ${site.origin === 'example' ? `<span class="pill badge-example" title="${esc(t('sites.exampleHint'))}">${esc(t('examples.badge'))}</span>` : ''}
       </span></td>
       <td>${esc(t(`sites.kind.${site.kind}`))}</td>
       <td class="coord">${site.lat !== undefined && site.lon !== undefined && site.lat !== null && site.lon !== null
@@ -4069,14 +4070,14 @@ async function removeUser(account) {
  * are what make it a decision rather than a reflex.
  */
 async function removeExampleData() {
-  const data = state.exampleData || { sensors: 0, results: 0, incidents: 0 };
-  if (!confirmDialog(t('examples.confirm', { sensors: data.sensors }))) return;
+  const data = state.exampleData || { sensors: 0, results: 0, incidents: 0, sites: 0 };
+  if (!confirmDialog(t('examples.confirm', { sensors: data.sensors, sites: data.sites || 0 }))) return;
   const removed = await api('/api/examples', { method: 'DELETE' });
   // The counts that come back are what was actually there, which is not
   // necessarily what the panel was showing: somebody may have added or removed a
   // sensor in another tab in between.
   toast(t('examples.removed', removed));
-  state.exampleData = { sensors: 0, results: 0, incidents: 0 };
+  state.exampleData = { sensors: 0, results: 0, incidents: 0, sites: 0 };
   await loadExampleData(true);
   await refresh({ background: true });
   await renderSettings();

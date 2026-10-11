@@ -5,7 +5,8 @@
 // data: `probeglass seed --demo`, which fills a fresh database from the shell; the
 // button in Settings that puts the example data back after somebody has removed it;
 // and the setup screen, which gives the four sensors it creates a week of past so
-// that a brand-new dashboard is not an empty grid. A second copy of the dataset would
+// that a brand-new dashboard is not an empty grid, and which takes the two places the
+// sensors stand on from here for the same reason. A second copy of the dataset would
 // be a second thing to keep in step, and the two would drift the moment a sensor was
 // added. Two of the three only want the history writer, which is why it is exported.
 //
@@ -56,6 +57,34 @@ type site struct {
 var sites = []site{
 	{name: "Homelab", kind: model.SiteLocal, lat: 52.5200, lon: 13.4050, sortOrder: 1},
 	{name: "Rented server", kind: model.SiteExternal, lat: 39.0438, lon: -77.4874, sortOrder: 2},
+}
+
+// Places returns these two, ready to be written to the sites table.
+//
+// The setup screen creates the same two places, and it asks here rather than keeping a
+// second list of its own. Two lists of the same places drift, and this particular drift
+// is one somebody would see: the button that loads the example data leaves a place that
+// is already there exactly as it is, so a fresh install whose places had other names
+// would end up with four pins, two of them on top of each other.
+func Places() []model.Site {
+	out := make([]model.Site, 0, len(sites))
+	for _, d := range sites {
+		out = append(out, d.place())
+	}
+	return out
+}
+
+// place is this row as a row for the sites table, the example marker included.
+func (d site) place() model.Site {
+	lat, lon := d.lat, d.lon
+	return model.Site{
+		Name:      d.name,
+		Kind:      d.kind,
+		Lat:       &lat,
+		Lon:       &lon,
+		SortOrder: d.sortOrder,
+		Origin:    model.OriginExample,
+	}
 }
 
 // sensor is one entry of the demo dataset: a target plus the shape of its
@@ -354,15 +383,7 @@ func ensureSites(ctx context.Context, st *store.Store) (int, error) {
 		case !errors.Is(err, store.ErrNotFound):
 			return made, err
 		}
-		lat, lon := d.lat, d.lon
-		s := model.Site{
-			Name:      d.name,
-			Kind:      d.kind,
-			Lat:       &lat,
-			Lon:       &lon,
-			SortOrder: d.sortOrder,
-			Origin:    model.OriginExample,
-		}
+		s := d.place()
 		if err := st.CreateSite(ctx, &s); err != nil {
 			return made, err
 		}

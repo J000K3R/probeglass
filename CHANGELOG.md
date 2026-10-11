@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The examples a fresh installation starts with stand at two places.** The four
+  invented sensors carried a week of past but nowhere to be, so the map — the one
+  screen a new installation had nothing at all to say about — was empty behind the
+  button that draws it. They stand on the two places the demo data set uses, a
+  "Homelab" and a rented server somewhere else, each with real coordinates, because
+  a pin in the Gulf of Guinea is what a missing coordinate pair would look like and
+  is the one thing on that map that reads as a bug. Both carry the example mark with
+  the sensors, so the removal button takes them along rather than leaving two empty
+  pins behind, and the panel that counts the example data counts them now: a place
+  the removal would leave holding a sensor of your own stays, and the number on the
+  button is that same number. The names and the coordinates are asked of the demo
+  data set rather than copied from it, which matters the first time somebody loads
+  that data after a fresh install: the loader leaves a place that is already there
+  alone, so the two sets fold into one pin each instead of drawing a second one on
+  top of the first. The four examples are split by where they stand — the two about
+  this machine on the homelab, the two about something out there on the server — and
+  the Sites table marks the example places as examples the way sensor cards
+  already did.
 - **Accounts replace the single dashboard password.** There is no global password
   any more, and no single credential to share. Setup asks for a username and a
   password and creates the first account with the `admin` role; the `409` the

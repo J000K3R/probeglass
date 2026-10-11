@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -68,9 +69,14 @@ func (s *Server) handleSetTourVersion(w http.ResponseWriter, r *http.Request) {
 // with the past it is given so that the dashboard is not empty when it is first
 // looked at.
 type exampleSensor struct {
-	Name    string
-	Type    model.SensorType
-	Target  string
+	Name   string
+	Type   model.SensorType
+	Target string
+	// Site is the place this one stands on, empty for the ones that stand nowhere in
+	// particular. The name has to be one of demo.Places(): the places are created
+	// before the sensors, because a sensor naming a place that does not exist is
+	// refused by the database.
+	Site    string
 	History demo.History
 }
 
@@ -109,6 +115,15 @@ const exampleSensorInterval = 300
 // They belong to no alert channel. A default that can fire a real message into
 // somebody's chat room before they have configured a single thing is not a
 // helpful default.
+//
+// Two of them stand on a place as well, the same two places the demo data set uses —
+// "Homelab" and a server somewhere else — because otherwise the map is the one screen
+// a new installation has nothing to say about at all. The two that are about this
+// machine go on the first, the two that are about something out there on the second,
+// so that the pins are where the sensors are. Those places carry the example marker,
+// which is what makes them removable in one click along with the sensors, and they are
+// the same names and coordinates as the demo set's so that loading that data later
+// folds into them instead of drawing a second pin beside each of them.
 func exampleSensors(dialAddr string) []exampleSensor {
 	window := time.Duration(exampleDays) * 24 * time.Hour
 	// The one failure each of the last-probe and the outage is described against.
@@ -116,10 +131,18 @@ func exampleSensors(dialAddr string) []exampleSensor {
 	// most recent probe there is".
 	last := demo.Spacing
 
+	// The two places, by the names demo.Places() writes them under. Spelled out here
+	// because that is what a sensor column holds — a name, not an id.
+	const (
+		here  = "Homelab"
+		other = "Rented server"
+	)
+
 	return []exampleSensor{
 		{
 			Name: "This dashboard (example)", Type: model.SensorHTTP,
 			Target: "http://" + dialAddr + "/healthz",
+			Site:   here,
 			History: demo.History{
 				Window: window, BaseMS: 3, JitterMS: 1,
 				SuccessMsg: "HTTP 200 OK", FailMsg: "dial tcp: connection refused",
@@ -128,6 +151,7 @@ func exampleSensors(dialAddr string) []exampleSensor {
 		{
 			Name: "Internet gateway (example)", Type: model.SensorPing,
 			Target: "192.168.1.1",
+			Site:   here,
 			History: demo.History{
 				Window: window, BaseMS: 2, JitterMS: 1,
 				SuccessMsg: "3/3 replies, 0% loss", FailMsg: "100% packet loss",
@@ -137,6 +161,7 @@ func exampleSensors(dialAddr string) []exampleSensor {
 		{
 			Name: "Public DNS (example)", Type: model.SensorDNS,
 			Target: "one.one.one.one",
+			Site:   other,
 			History: demo.History{
 				Window: window, BaseMS: 24, JitterMS: 11,
 				SuccessMsg: "1 A record", FailMsg: "no such host",
@@ -145,6 +170,7 @@ func exampleSensors(dialAddr string) []exampleSensor {
 		{
 			Name: "Example website (example)", Type: model.SensorHTTP,
 			Target: "https://example.org",
+			Site:   other,
 			History: demo.History{
 				Window: window, BaseMS: 148, JitterMS: 45,
 				SuccessMsg: "HTTP 200 OK", FailMsg: "dial tcp: i/o timeout",
@@ -176,6 +202,8 @@ func exampleSensors(dialAddr string) []exampleSensor {
 // The order below is the part that matters, and each step is there because of
 // what the next one would otherwise see:
 //
+//  0. Create the two places the sensors stand on. They are what the map draws, and
+//     they have to exist before the first sensor names one.
 //  1. Create the sensors disabled. Enabling one hands it to the scheduler, and a
 //     real probe landing in the middle of this would put a live result next to a
 //     week of invented ones — and, on the gateway, in front of the failed probe
@@ -199,6 +227,23 @@ func (s *Server) createExampleSensors(ctx context.Context, dialAddr string) (int
 		return 0, nil
 	}
 
+	// The places come first: a sensor names its site, and a name that is not in the
+	// sites table yet is refused by the database rather than stored without one. A
+	// place that is already there is left as it is, which is the same contract the
+	// demo data set follows — somebody who moved the pin to where they really are
+	// must not have it moved back.
+	for _, place := range demo.Places() {
+		if _, err := s.store.GetSite(ctx, place.Name); err == nil {
+			continue
+		} else if !errors.Is(err, store.ErrNotFound) {
+			return 0, err
+		}
+		p := place
+		if err := s.store.CreateSite(ctx, &p); err != nil {
+			return 0, err
+		}
+	}
+
 	examples := exampleSensors(dialAddr)
 	created := make([]model.Sensor, 0, len(examples))
 	for _, ex := range examples {
@@ -206,6 +251,7 @@ func (s *Server) createExampleSensors(ctx context.Context, dialAddr string) (int
 			Name:     ex.Name,
 			Type:     ex.Type,
 			Target:   ex.Target,
+			Site:     ex.Site,
 			Interval: exampleSensorInterval,
 			Timeout:  10,
 			Retries:  2,

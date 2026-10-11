@@ -74,6 +74,80 @@ func TestSetupCreatesExampleSensors(t *testing.T) {
 	}
 }
 
+// TestSetupCreatesTheExamplePlaces covers the map, which was the one screen a fresh
+// installation had nothing at all to say about: the four examples stood nowhere, so
+// the world view came up empty behind the button that draws it. They stand on the two
+// places the demo data set uses now, with real coordinates on both, because a pin in
+// the Gulf of Guinea is what a missing coordinate pair would look like.
+func TestSetupCreatesTheExamplePlaces(t *testing.T) {
+	h := newHarness(t)
+	h.setup()
+
+	sites := h.listSites()
+	if len(sites) != len(demo.Places()) {
+		t.Fatalf("a fresh installation has %d place(s), want %d (%v)",
+			len(sites), len(demo.Places()), siteNames(sites))
+	}
+	byName := map[string]model.Site{}
+	for _, s := range sites {
+		byName[s.Name] = s
+		if !s.Placed() {
+			t.Errorf("place %q has no coordinates, so the map cannot draw it", s.Name)
+		}
+		if s.Origin != model.OriginExample {
+			t.Errorf("place %q: origin = %q, want the example marker, or the "+
+				"button that removes the example data would leave it behind",
+				s.Name, s.Origin)
+		}
+	}
+
+	// Every example sensor stands on one of them. A sensor with no site is the state
+	// this test exists to have left behind.
+	for _, s := range h.listSensors() {
+		if s.Site == "" {
+			t.Errorf("example sensor %q stands on no place", s.Name)
+			continue
+		}
+		if _, ok := byName[s.Site]; !ok {
+			t.Errorf("example sensor %q names the place %q, which is not one of %v",
+				s.Name, s.Site, siteNames(sites))
+		}
+	}
+
+	// The two local examples on the local place and the two remote ones on the
+	// remote one: the pins are meant to be where their sensors are.
+	for name, want := range map[string]model.SiteKind{
+		"This dashboard (example)":   model.SiteLocal,
+		"Internet gateway (example)": model.SiteLocal,
+		"Public DNS (example)":       model.SiteExternal,
+		"Example website (example)":  model.SiteExternal,
+	} {
+		found := false
+		for _, s := range h.listSensors() {
+			if s.Name != name {
+				continue
+			}
+			found = true
+			if got := byName[s.Site].Kind; got != want {
+				t.Errorf("sensor %q is on the %s place %q, want a %s one",
+					name, got, s.Site, want)
+			}
+		}
+		if !found {
+			t.Errorf("no example sensor named %q", name)
+		}
+	}
+}
+
+// siteNames is the places of a list, for a failure message.
+func siteNames(sites []model.Site) []string {
+	out := make([]string, 0, len(sites))
+	for _, s := range sites {
+		out = append(out, s.Name)
+	}
+	return out
+}
+
 // Reaching /api/setup more than once must not multiply the examples.
 func TestExampleSensorsAreCreatedOnce(t *testing.T) {
 	h := newHarness(t)

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/j000k3r/probeglass/internal/demo"
 	"github.com/j000k3r/probeglass/internal/model"
 )
 
@@ -289,8 +290,20 @@ func TestSummaryCarriesSitesAndHeartbeat(t *testing.T) {
 	}
 	decode(t, resp, &body)
 
-	if len(body.Sites) != 1 {
-		t.Errorf("the summary carries %d sites, want 1", len(body.Sites))
+	// The two the setup step wrote are in here as well, which is the point of them:
+	// a dashboard somebody has just set the password on has a map with something on
+	// it. Counted from the list rather than written as a number, so that adding a
+	// place to the example data does not fail a test about the payload's shape.
+	want := len(demo.Places()) + 1
+	if len(body.Sites) != want {
+		t.Errorf("the summary carries %d sites, want %d", len(body.Sites), want)
+	}
+	var sawKeller bool
+	for _, s := range body.Sites {
+		sawKeller = sawKeller || s.Name == "keller"
+	}
+	if !sawKeller {
+		t.Errorf("the site this test made is missing from the summary: %+v", body.Sites)
 	}
 	if len(body.Views) == 0 {
 		t.Fatal("the summary has no sensors")

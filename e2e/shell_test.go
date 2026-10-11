@@ -1059,15 +1059,110 @@ func createSite(t *testing.T, ctx context.Context, dir, name, kind string, lat, 
 	}
 }
 
-// assignSite puts the first sensor the installation has onto a place, through
-// the sensor form's own picker.
+// startFromAnEmptyDashboard clears the example data a fresh installation starts with
+// and puts sensors of this test's own in its place, and comes back only once the
+// dashboard is showing exactly those.
+//
+// Both tests below are about places of their own and both count what is on the
+// screens: the sections of the wall, the sensors under a place, the places on the map.
+// A fresh installation now starts with four sensors on two example places, and an
+// example place is on the map like any other — so they would be counted by every one
+// of those checks, and the map, which fits itself around the places it has, would fit
+// two continents rather than the two streets these tests are looking at. Removing them
+// is what somebody who wanted a dashboard of their own would do with the examples
+// anyway.
+//
+// The sensors are made through the API rather than through the form, because what is
+// checked afterwards is what the views do with a sensor's place and the form has a test
+// of its own further down this file. Their names are numbered because nothing here
+// reads them: what is counted is how many there are and which place they ended up on.
+//
+// The wait at the end is not politeness. Making and removing a sensor makes the
+// dashboard ask for the summary again a moment later, and a summary that lands while
+// the map is being zoomed rebuilds it from where the zoom is then — the bands it had
+// already built for the deeper levels go with it, and one of the checks below counts
+// exactly those. The cards appear only through that refresh, so waiting for them is
+// waiting for it to be over.
+func startFromAnEmptyDashboard(t *testing.T, ctx context.Context, dir string, names ...string) {
+	t.Helper()
+
+	err := withTimeout(ctx, func(tctx context.Context) error {
+		return chromedp.Do(tctx,
+			// The removal asks first, and the browser's own confirm box cannot be
+			// answered from outside without a dialog handler. A person who clicks
+			// the button and then OK does exactly this.
+			chromedp.Evaluate[chromedp.Void](`window.confirm = () => true`),
+			chromedp.Evaluate[chromedp.Void](`location.hash = '#/settings'`),
+			openSettingsCategory("monitor"),
+			chromedp.WaitVisible(`#examples-panel [data-action="drop-examples"]`),
+			chromedp.Click(`#examples-panel [data-action="drop-examples"]`),
+			// The panel stays and offers the data back. That is the state the
+			// removal leaves behind, and it is what says the request has returned.
+			chromedp.WaitVisible(`#examples-panel [data-action="restore-examples"]`),
+		)
+	})
+	if err != nil {
+		capture(t, ctx, dir, "examples-not-dropped")
+		t.Fatalf("could not take the example data off the fresh installation: %v", err)
+	}
+
+	quoted := make([]string, 0, len(names))
+	for _, name := range names {
+		quoted = append(quoted, jsQuote(name))
+	}
+	script := fmt.Sprintf(`(async () => {
+  const codes = [];
+  for (const name of [%s]) {
+    const r = await fetch('/api/sensors', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, type: 'ping', target: '192.0.2.1' }),
+    });
+    codes.push(r.status);
+  }
+  return codes;
+})()`, strings.Join(quoted, ", "))
+	codes := readAsync[[]int](t, ctx, script, "the sensors this test made")
+	if len(codes) != len(names) {
+		t.Fatalf("making %d sensor(s) answered %d time(s)", len(names), len(codes))
+	}
+	for i, code := range codes {
+		if code != statusCreated {
+			capture(t, ctx, dir, "sensors-not-made")
+			t.Fatalf("making the sensor %q answered %d, want %d",
+				names[i], code, statusCreated)
+		}
+	}
+
+	if err := withTimeout(ctx, func(tctx context.Context) error {
+		return chromedp.Do(tctx,
+			chromedp.Evaluate[chromedp.Void](`location.hash = '#/dashboard'`),
+			chromedp.Poll[chromedp.Void](
+				fmt.Sprintf(`document.querySelectorAll('#groups .card').length === %d`, len(names)),
+				chromedp.WithPollingTimeout(20*time.Second)),
+		)
+	}); err != nil {
+		capture(t, ctx, dir, "own-sensors-missing")
+		t.Fatalf("the dashboard never came back with the %d sensor(s) this test made: %v\n"+
+			"a refresh still on its way would rebuild the map under the checks that follow",
+			len(names), err)
+	}
+}
+
+// statusCreated is what the sensor endpoint answers when it has made one, spelled
+// out because this file imports no net/http for the sake of one constant.
+const statusCreated = 201
+
+// assignSite puts the first sensor the dashboard has onto a place, through the
+// sensor form's own picker. The sensors are the ones makeSensors made, so the first
+// card is one of this test's own.
 func assignSite(t *testing.T, ctx context.Context, dir, site string) {
 	t.Helper()
 	err := withTimeout(ctx, func(tctx context.Context) error {
 		return chromedp.Do(tctx,
 			chromedp.Evaluate[chromedp.Void](`location.hash = '#/dashboard'`),
 			chromedp.WaitVisible(`#groups .card`),
-			chromedp.Click(`#groups .card[data-origin="example"] [data-action="edit"]`),
+			chromedp.Click(`#groups .card [data-action="edit"]`),
 			chromedp.WaitVisible(`#modal select[name="site"]`),
 			chromedp.SetValue(`#modal select[name="site"]`, site),
 			chromedp.Click(`#modal-save`),
@@ -1109,6 +1204,16 @@ func TestSitesReachEveryViewAndTheMapIsHonest(t *testing.T) {
 	dir := artifactsDir(t)
 
 	firstRun(t, ctx, base, dir)
+
+	// --- a dashboard of this test's own -------------------------------------
+
+	// The examples go first. Every check below counts what is on the screens — the
+	// sites on the map, the sections of the wall, the sensors under a place — and
+	// the four sensors a fresh installation makes come with two places of their
+	// own, which would be counted by all three. Four sensors are made instead, all
+	// of them without a place: one of them is given the second place below, and the
+	// three that keep it are what the headings are counted against.
+	startFromAnEmptyDashboard(t, ctx, dir, "Sensor one", "Sensor two", "Sensor three", "Sensor four")
 
 	// --- two places, made on the settings screen ---------------------------
 
@@ -1161,8 +1266,8 @@ func TestSitesReachEveryViewAndTheMapIsHonest(t *testing.T) {
 		capture(t, ctx, dir, "tree-lost-the-unplaced")
 		t.Errorf("the tree has no heading for the sensors without a site; it shows %v", siteNames(nodes))
 	} else if homeless.Rows != 3 {
-		t.Errorf("the \"No site\" heading holds %d sensor(s), want the three examples that were "+
-			"not given a place", homeless.Rows)
+		t.Errorf("the \"No site\" heading holds %d sensor(s), want the three this test "+
+			"made and gave no place to", homeless.Rows)
 	}
 	// The second site has nothing on it, so it is not a heading: a place with no
 	// sensors is a line of noise, not information.
@@ -1327,6 +1432,18 @@ func TestTheMapDrawsItsOwnBordersAndNames(t *testing.T) {
 	dir := artifactsDir(t)
 
 	firstRun(t, ctx, base, dir)
+
+	// The examples go, and for a reason this test cannot work around: the map fits
+	// itself around the places it has, and the two example places are a homelab in
+	// Berlin and a rented server in Virginia. Left in place they would pull the view
+	// out to the whole world, and every check below is about a country view — the
+	// fitted view is what the provinces are drawn at, and the three steps further in
+	// are what the Europe supplements arrive at.
+	//
+	// The one sensor made in their place is not about the map at all: a dashboard with
+	// none shows the empty state instead of whichever layout is chosen, and what this
+	// test is about is the map. It is given no place, so it adds no pin to it.
+	startFromAnEmptyDashboard(t, ctx, dir, "Sensor one")
 
 	// The places are made on the settings screen, which is where the button that
 	// opens the site dialog lives.
