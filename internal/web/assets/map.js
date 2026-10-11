@@ -5,8 +5,9 @@
 // alternative is a mapping library, and a mapping library is a build step, a
 // dependency and half a megabyte for what is forty lines of arithmetic.
 //
-// Underneath the markers it draws the world's coastlines, out of a dataset that
-// lives in this directory rather than off a tile server, and that is a deliberate
+// Underneath the markers it draws a world of its own — the coastlines, the lakes and
+// rivers, the country and province borders and their names — out of datasets that live
+// in this directory rather than off a tile server, and that is a deliberate
 // change of direction rather than a missing feature. The free tile servers a
 // third-party application used to be able to lean on are gone: OpenStreetMap's
 // usage policy stopped allowing them in 2025, and what their servers answer an
@@ -25,8 +26,8 @@
 //     sentence saying what is missing. An empty grey rectangle with no
 //     explanation is the failure mode this is built on avoiding.
 //
-//   * The coastlines are under the tiles, so a configured tile server covers
-//     them and an unreachable one uncovers them — the tile images hide
+//   * The map's own world is under the tiles, so a configured tile server covers
+//     it and an unreachable one uncovers it — the tile images hide
 //     themselves on error, and the world is what is left. The order is the whole
 //     mechanism; nothing here decides when to show one or the other.
 //
@@ -140,22 +141,29 @@ export function mount(host, opts = {}) {
   canvas.setAttribute('aria-label', t('map.aria'));
 
   const outline = createOutline();
-  // The border and name layers are built empty here and filled by modules that are
-  // fetched afterwards. Both files are most of a megabyte between them and are needed
-  // only in this view, so importing them at the top of this file would make every page
-  // load in the dashboard pay for a map nobody opened. They arrive a frame or two
-  // after the first draw, and until they do the map is a map: coastlines, graticule and
-  // pins, exactly as it was before they existed.
+  // The water, the border and name layers are built empty here and filled by modules
+  // that are fetched afterwards. Those files are most of a megabyte between them and
+  // are needed only in this view, so importing them at the top of this file would make
+  // every page load in the dashboard pay for a map nobody opened. They arrive a frame
+  // or two after the first draw, and until they do the map is a map: coastlines,
+  // graticule and pins, exactly as it was before they existed.
   //
-  // `borders: false` is the setting. It is decided here rather than after the fetch,
-  // because a layer somebody has turned off must not be downloaded either.
+  // `borders: false` is the setting, which is labelled "Draw country and province
+  // borders" and is about the lines and the names and nothing else. It is decided here
+  // rather than after the fetch, because a layer somebody has turned off must not be
+  // downloaded either.
   const wanted = opts.borders !== false;
+  // The water is not behind that setting. It is the ground: a lake is where the map says
+  // there is a lake whether or not the borders are on, and a country whose lakes and
+  // rivers disappear when somebody turns the borders off is a map that drew a different
+  // world without being asked to. So mapwater.js is imported either way.
   // The names are a second file again, and `labels: false` — which is how the header's
   // mini map mounts — has to keep it out of the browser's queue rather than merely off
   // the screen. A layer that is imported and then not filled still costs the operator
   // 90 KB of names for a 150-pixel widget, and the comment in widgets.js promises it
   // does not. So the import itself is what is conditional here.
   const withLabels = wanted && opts.labels !== false;
+  const waterNode = svgLayer('map-water');
   const borderNode = svgLayer('map-borders');
   const labelNode = document.createElement('div');
   labelNode.className = 'map-labels';
@@ -163,37 +171,41 @@ export function mount(host, opts = {}) {
   tiles.className = 'map-tiles';
   const markers = document.createElement('div');
   markers.className = 'map-markers';
-  // The order is the design: coastlines, then borders, then whatever tiles somebody
-  // configured, then the names, then the pins. See the third rule at the top of the file.
-  canvas.append(outline.node, borderNode, tiles, labelNode, markers);
+  // The order is the design: coastlines, then the water inside them, then the country
+  // borders, then the province borders, then whatever tiles somebody configured, then
+  // the names, then the pins. See the second rule at the top of the file.
+  canvas.append(outline.node, waterNode, borderNode, tiles, labelNode, markers);
 
   // null until the module that fills the layer arrives, and one of them may arrive
-  // without the other.
+  // without the others.
+  let water = null;
   let borders = null;
   let labels = null;
 
-  if (wanted) {
-    Promise.all([
-      import('./mapborders.js'),
-      withLabels ? import('./maplabels.js') : Promise.resolve(null),
-    ]).then(([borderMod, labelMod]) => {
-      // The map may have been unmounted, or replaced by another mount, while the two
-      // files were in flight. Filling a layer that is no longer on the page would
-      // build 97 000 points for nobody.
-      if (!canvas.isConnected) return;
-      borders = borderMod.fill(borderNode);
-      // The names are not drawn in the header's mini map: it is a picture of where
-      // things are, 150 pixels wide, and a place name on it is a word on top of the
-      // thing it names. labelMod is null there, which is why this asks before it
-      // fills.
-      labels = labelMod ? labelMod.fill(labelNode, { lonToX, latToY }) : null;
-      draw();
-    }).catch((error) => {
-      // The coastlines, the graticule and the pins are all still here, which is why
-      // this is a console line and not a failed map.
-      console.error('weatherglass: could not draw the borders and names', error);
-    });
-  }
+  Promise.all([
+    import('./mapwater.js'),
+    wanted ? import('./mapborders.js') : Promise.resolve(null),
+    withLabels ? import('./maplabels.js') : Promise.resolve(null),
+  ]).then(([waterMod, borderMod, labelMod]) => {
+    // The map may have been unmounted, or replaced by another mount, while the three
+    // files were in flight. Filling a layer that is no longer on the page would
+    // build 97 000 points for nobody.
+    if (!canvas.isConnected) return;
+    water = waterMod.fill(waterNode);
+    // null when the setting is off, which is why the border layer is asked before it is
+    // filled and not merely left off the screen.
+    borders = borderMod ? borderMod.fill(borderNode) : null;
+    // The names are not drawn in the header's mini map: it is a picture of where
+    // things are, 150 pixels wide, and a place name on it is a word on top of the
+    // thing it names. labelMod is null there, which is why this asks before it
+    // fills.
+    labels = labelMod ? labelMod.fill(labelNode, { lonToX, latToY }) : null;
+    draw();
+  }).catch((error) => {
+    // The coastlines, the graticule and the pins are all still here, which is why
+    // this is a console line and not a failed map.
+    console.error('weatherglass: could not draw the water, the borders and the names', error);
+  });
 
   const note = document.createElement('p');
   note.className = 'map-note';
@@ -286,6 +298,7 @@ export function mount(host, opts = {}) {
     tilesFailed = 0;
 
     outline.setView(view.z, left, top);
+    if (water) water.setView(view.z, left, top);
     if (borders) borders.setView(view.z, left, top);
 
     // Without a tile address there is no image to fetch, and this is not a loop
@@ -477,6 +490,7 @@ export function mount(host, opts = {}) {
     // or a name left behind would slide against the country it belongs to.
     const shift = `translate(${dragging.dx}px, ${dragging.dy}px)`;
     outline.node.style.transform = shift;
+    waterNode.style.transform = shift;
     borderNode.style.transform = shift;
     tiles.style.transform = shift;
     labelNode.style.transform = shift;
@@ -494,6 +508,7 @@ export function mount(host, opts = {}) {
       /* the pointer was already released */
     }
     outline.node.style.transform = '';
+    waterNode.style.transform = '';
     borderNode.style.transform = '';
     tiles.style.transform = '';
     labelNode.style.transform = '';

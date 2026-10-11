@@ -81,11 +81,12 @@ frontend pipeline to keep alive.
 - **Dashboard** — five views of the same sensors: cards, a dense list, a foldable
   **tree** by site and group, a **wall** of tiles carrying the last forty checks as
   a heartbeat, and a **map** of your sites. The map draws the world from
-  public-domain data embedded in the binary — coastlines, country and province
+  public-domain data embedded in the binary — coastlines, the lakes and rivers,
+  country and province
   borders, and the names of both, appearing as you zoom — so it works on a network
   with no internet and tells nobody anything; a tile URL in Settings puts real
   tiles under it for anybody running a tile server of their own, and a switch turns
-  the borders and names off. One
+  the borders and names off without touching the water. One
   setting, not five pages, with a switcher in the top bar. Per-sensor
   response-time charts, uptime bars, incident timeline. Updates over SSE: a probe
   result redraws the one card it belongs to — the status dot, the latency, the

@@ -97,7 +97,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   click to point it at a gateway that does answer.
 - **The map draws its own coastlines, out of the binary.** The dashboard's slippy
   map no longer needs a tile server to have something under its pins: the world's
-  land is a public-domain outline (Natural Earth 1:110m) committed to the
+  land is a public-domain outline (Natural Earth 1:50m) committed to the
   repository, embedded in the binary and decoded in the browser by
   `internal/web/assets/outline.js`. It is a single SVG path in the map's own world
   coordinates, moved and scaled by one transform, with
@@ -453,6 +453,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   abandoned afterwards leaves the place behind: that is the price of one dialog rather
   than two, and it is the honest one. The saved name is put straight into the sensor's
   place picker, and a name that already exists is used rather than made twice.
+- **The map draws the borders between countries, and the water.** The layer added above
+  drew the *wrong* borders. It comes from Natural Earth's first-order administrative
+  lines and keeps the one class in that file that is a boundary between two provinces of
+  the same country — which is fine, and is why a Bundesland has an edge. It is also why
+  **Austria had no outline**: the class is not a national border, and no amount of
+  zooming produces one from it, because the file does not contain one. The borders
+  between countries are a data set of their own, `ne_50m_admin_0_boundary_lines_land`,
+  and it is embedded and drawn now, at 1:50m like the coast, in a lighter colour than the
+  province lines so the hierarchy reads at a glance. Its other classes — Disputed,
+  Indefinite, Line of control, Indeterminant frontier — are **counted and named in the
+  file's header rather than drawn or quietly swallowed**: 358 of its 393 lines are
+  international boundaries, and the header says so. Alongside it come the water, which
+  the map did not have at all: **lakes as filled rings and rivers as lines**, both from
+  Natural Earth's 1:50m sets, the rivers cut off at rank 3 so that the 275 largest
+  systems are drawn and the file does not become a hairball — which does mean the Rhine
+  and the Elbe are in the data set and not in the file, since they are rank 4 and 5. The
+  **Caspian Sea** needed a fix of its own: it is not in the lakes file, it is one hole in
+  the land outline, and the outline was throwing holes away, so the largest lake on earth
+  was being drawn as land. Every ring is kept now (1393 of them) and SVG's `evenodd`
+  fill subtracts it without a line of browser code. The layering is coastlines, water,
+  country borders, province borders, tiles, names, pins.
+- **The water is ground, not a layer.** `map.borders` turns the borders and the names
+  off; it does not turn the lakes and rivers off, because a map with water and a switch
+  that removes it is a map of nothing, and the switch's job is the megabyte of geometry
+  nobody asked for. Off, the four files behind the borders and the names are still never
+  sent to the browser — the water is a fifth file and it is still sent, which is the
+  point. The map's data is 1.1 MB now rather than 965 KB, and only the first zoom bands
+  of it are built at any given zoom, exactly as before.
 
 ### Changed
 

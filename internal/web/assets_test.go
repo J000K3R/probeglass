@@ -200,6 +200,68 @@ func TestTheEmbeddedCoastlineDecodes(t *testing.T) {
 		t.Errorf("the rings span %.1f° of latitude; land reaches from well inside the "+
 			"Arctic to well inside the Antarctic, so this is a corner of a world", span)
 	}
+
+	// One ring has to sit inside another, and that ring is the Caspian. The browser
+	// fills this layer with fill-rule="evenodd", so a nested ring is a hole in the land
+	// it is nested in — and the day the generator goes back to keeping outer rings only,
+	// the hole disappears, the lakes file fills nothing, and the Caspian is drawn as
+	// land. Nothing else in the build would notice.
+	if n := nestedRings(decoded); n == 0 {
+		t.Errorf("no ring lies inside another; the coastline is filled with " +
+			"fill-rule=\"evenodd\", so the one hole in the source — the Caspian — is only a " +
+			"hole while its ring is here, and without it the map draws a sea as land")
+	}
+}
+
+// nestedRings counts the rings that lie inside another ring.
+//
+// The bounding box comes first because it is what makes this cheap: two rings can only
+// nest if one box contains the other, and a world of islands has almost no such pair,
+// so the point-in-polygon test runs a handful of times rather than two million. A box
+// that is contained but a ring that is not is exactly what two neighbours on a border
+// look like, which is why the box alone is not the answer.
+func nestedRings(rings [][][2]float64) int {
+	boxes := make([][4]float64, len(rings))
+	for i, ring := range rings {
+		box := [4]float64{180, 90, -180, -90}
+		for _, p := range ring {
+			box[0], box[1] = math.Min(box[0], p[0]), math.Min(box[1], p[1])
+			box[2], box[3] = math.Max(box[2], p[0]), math.Max(box[3], p[1])
+		}
+		boxes[i] = box
+	}
+
+	n := 0
+	for i, ring := range rings {
+		for j, box := range boxes {
+			if i == j {
+				continue
+			}
+			if boxes[i][0] < box[0] || boxes[i][1] < box[1] ||
+				boxes[i][2] > box[2] || boxes[i][3] > box[3] {
+				continue
+			}
+			if pointInRing(ring[0], rings[j]) {
+				n++
+				break
+			}
+		}
+	}
+	return n
+}
+
+// pointInRing is the usual ray cast: an even number of crossings means the point is
+// outside. Points exactly on the edge are a coin toss, which is fine here — a coastline
+// vertex landing exactly on a lake shore vertex is not a case the answer matters for.
+func pointInRing(pt [2]float64, ring [][2]float64) bool {
+	inside := false
+	for i, j := 0, len(ring)-1; i < len(ring); j, i = i, i+1 {
+		if (ring[i][1] > pt[1]) != (ring[j][1] > pt[1]) &&
+			pt[0] < (ring[j][0]-ring[i][0])*(pt[1]-ring[i][1])/(ring[j][1]-ring[i][1])+ring[i][0] {
+			inside = !inside
+		}
+	}
+	return inside
 }
 
 // exportValue reads `export const NAME = value;` out of a generated asset.
@@ -367,6 +429,103 @@ func decodeWorld(t *testing.T, data string, rings, scale int) (out [][][2]float6
 	return out, points
 }
 
+// bandedFile is one of the four banded assets, decoded.
+//
+// The four files are countries.js, borders.js, lakes.js and rivers.js, and they hold
+// rings or lines — a lake is a filled ring and a border is an open line — which is why
+// `minPoints` is a parameter: the generator keeps two points for a line and four for a
+// ring, and a test that asserted the wrong floor would fail on a correct file.
+type bandedFile struct {
+	bands  []int
+	shapes [][][2]float64
+	points int
+	// minLon, minLat, maxLon, maxLat over every point in the file.
+	box [4]float64
+}
+
+// decodeBanded reads one of the four banded files the way the browser does: the band
+// list out of the header, then one self-delimiting stream per band, in band order, each
+// beginning with its own shape count.
+//
+// It is a second implementation of the format on purpose — a decoder that shared its
+// code with the generator would agree with it about any mistake the two of them made —
+// and it checks the three things that go wrong quietly: a band list that does not
+// ascend (the reader walks it in order and would stop early), a shape with too few
+// points to be one, and a point that is off the planet, which is what a delta chain
+// misread looks like.
+func decodeBanded(t *testing.T, js, prefix string, minPoints int) bandedFile {
+	t.Helper()
+
+	out := bandedFile{
+		bands: exportInts(t, js, prefix+"_BANDS"),
+		box:   [4]float64{180, 90, -180, -90},
+	}
+	if len(out.bands) == 0 {
+		t.Fatalf("%s_BANDS is empty; the bands are what the reader walks, so a file with none "+
+			"of them draws nothing at any zoom", prefix)
+	}
+	for i := 1; i < len(out.bands); i++ {
+		if out.bands[i] <= out.bands[i-1] {
+			t.Fatalf("%s_BANDS is %v; the bands have to ascend, because the reader walks them "+
+				"in order and stops at the first one past the current zoom", prefix, out.bands)
+		}
+	}
+
+	p := newPacked(t, strings.Trim(exportValue(t, js, prefix+"_DATA"), "'"))
+	const scale = 1000
+
+	for b, zoom := range out.bands {
+		n := p.count(fmt.Sprintf("band %d (zoom %d) shape count", b, zoom), 100000)
+		if n == 0 {
+			t.Errorf("band %d (zoom %d) holds nothing; the generator groups shapes by the zoom "+
+				"their author drew them for, so an empty band means the grouping has come "+
+				"apart", b, zoom)
+		}
+		for i := 0; i < n; i++ {
+			got := p.count(fmt.Sprintf("band %d shape %d's point count", b, i), 100000)
+			if got < minPoints {
+				t.Fatalf("band %d shape %d has %d point(s); the generator keeps %d and up for "+
+					"this file", b, i, got, minPoints)
+			}
+			p.reset()
+			shape := make([][2]float64, got)
+			for j := 0; j < got; j++ {
+				pt := p.point(scale)
+				if pt[0] < -180 || pt[0] > 180 || pt[1] < -90 || pt[1] > 90 {
+					t.Fatalf("band %d shape %d point %d is at %g,%g, which is off the planet; "+
+						"the delta chain has been misread", b, i, j, pt[0], pt[1])
+				}
+				shape[j] = pt
+				out.box[0] = math.Min(out.box[0], pt[0])
+				out.box[1] = math.Min(out.box[1], pt[1])
+				out.box[2] = math.Max(out.box[2], pt[0])
+				out.box[3] = math.Max(out.box[3], pt[1])
+			}
+			out.shapes = append(out.shapes, shape)
+			out.points += got
+		}
+	}
+	p.end()
+	return out
+}
+
+// inBox counts the shapes of a file that have a point inside a lon/lat window. It is
+// how the two tests below ask whether a particular place is in the data at all — the
+// question a map cannot answer for itself, because a country that is missing from the
+// file and a country somebody turned a layer off for look exactly alike on screen.
+func inBox(f bandedFile, west, south, east, north float64) int {
+	n := 0
+	for _, shape := range f.shapes {
+		for _, p := range shape {
+			if p[0] >= west && p[0] <= east && p[1] >= south && p[1] <= north {
+				n++
+				break
+			}
+		}
+	}
+	return n
+}
+
 // TestTheEmbeddedBordersDecode reads the province borders the way the browser does.
 //
 // The borders are 670 KB of the repository's largest generated file, they are fetched by
@@ -377,77 +536,151 @@ func decodeWorld(t *testing.T, data string, rings, scale int) (out [][][2]float6
 func TestTheEmbeddedBordersDecode(t *testing.T) {
 	js := readAsset(t, Assets(), "borders.js")
 
-	bands := exportInts(t, js, "WORLD_BORDER_BANDS")
-	if len(bands) < 5 {
+	f := decodeBanded(t, js, "WORLD_BORDER", 2)
+	if len(f.bands) < 5 {
 		t.Fatalf("WORLD_BORDER_BANDS is %v; Natural Earth spreads its admin-1 lines over "+
-			"about nine MIN_ZOOM levels, so this is a band list that lost most of itself", bands)
+			"about nine MIN_ZOOM levels, so this is a band list that lost most of itself", f.bands)
 	}
-	if bands[0] > 4 {
+	if f.bands[0] > 4 {
 		t.Errorf("the first border band is zoom %d; the map shows a band from its own zoom "+
 			"upwards, so a first band above 4 means no borders at all until the map is deep "+
-			"inside one country", bands[0])
+			"inside one country", f.bands[0])
 	}
-	for i := 1; i < len(bands); i++ {
-		if bands[i] <= bands[i-1] {
-			t.Fatalf("WORLD_BORDER_BANDS is %v; the bands have to ascend, because the reader "+
-				"walks them in order and stops at the first one past the current zoom", bands)
-		}
-	}
-
-	data := strings.Trim(exportValue(t, js, "WORLD_BORDER_DATA"), "'")
-	p := newPacked(t, data)
-
-	const scale = 1000
-	minLon, maxLon := 180.0, -180.0
-	minLat, maxLat := 90.0, -90.0
-	lines, points := 0, 0
-
-	for b, zoom := range bands {
-		n := p.count(fmt.Sprintf("band %d (zoom %d) line count", b, zoom), 100000)
-		if n == 0 {
-			t.Errorf("band %d (zoom %d) holds no lines; the generator groups the lines by "+
-				"MIN_ZOOM, so an empty band means the grouping has come apart", b, zoom)
-		}
-		for i := 0; i < n; i++ {
-			got := p.count(fmt.Sprintf("band %d line %d's point count", b, i), 10000)
-			if got < 2 {
-				t.Fatalf("band %d line %d has %d point(s); the generator keeps lines of two "+
-					"points and up — a straight border is still a border", b, i, got)
-			}
-			p.reset()
-			for j := 0; j < got; j++ {
-				pt := p.point(scale)
-				if pt[0] < -180 || pt[0] > 180 || pt[1] < -90 || pt[1] > 90 {
-					t.Fatalf("band %d line %d point %d is at %g,%g, which is off the planet; "+
-						"the delta chain has been misread", b, i, j, pt[0], pt[1])
-				}
-				minLon, maxLon = math.Min(minLon, pt[0]), math.Max(maxLon, pt[0])
-				minLat, maxLat = math.Min(minLat, pt[1]), math.Max(maxLat, pt[1])
-			}
-			points += got
-		}
-		lines += n
-	}
-	p.end()
 
 	// 36 167 is what the class filter keeps of the file's 45 098 lines, and 97 513 points
 	// is what the tolerance leaves of them. Both are in the header; these floors are
 	// loose enough to survive a retuned tolerance and tight enough to catch a truncation.
-	if lines < 30000 {
+	if len(f.shapes) < 30000 {
 		t.Errorf("%d line(s) across the bands; the admin-1 class holds about 36 000, so "+
-			"this file is missing the provinces of whole continents", lines)
+			"this file is missing the provinces of whole continents", len(f.shapes))
 	}
-	if points < 60000 {
+	if f.points < 60000 {
 		t.Errorf("%d point(s) across %d line(s); the 1:10m admin-1 lines are about 97 000, "+
-			"so the tail of this file is somewhere else", points, lines)
+			"so the tail of this file is somewhere else", f.points, len(f.shapes))
 	}
-	if span := maxLon - minLon; span < 300 {
+	if span := f.box[2] - f.box[0]; span < 300 {
 		t.Errorf("the border lines span %.1f° of longitude; provinces exist on every "+
 			"continent, so this is a corner of the world", span)
 	}
-	if span := maxLat - minLat; span < 100 {
+	if span := f.box[3] - f.box[1]; span < 100 {
 		t.Errorf("the border lines span %.1f° of latitude; they run from Norway to "+
 			"Argentina, so this is a corner of one", span)
+	}
+}
+
+// TestTheEmbeddedCountryBordersDecode reads the international borders.
+//
+// This is the file whose absence was visible on the dashboard: the province layer holds
+// boundaries between first-order areas and never a national outline, so the map drew
+// Austria's Bundesländer and no Austria. Everything here is aimed at that one failure,
+// because a map with no national borders on it is not a map that looks broken — it is a
+// map that looks like a map.
+func TestTheEmbeddedCountryBordersDecode(t *testing.T) {
+	js := readAsset(t, Assets(), "countries.js")
+
+	f := decodeBanded(t, js, "WORLD_COUNTRY", 2)
+	if f.bands[0] > 2 {
+		t.Errorf("the first country band is zoom %d; the map shows a band from its own zoom "+
+			"upwards, so anything above 2 means the countries are missing at a world view — "+
+			"which is where somebody will first look for them", f.bands[0])
+	}
+
+	// 358 of the file's 393 lines are the international class and 8 328 points survive
+	// the tolerance; both numbers are in the header and both floors are loose.
+	if len(f.shapes) < 250 {
+		t.Errorf("%d line(s) across the bands; the international class holds 358, so this "+
+			"file has lost whole borders", len(f.shapes))
+	}
+	if f.points < 5000 {
+		t.Errorf("%d point(s) across %d line(s); the 1:50m international borders are about "+
+			"8 300, so the tail of this file is somewhere else", f.points, len(f.shapes))
+	}
+	// 282° is the honest span: a border is a line where two countries meet, and the
+	// two ends of the world — Chukotka, Alaska, the islands of the Pacific — are coast
+	// and not frontier. A floor of 250 catches a file that lost a hemisphere without
+	// demanding the one number this dataset cannot produce.
+	if span := f.box[2] - f.box[0]; span < 250 {
+		t.Errorf("the border lines span %.1f° of longitude; countries meet on every "+
+			"continent, so this is a corner of the world", span)
+	}
+
+	// Austria, and this is the shape of the bug rather than a country worth naming: a
+	// border file built from the wrong dataset passed every other check in this test —
+	// bands, counts, spans — while not containing one line of the country it was
+	// installed to draw.
+	if n := inBox(f, 9.4, 46.3, 17.3, 49.1); n < 10 {
+		t.Errorf("%d border line(s) reach Austria's bounding box; its outline and the "+
+			"outlines of its neighbours meet there, so a handful means the borders went "+
+			"back to being drawn from the province file", n)
+	}
+}
+
+// TestTheEmbeddedLakesDecode reads the lakes.
+//
+// A lake is a filled ring, and the one that matters is the Caspian: it is the only hole
+// in the coastline file, which means that if the ring does not survive, the hole in the
+// land and the lake that should fill it are both missing and the Caspian is drawn as
+// land — the failure this file was added to end.
+func TestTheEmbeddedLakesDecode(t *testing.T) {
+	js := readAsset(t, Assets(), "lakes.js")
+
+	f := decodeBanded(t, js, "WORLD_LAKE", 4)
+	if f.bands[0] > 3 {
+		t.Errorf("the first lake band is zoom %d; a world view should show the lakes big "+
+			"enough to be seen on one", f.bands[0])
+	}
+	if len(f.shapes) < 300 {
+		t.Errorf("%d ring(s); the 1:50m lakes file holds 465, so this is missing the lakes "+
+			"of whole continents", len(f.shapes))
+	}
+	if f.points < 5000 {
+		t.Errorf("%d point(s) across %d ring(s); the tolerance leaves about 8 600, so the "+
+			"tail of this file is somewhere else", f.points, len(f.shapes))
+	}
+	if span := f.box[2] - f.box[0]; span < 300 {
+		t.Errorf("the lake rings span %.1f° of longitude; there are lakes on every "+
+			"continent, so this is a corner of the world", span)
+	}
+
+	// Lake Victoria, which is drawn from the world view on, and the Bodensee, which is
+	// not: two rings at two ends of the band list, so a file that lost either end fails
+	// here. The Caspian is deliberately not in this test and not in this file — it is
+	// the hole in the coastline, and the test above is where that is checked.
+	if n := inBox(f, 31.6, -3.0, 34.9, 0.5); n == 0 {
+		t.Errorf("no lake ring reaches Lake Victoria; its min_zoom of 1 puts it in the " +
+			"coarsest band, so a file without it is missing the lakes a world view draws")
+	}
+	if n := inBox(f, 9.0, 47.4, 9.8, 47.85); n == 0 {
+		t.Errorf("no lake ring reaches the Bodensee; it is one of the finer bands, so a file " +
+			"that lost its tail keeps Lake Victoria and drops this one")
+	}
+}
+
+// TestTheEmbeddedRiversDecode reads the rivers.
+//
+// Rivers are the one layer here that a world view does not want at all: Natural Earth
+// ranks them 1 to 6 and the generator keeps 3 and better, which is the Amazon and the
+// Danube and not the tributaries that reach them. A file generated at a looser cut would
+// pass every count in this test and put a hairball over Europe.
+func TestTheEmbeddedRiversDecode(t *testing.T) {
+	js := readAsset(t, Assets(), "rivers.js")
+
+	f := decodeBanded(t, js, "WORLD_RIVER", 2)
+	if f.bands[0] > 3 {
+		t.Errorf("the first river band is zoom %d; the Danube is drawn at zoom 3, so a first "+
+			"band above it means no rivers on a map anybody would call a country view", f.bands[0])
+	}
+	if len(f.shapes) < 150 {
+		t.Errorf("%d line(s) at rank 3 and better; there are 275, so this file has lost the "+
+			"largest rivers of whole continents", len(f.shapes))
+	}
+	if f.points < 3000 {
+		t.Errorf("%d point(s) across %d line(s); the tolerance leaves about 5 500, so the "+
+			"tail of this file is somewhere else", f.points, len(f.shapes))
+	}
+	if span := f.box[2] - f.box[0]; span < 300 {
+		t.Errorf("the rivers span %.1f° of longitude; they run on every continent, so this "+
+			"is a corner of the world", span)
 	}
 }
 

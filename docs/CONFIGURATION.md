@@ -366,20 +366,29 @@ than per account, and administrator-only:
 |---|---|
 | `map.tile_url` | **empty by default**, which means the map fetches nothing; when set, must be `http(s)` and must contain `{z}`, `{x}` and `{y}` (`{s}` is optional) |
 | `map.attribution` | empty by default; shown in the corner of the map when a tile URL is set |
-| `map.borders` | `on` by default (`DefaultMapBorders`); `off` draws only the coastlines and does not send the borders and names to the browser at all |
+| `map.borders` | `on` by default (`DefaultMapBorders`); `off` takes the borders and the names off the map and does not send the four files behind them to the browser at all. The coastlines and the water stay: they are the ground, and there is no switch for them |
 
-**With no tile URL the map draws its own world.** Four public-domain Natural Earth
+**With no tile URL the map draws its own world.** Seven public-domain Natural Earth
 data sets are embedded in the binary and decoded in the browser — 1:50m coastlines
-by `internal/web/assets/outline.js`, 1:10m first-order administrative borders,
-country names and province names — so a dashboard on a network with no internet
-still shows where its sites are, and nothing about it is disclosed to anybody. The
-borders and the names arrive with the zoom, in the bands Natural Earth itself puts
-them in: country outlines and names at a world view, provinces from about zoom 5 and
-their names from about zoom 7. `map.borders` is the switch, and it does not merely
-stop the drawing — with it off the two data files that carry the borders and the
-names are never fetched. The data is deliberately coarse: the 1:50m coastlines are
-honest to about zoom 6 and are straight lines between far-apart points in a city.
-Entering a tile URL is what that field is for.
+by `internal/web/assets/outline.js`, 1:50m country borders, 1:10m first-order
+administrative borders, 1:50m lakes, 1:50m large rivers, country names and province
+names — so a dashboard on a network with no internet still shows where its sites
+are, and nothing about it is disclosed to anybody. The layers are stacked in that
+order, and the stacking is the design: the coastlines first, then the water inside
+them, then the country borders, then the provinces, then any tiles you configured,
+then the names, then the pins. A lake is filled and a river is a line, which is the
+whole difference between water and a border.
+
+Everything but the coastlines arrives with the zoom, in the bands Natural Earth
+itself puts its data in: the country borders and their names at a world view, the
+provinces and their names from about zoom 5, the finer province bands and the rivers
+after that. `map.borders` is the switch, and it covers the two border files and the
+two name files together — turning it off does not merely stop the drawing, it stops
+the fetch, so it costs the operator nothing. The water is not behind it: a country
+whose lakes and rivers vanished when somebody turned the borders off would be a map
+that drew a different world without being asked to. The data is deliberately coarse:
+the 1:50m coastlines are honest to about zoom 6 and are straight lines between
+far-apart points in a city. Entering a tile URL is what that field is for.
 
 **With a tile URL the browser fetches the tiles directly**, so that server sees the
 viewer's address and roughly where they are looking; the daemon never proxies them.
@@ -393,23 +402,30 @@ policy automatically, which is what lets the tiles load at all — see `SECURITY
 
 ### Regenerating the map data
 
-`internal/web/assets/world.js`, `borders.js`, `labels.js` and `regions.js` are
-generated and committed. To rebuild all four:
+`internal/web/assets/world.js`, `countries.js`, `borders.js`, `lakes.js`,
+`rivers.js`, `labels.js` and `regions.js` are generated and committed. To rebuild
+all seven:
 
 ```sh
 curl -LO https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_50m_land.geojson
+curl -LO https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_50m_admin_0_boundary_lines_land.geojson
 curl -LO https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_admin_1_states_provinces_lines.geojson
+curl -LO https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_50m_lakes.geojson
+curl -LO https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_50m_rivers_lake_centerlines.geojson
 curl -LO https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_admin_0_countries.geojson
 curl -LO https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_admin_1_label_points.geojson
 
-go run ./cmd/worldgen -kind land    -in ne_50m_land.geojson                              -out internal/web/assets/world.js
-go run ./cmd/worldgen -kind borders -in ne_10m_admin_1_states_provinces_lines.geojson    -out internal/web/assets/borders.js
-go run ./cmd/worldgen -kind labels  -in ne_110m_admin_0_countries.geojson                -out internal/web/assets/labels.js
-go run ./cmd/worldgen -kind regions -in ne_10m_admin_1_label_points.geojson              -out internal/web/assets/regions.js
+go run ./cmd/worldgen -kind land      -in ne_50m_land.geojson                            -out internal/web/assets/world.js
+go run ./cmd/worldgen -kind countries -in ne_50m_admin_0_boundary_lines_land.geojson     -out internal/web/assets/countries.js
+go run ./cmd/worldgen -kind borders   -in ne_10m_admin_1_states_provinces_lines.geojson  -out internal/web/assets/borders.js
+go run ./cmd/worldgen -kind lakes     -in ne_50m_lakes.geojson                           -out internal/web/assets/lakes.js
+go run ./cmd/worldgen -kind rivers    -in ne_50m_rivers_lake_centerlines.geojson         -out internal/web/assets/rivers.js
+go run ./cmd/worldgen -kind labels    -in ne_110m_admin_0_countries.geojson              -out internal/web/assets/labels.js
+go run ./cmd/worldgen -kind regions   -in ne_10m_admin_1_label_points.geojson            -out internal/web/assets/regions.js
 ```
 
 `-kind` picks the reader — closed rings, open lines, or named points — so one
-program produces all four files. `-out` is required for every kind except `land`,
+program produces all seven files. `-out` is required for every kind except `land`,
 whose default is the coastline: an accidental run that wrote provinces over
 `world.js` would be a map that lost its land. `cmd/worldgen` fetches nothing
 itself. It validates the shape of what it reads, simplifies (Douglas-Peucker,
@@ -420,10 +436,10 @@ tolerance and the point counts — so a file in the repository can be checked ag
 the data it came from. `-tol` trades size for detail, and it is written into the
 header so the two cannot drift apart. The rings are simplified in degrees, which
 over-simplifies longitude near the poles; the Arctic is coarse either way. The
-borders are grouped into their zoom bands by Natural Earth's own `MIN_ZOOM` rather
-than by a threshold of ours, and the bands are exported with them, so the browser
-shows exactly what the data says belongs at that zoom. Every file is written
-deterministically: same input, same bytes.
+borders, the lakes and the rivers are grouped into their zoom bands by Natural
+Earth's own `MIN_ZOOM` rather than by a threshold of ours, and the bands are
+exported with them, so the browser shows exactly what the data says belongs at that
+zoom. Every file is written deterministically: same input, same bytes.
 
 ## Validation
 

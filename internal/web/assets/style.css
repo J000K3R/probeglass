@@ -51,6 +51,13 @@
      thing on the map — they are the only part of it that means anything. */
   --map-border: #55697f;
   --map-label: #c7d4e4;
+  /* A country border is the brighter of the two border colours: it is where a
+     country ends, and the province line that meets it is where a district does.
+     Water is one colour for the lakes and the rivers both — it is the same water,
+     and a lake whose colour did not match the river running into it would be a
+     lake somebody had drawn by hand. */
+  --map-country: #8399b0;
+  --map-water: #2b4257;
 
   --radius: 12px;
   --radius-sm: 8px;
@@ -99,6 +106,8 @@
     --map-coast: #afc0d4;
     --map-border: #8fa4bd;
     --map-label: #33415a;
+    --map-country: #657c9b;
+    --map-water: #b9cfe4;
   }
 
   :root[data-theme='auto'][data-accent='azure'] { --accent: #2563eb; }
@@ -135,6 +144,8 @@
   --map-coast: #afc0d4;
   --map-border: #8fa4bd;
   --map-label: #33415a;
+  --map-country: #657c9b;
+  --map-water: #b9cfe4;
 }
 
 :root[data-theme='light'][data-accent='azure'] { --accent: #2563eb; }
@@ -2013,12 +2024,24 @@ label.field.check > span { color: var(--text); font-size: 0.88rem; }
 .map-outline path { fill: var(--map-land); stroke: var(--map-coast);
   stroke-width: 1; stroke-linejoin: round; }
 
-/* Borders are a layer of their own, over the coast and under the tiles. `fill: none`
-   is not decoration: a border line does not close, and an open path with a fill
-   paints the shape its ends imply — a black half of Asia. */
-.map-borders { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-.map-borders path { fill: none; stroke: var(--map-border);
+/* The water, over the land and under the borders. A lake is a filled ring and a river
+   is a stroked line, both in --map-water: there is one colour for water on this map.
+   The fills carry no stroke of their own, because the ring they fill is already the
+   shape the coastline layer strokes where the land has a hole in it. */
+.map-water { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.map-water path.k-lake { fill: var(--map-water); stroke: none; }
+.map-water path.k-river { fill: none; stroke: var(--map-water);
   stroke-width: 1; stroke-linejoin: round; stroke-linecap: round; }
+
+/* Borders are a layer of their own, over the coast and the water and under the tiles.
+   `fill: none` is not decoration: a border line does not close, and an open path with
+   a fill paints the shape its ends imply — a black half of Asia. The two classes are
+   the two files: the countries brighter than the provinces they contain. */
+.map-borders { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.map-borders path { fill: none; stroke-width: 1;
+  stroke-linejoin: round; stroke-linecap: round; }
+.map-borders path.k-country { stroke: var(--map-country); }
+.map-borders path.k-province { stroke: var(--map-border); }
 
 .map-tiles, .map-markers { position: absolute; inset: 0; }
 

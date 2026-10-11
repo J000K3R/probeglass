@@ -3,25 +3,33 @@
 // The dashboard ships a slippy map with no mapping library and, since the tile
 // servers stopped being usable by anybody but their own websites, no tiles either.
 // What it draws instead is this: the world's coastlines, its country and
-// first-order administrative borders, and the names of the places on it — all from
-// files small enough to embed in the binary. The map is still a real map: places
-// land where they belong, a border is where the border is, and the graticule
-// underneath is honest. It simply has nothing on it that somebody else's server had
-// to be asked for.
+// first-order administrative borders, its lakes and its largest rivers, and the names
+// of the places on it — all from files small enough to embed in the binary. The map is
+// still a real map: places land where they belong, a border is where the border is, and
+// the graticule underneath is honest. It simply has nothing on it that somebody else's
+// server had to be asked for.
 //
 // It reads a file and writes a file, once per dataset — the kind of thing being
 // generated decides the parser, the encoding and the header:
 //
-//	kind      reads                                     writes
-//	land      ne_50m_land.geojson                        world.js
-//	borders   ne_10m_admin_1_states_provinces_lines      borders.js
-//	labels    ne_110m_admin_0_countries                  labels.js
-//	regions   ne_10m_admin_1_label_points                regions.js
+//	kind       reads                                    writes
+//	land       ne_50m_land.geojson                       world.js
+//	countries  ne_50m_admin_0_boundary_lines_land        countries.js
+//	borders    ne_10m_admin_1_states_provinces_lines     borders.js
+//	lakes      ne_50m_lakes                              lakes.js
+//	rivers     ne_50m_rivers_lake_centerlines            rivers.js
+//	labels     ne_110m_admin_0_countries                 labels.js
+//	regions    ne_10m_admin_1_label_points               regions.js
+//
+// The four banded kinds — countries, borders, lakes, rivers — write the same stream
+// shape: one group per zoom band, each self-delimiting. That is not a coincidence to
+// be tidied away, it is why one reader in the browser can walk any of them, so the
+// grouping lives in one place here (see groupBands).
 //
 // It is the only thing in this repository that reads something nobody committed. So
 // the output carries everything needed to reproduce it: the source URL, the checksum
 // of the input, the command line, and the licence. Fetching the input is not this
-// program's business — it is four curls in docs/CONFIGURATION.md, so that regenerating
+// program's business — it is seven curls in docs/CONFIGURATION.md, so that regenerating
 // a file is a thing a person can actually do rather than a thing this program would
 // have to be trusted about.
 //
@@ -45,9 +53,12 @@
 // cut up:
 //
 //	land            a ring count, then per ring: a point count, then the points
-//	borders         one such stream per zoom band, concatenated. Each is
-//	                self-delimiting — it begins with its own line count — so a reader
-//	                walks them in order and never needs an offset into the file
+//	countries,      one such stream per zoom band, concatenated. Each is
+//	borders, lakes, self-delimiting — it begins with its own shape count — so a
+//	rivers          reader walks them in order and never needs an offset into the
+//	                file. A band holds rings for the two surface kinds and lines for
+//	                the two linear ones, and the reader does not care which: the
+//	                count, then the points, band after band
 //	labels, regions a group count, then per group: the zoom, the rank, a label count,
 //	                then the labels as longitude and latitude only. Grouping is what
 //	                makes the rank and the zoom nearly free: consecutive labels of
@@ -56,9 +67,9 @@
 // In every stream the first point is absolute and every other is a delta from the one
 // before it, so a reader accumulates from zero and has no special case to forget. A
 // ring in land.js is its own chain — each ring starts absolute, so one dropped or
-// reordered ring cannot shift the rest. In borders.js each line is. In labels.js and
-// regions.js the chain runs once through the whole stream, groups and all, because a
-// label is a point and there is nothing to reorder around it.
+// reordered ring cannot shift the rest. In the four banded files each shape is. In
+// labels.js and regions.js the chain runs once through the whole stream, groups and
+// all, because a label is a point and there is nothing to reorder around it.
 //
 // The names are not in that alphabet. They are a plain JSON array of strings, written
 // by encoding/json — text is not something to invent an encoding for, and UTF-8 in a
@@ -86,7 +97,7 @@ import (
 	"strings"
 )
 
-// The command line, one flag set for all four kinds. The defaults that matter differ
+// The command line, one flag set for all seven kinds. The defaults that matter differ
 // per kind — a coastline and a border are not simplified the same way, and a ring is
 // not a line — so they are applied after parsing, from the kind, and only to the flags
 // nobody set.
@@ -97,14 +108,37 @@ func main() {
 	}
 }
 
+// The kinds, in the order the header table lists them. One list rather than three
+// copies of it, because a kind that the switch accepts but the -out table does not know
+// would write its output to the empty path, and a kind the help does not list cannot be
+// discovered at all.
+const (
+	kindLand      = "land"
+	kindCountries = "countries"
+	kindBorders   = "borders"
+	kindLakes     = "lakes"
+	kindRivers    = "rivers"
+	kindLabels    = "labels"
+	kindRegions   = "regions"
+)
+
+// countryKinds are the two kinds whose source carries a country code and which
+// therefore have a -only to honour. The other files have none: a border line between
+// two countries is filed under neither, and a river runs through several. -only with
+// one of those kinds is refused rather than ignored — see run().
+func hasCountryCode(kind string) bool {
+	return kind == kindBorders || kind == kindLabels || kind == kindRegions
+}
+
 func run() error {
-	kind := flag.String("kind", "land", "what to generate: land, borders, labels or regions")
+	kind := flag.String("kind", kindLand, "what to generate: land, countries, borders, lakes, rivers, labels or regions")
 	in := flag.String("in", "", "Natural Earth GeoJSON file to read (see docs/CONFIGURATION.md for where to get it)")
 	out := flag.String("out", "", "file to write; the default is the asset belonging to -kind")
 	tol := flag.Float64("tol", 0, "Douglas-Peucker tolerance in degrees; 0 means the default for -kind")
 	minPoints := flag.Int("min-points", 0, "drop lines left with fewer points than this after simplifying; 0 means the default for -kind")
-	only := flag.String("only", "", "keep only these countries (comma-separated ADM0_A3 codes); empty keeps all of them")
-	maxRank := flag.Int("max-rank", 0, "labels, regions: drop names ranked less important than this; 0 means no limit")
+	only := flag.String("only", "", "keep only these countries (comma-separated ADM0_A3 codes); empty keeps all of them. Not every -kind has country codes in its source")
+	maxRank := flag.Int("max-rank", 0, "labels, regions: drop names ranked less important than this; rivers: drop rivers ranked less important than this; unset means the default for -kind, and 0 means no limit")
+	class := flag.String("class", "", "countries, borders: the one FEATURECLA to draw; unset means the default for -kind")
 	flag.Parse()
 
 	if *in == "" {
@@ -135,28 +169,58 @@ func run() error {
 	// overwrote the coastline with whatever it did generate.
 	if *out == "" {
 		asset, ok := map[string]string{
-			"land": "world.js", "borders": "borders.js",
-			"labels": "labels.js", "regions": "regions.js",
+			kindLand: "world.js", kindCountries: "countries.js", kindBorders: "borders.js",
+			kindLakes: "lakes.js", kindRivers: "rivers.js",
+			kindLabels: "labels.js", kindRegions: "regions.js",
 		}[*kind]
 		if !ok {
-			return fmt.Errorf("-kind %q is not one of land, borders, labels, regions", *kind)
+			return fmt.Errorf("-kind %q is not one of %s", *kind, strings.Join(kinds(), ", "))
 		}
 		*out = filepath.Join("internal", "web", "assets", asset)
+	}
+
+	// -only names a country, and three of the seven sources have no country in them.
+	// Refusing it is the point: an ignored filter would write a file with nothing in
+	// it, which on the dashboard is a map with no rivers on it — a thing that looks
+	// exactly like a dataset that has no rivers in it, and so is a thing nobody can
+	// debug.
+	if *only != "" && !hasCountryCode(*kind) {
+		return fmt.Errorf("-kind %s reads a file with no country code in it: -only cannot be used with it", *kind)
 	}
 
 	filter := newCountryFilter(*only)
 
 	switch *kind {
-	case "land":
+	case kindLand:
 		return runLand(name, sum, *in, *out, defaulted("tol", *tol, 0.02), defaultInt(given, "min-points", *minPoints, 4), source)
-	case "borders":
-		return runBorders(name, sum, *in, *out, defaulted("tol", *tol, 0.02), defaultInt(given, "min-points", *minPoints, 2), filter, source)
-	case "labels":
+	case kindCountries:
+		code := *class
+		if !given["class"] {
+			code = countryClass
+		}
+		return runCountries(name, sum, *in, *out, defaulted("tol", *tol, 0.02), defaultInt(given, "min-points", *minPoints, 2), code, source)
+	case kindBorders:
+		code := *class
+		if !given["class"] {
+			code = borderClass
+		}
+		return runBorders(name, sum, *in, *out, defaulted("tol", *tol, 0.02), defaultInt(given, "min-points", *minPoints, 2), code, filter, source)
+	case kindLakes:
+		return runLakes(name, sum, *in, *out, defaulted("tol", *tol, 0.02), defaultInt(given, "min-points", *minPoints, 4), source)
+	case kindRivers:
+		return runRivers(name, sum, *in, *out, defaulted("tol", *tol, 0.02), defaultInt(given, "min-points", *minPoints, 2), defaultInt(given, "max-rank", *maxRank, maxRiverRank), source)
+	case kindLabels:
 		return runLabels(name, sum, *in, *out, filter, *maxRank, source)
-	case "regions":
+	case kindRegions:
 		return runRegions(name, sum, *in, *out, filter, *maxRank, source)
 	}
-	return fmt.Errorf("-kind %q is not one of land, borders, labels, regions", *kind)
+	return fmt.Errorf("-kind %q is not one of %s", *kind, strings.Join(kinds(), ", "))
+}
+
+// kinds is the list the help and the error messages print, in the order of the table
+// in the package comment.
+func kinds() []string {
+	return []string{kindLand, kindCountries, kindBorders, kindLakes, kindRivers, kindLabels, kindRegions}
 }
 
 func defaultInt(given map[string]bool, name string, value, fallback int) int {
@@ -167,10 +231,23 @@ func defaultInt(given map[string]bool, name string, value, fallback int) int {
 }
 
 // runLand writes the coastline.
+//
+// Every ring of every polygon comes out, holes included. ne_50m_land has exactly one
+// hole — the Caspian — and while this kept the outer rings alone the Caspian was drawn
+// as land. Nothing in the browser had to change to fix it: outline.js already fills with
+// fill-rule="evenodd", so a ring nested inside another cuts its own hole out of the fill.
 func runLand(name, sum, in, out string, tol float64, minPoints int, source []byte) error {
-	rings, err := parseLand(source)
+	parsed, err := parsePolygons(source)
 	if err != nil {
 		return fmt.Errorf("%s: %w", in, err)
+	}
+	rings := make([][][2]float64, 0, len(parsed))
+	holePoints := 0
+	for _, ring := range parsed {
+		if ring.hole {
+			holePoints += len(ring.points)
+		}
+		rings = append(rings, ring.points)
 	}
 	before := countPoints(rings)
 
@@ -204,19 +281,98 @@ func runLand(name, sum, in, out string, tol float64, minPoints int, source []byt
 // Tolerance: %g degrees (Douglas-Peucker), -min-points %d
 //            %d of the %d points in the source, %.0f%% kept.
 //            %s
+// Rings:     every ring of every polygon, holes included, drawn with
+//            fill-rule="evenodd" so a ring inside another is a hole in it. The source
+//            has one such hole, the Caspian, %d point(s) of it.
 //
-// The borders and the names are next to this file, from the same generator and with
-// the same kind of header: borders.js, labels.js, regions.js. See
-// docs/CONFIGURATION.md for where the input comes from.
+// The borders, the water and the names are next to this file, from the same generator
+// and with the same kind of header: countries.js, borders.js, lakes.js, rivers.js,
+// labels.js, regions.js. See docs/CONFIGURATION.md for where the input comes from.
 
 export const WORLD_RINGS = %d;
 export const WORLD_SCALE = 1000;
 export const WORLD_DATA = '%s';
 `, provenance(landSource, name, sum), tol, minPoints, enc.points, before,
-		100*float64(enc.points)/float64(before), sharpness(tol), len(kept), enc.data())
+		100*float64(enc.points)/float64(before), sharpness(tol), holePoints, len(kept), enc.data())
 
 	return write(out, body, fmt.Sprintf("%s: %d ring(s), %d point(s) in, %d out, %.1f%% kept",
 		in, len(kept), before, enc.points, 100*float64(enc.points)/float64(before)))
+}
+
+// banded is shapes filed by the zoom band their author drew them for. All four banded
+// kinds produce one of these, which is why the grouping and the encoding are written
+// once: a reader in the browser walks a band stream without having to know whether the
+// shapes in it are rings or lines.
+type banded struct {
+	byBand map[int][][][2]float64
+	bands  []int // in band order, which is the order the reader walks them
+	points int   // points kept, after simplifying
+	kept   int   // shapes kept
+}
+
+// groupBands simplifies every shape and files it under the band its own zoom names.
+//
+// The band is the whole design of these four files. Natural Earth gives every line, lake
+// and river a min_zoom — the zoom its author drew it for — and drawing all of them at
+// every zoom would put the detail of a city map on a view of Europe. So a band holds the
+// shapes whose zoom rounds up into it, and the map shows band b when it is at zoom b or
+// deeper. That rounding is worth naming: a lake at min_zoom 4.7 is in band 5, and ceil is
+// the one rule that reads a 2.0, a 2.1 and a 5.6 the same way.
+//
+// The filter is a country filter and most kinds have no country in their source; an
+// empty filter, which is what those kinds pass, keeps everything.
+func groupBands(shapes []rawShape, tol float64, minPoints int, filter countryFilter) banded {
+	out := banded{byBand: map[int][][][2]float64{}}
+	for _, shape := range shapes {
+		if !filter.keep(shape.country) {
+			continue
+		}
+		simplified := simplify(shape.points, tol)
+		if len(simplified) < minPoints {
+			continue
+		}
+		band := int(math.Ceil(shape.minZoom))
+		out.byBand[band] = append(out.byBand[band], simplified)
+		out.points += len(simplified)
+		out.kept++
+	}
+	for band := range out.byBand {
+		out.bands = append(out.bands, band)
+	}
+	sort.Ints(out.bands)
+	return out
+}
+
+// encode writes one self-delimiting stream per band, in band order, and returns the
+// stream together with the table of what each band holds.
+//
+// The table is not decoration. It is the only place a reader of one of these files can
+// see which bands exist and what each one costs, and that is the question to ask when a
+// world view looks slow: the cost of a zoom is the size of the bands up to it.
+func (b banded) encode(noun string) (data string, table []string) {
+	enc := &encoder{}
+	table = make([]string, 0, len(b.bands))
+	for _, band := range b.bands {
+		shapes := b.byBand[band]
+		enc.varint(uint64(len(shapes)))
+		bandPoints := 0
+		for _, shape := range shapes {
+			enc.line(shape)
+			bandPoints += len(shape)
+		}
+		table = append(table, fmt.Sprintf("//              zoom %-3d %5d %s(s), %6d point(s)",
+			band, len(shapes), noun, bandPoints))
+	}
+	return enc.data(), table
+}
+
+// zooms renders the band list as the body of the JS array a header exports.
+func (b banded) zooms() string {
+	list := make([]string, 0, len(b.bands))
+	for _, band := range b.bands {
+		list = append(list, fmt.Sprint(band))
+	}
+	return strings.Join(list, ", ")
 }
 
 // runBorders writes the first-order administrative borders, grouped into the zoom
@@ -228,57 +384,19 @@ export const WORLD_DATA = '%s';
 // whose MIN_ZOOM is that band or less, and the map shows band b when it is at zoom b
 // or deeper: at zoom 3 it draws the two bands that belong there and not the other
 // seven, which is why a world view costs 13 KB of path where the whole file is 600.
-func runBorders(name, sum, in, out string, tol float64, minPoints int, filter countryFilter, source []byte) error {
-	lines, classLines, fileLines, err := parseLines(source)
+func runBorders(name, sum, in, out string, tol float64, minPoints int, class string, filter countryFilter, source []byte) error {
+	lines, classes, err := parseLines(source, class, "the admin-1 states-and-provinces line file")
 	if err != nil {
 		return fmt.Errorf("%s: %w", in, err)
 	}
+	classLines, fileLines := classes[class], classTotal(classes)
 
-	byBand := map[int][][][2]float64{}
-	points, kept := 0, 0
-	for _, line := range lines {
-		if !filter.keep(line.country) {
-			continue
-		}
-		simplified := simplify(line.points, tol)
-		if len(simplified) < minPoints {
-			continue
-		}
-		band := int(math.Ceil(line.minZoom))
-		byBand[band] = append(byBand[band], simplified)
-		points += len(simplified)
-		kept++
+	b := groupBands(lines, tol, minPoints, filter)
+	if b.kept == 0 {
+		return fmt.Errorf("%s: no %q line survived -only and -min-points %d; is this the "+
+			"admin-1 line file, and is -only a real country code?", in, class, minPoints)
 	}
-
-	bands := make([]int, 0, len(byBand))
-	for band := range byBand {
-		bands = append(bands, band)
-	}
-	sort.Ints(bands)
-	if len(bands) == 0 {
-		return fmt.Errorf("%s: no border survived -only and -min-points %d; is this the "+
-			"admin-1 line file, and is -only a real country code?", in, minPoints)
-	}
-
-	// One stream per band, concatenated in band order. Each begins with its own line
-	// count, so the reader walks them in order and needs no offsets.
-	enc := &encoder{}
-	table := make([]string, 0, len(bands))
-	for _, band := range bands {
-		bandLines := byBand[band]
-		enc.varint(uint64(len(bandLines)))
-		bandPoints := 0
-		for _, line := range bandLines {
-			enc.line(line)
-			bandPoints += len(line)
-		}
-		table = append(table, fmt.Sprintf("//              zoom %-3d %5d line(s), %6d point(s)",
-			band, len(bandLines), bandPoints))
-	}
-	zoomList := make([]string, 0, len(bands))
-	for _, band := range bands {
-		zoomList = append(zoomList, fmt.Sprint(band))
-	}
+	data, table := b.encode("line")
 
 	body := fmt.Sprintf(`// The world's first-order administrative borders — states, provinces, German
 // Bundesländer and everything else at that level — for the map to draw when no tile
@@ -290,7 +408,7 @@ func runBorders(name, sum, in, out string, tol float64, minPoints int, filter co
 //	go run ./cmd/worldgen -kind borders -in <the file below> -out internal/web/assets/borders.js
 //
 %s
-// Filter:    FEATURECLA == "Admin-1 boundary". The source holds %d lines and %d of them
+// Filter:    FEATURECLA == "%s". The source holds %d lines and %d of them
 //            are that class; the rest are "Admin-1 region boundary", "Admin-1
 //            statistical boundary" and "Admin-1 statistical meta bounds", which are
 //            further subdivisions of the same ground. Drawing those too would put a
@@ -298,7 +416,7 @@ func runBorders(name, sum, in, out string, tol float64, minPoints int, filter co
 // Tolerance: %g degrees (Douglas-Peucker), -min-points %d
 //            %s
 //            A line is not a ring: a border that simplifies to two points is still a
-//            border, which is why the floor is 2 here and 4 for the coastline. Drop
+//            border, which is why the floor is 2 here and 4 for a ring. Drop
 //            straight borders and Germany keeps 7%% of its border length, Switzerland
 //            2%% — the shapes that vanish are the ones that are actually straight.
 // Bands:     Natural Earth gives every line a MIN_ZOOM, the zoom its author drew it
@@ -308,16 +426,264 @@ func runBorders(name, sum, in, out string, tol float64, minPoints int, filter co
 //            zoom they were drawn for, and none of the finer ones.
 %s
 //
-// At a world view this draws about 13 KB of path; the whole file is worth having for
-// the deep zooms. The setting that turns this layer off is Settings → appearance.
+// These are the borders inside countries. The borders between them are countries.js,
+// which is the file whose absence left Austria missing from the map. At a world view
+// this layer draws about 13 KB of path; the whole file is worth having for the deep
+// zooms. The setting that turns this layer off is Settings → appearance.
 
 export const WORLD_BORDER_BANDS = [%s];
 export const WORLD_BORDER_DATA = '%s';
-`, provenance(borderSource, name, sum), fileLines, classLines, tol, minPoints, sharpness(tol),
-		strings.Join(table, "\n"), strings.Join(zoomList, ", "), enc.data())
+`, provenance(borderSource, name, sum), class, fileLines, classLines, tol, minPoints, sharpness(tol),
+		strings.Join(table, "\n"), b.zooms(), data)
 
 	return write(out, body, fmt.Sprintf("%s: %d of %d line(s) in the source class, %d of %d in all, %d point(s), band(s) %v",
-		in, kept, classLines, kept, fileLines, points, bands))
+		in, b.kept, classLines, b.kept, fileLines, b.points, b.bands))
+}
+
+// runCountries writes the international borders: the outlines of the countries
+// themselves, as opposed to the borders between the parts inside one.
+//
+// This is the file whose absence the dashboard's map was showing. The province layer
+// comes from ne_10m_admin_1_states_provinces_lines, which holds the boundaries between
+// first-order areas and never a national outline, so the map drew Austria's Bundesländer
+// and no Austria. Measured on that source: 8 038 of its lines are the class the borders
+// kind keeps, 443 of them fall inside Austria's bounding box — and not one of those 443
+// is Austria's own border.
+func runCountries(name, sum, in, out string, tol float64, minPoints int, class string, source []byte) error {
+	lines, classes, err := parseLines(source, class, "the 1:50m admin-0 boundary line file")
+	if err != nil {
+		return fmt.Errorf("%s: %w", in, err)
+	}
+	classLines, fileLines := classes[class], classTotal(classes)
+
+	// No filter: this file has no country code to filter on. It carries a NAME and a
+	// BRK_A3, and a break code names the pair of countries a line separates rather than
+	// one of them, so -only is refused for this kind in run() rather than honoured here
+	// in a way that would mean something else than it does everywhere else.
+	b := groupBands(lines, tol, minPoints, countryFilter{})
+	if b.kept == 0 {
+		return fmt.Errorf("%s: no %q line survived -min-points %d; is this the 1:50m "+
+			"admin-0 boundary line file?", in, class, minPoints)
+	}
+	data, table := b.encode("line")
+
+	body := fmt.Sprintf(`// The world's international borders — the outlines of the countries themselves — for
+// the map to draw when no tile server is configured.
+//
+// Generated by cmd/worldgen. Do not edit by hand — edit the generator, or the
+// tolerance, and run it again:
+//
+//	go run ./cmd/worldgen -kind countries -in <the file below> -out internal/web/assets/countries.js
+//
+%s
+// Filter:    FEATURECLA == "%s".
+//            The source holds %d lines; %d of them are that class.
+//            The other %d are the ones Natural Earth will not call settled, and they
+//            are named here rather than drawn:
+%s
+//            A disputed or indefinite frontier drawn as a border is a map taking a
+//            side, and this map has no side to take.
+// Tolerance: %g degrees (Douglas-Peucker), -min-points %d
+//            %s
+//            The same tolerance as the coastline, because this is the other half of
+//            the same drawing: a coast and the border meeting it have to agree, and
+//            they agree by being simplified the same way.
+// Bands:     MIN_ZOOM, as in borders.js, and read the same way: WORLD_COUNTRY_BANDS
+//            lists the bands in data order and a map at zoom z draws every band whose
+//            number is z or less.
+%s
+//
+// borders.js is the layer inside these lines, lakes.js and rivers.js the water under
+// them, and labels.js the names on them. One thing this file is not: it is not a
+// polygon layer. A country here is the lines around it, which is why the map draws it as
+// a border and not as a fill. See docs/CONFIGURATION.md for where the input comes from.
+
+export const WORLD_COUNTRY_BANDS = [%s];
+export const WORLD_COUNTRY_DATA = '%s';
+`, provenance(countriesSource, name, sum), class, fileLines, classLines, fileLines-classLines,
+		fold("//            ", classCounts(classes, class)), tol, minPoints, sharpness(tol),
+		strings.Join(table, "\n"), b.zooms(), data)
+
+	return write(out, body, fmt.Sprintf("%s: %d of %d line(s) in the source class, %d of %d in all, %d point(s), band(s) %v",
+		in, b.kept, classLines, b.kept, fileLines, b.points, b.bands))
+}
+
+// runLakes writes the lakes, filled, banded by the zoom each was drawn for.
+func runLakes(name, sum, in, out string, tol float64, minPoints int, source []byte) error {
+	shapes, areas, err := parseLakeShapes(source)
+	if err != nil {
+		return fmt.Errorf("%s: %w", in, err)
+	}
+	b := groupBands(shapes, tol, minPoints, countryFilter{})
+	if b.kept == 0 {
+		return fmt.Errorf("%s: not one lake survived -min-points %d; is this the 1:50m lakes file?",
+			in, minPoints)
+	}
+	data, table := b.encode("ring")
+
+	body := fmt.Sprintf(`// The world's lakes, as filled rings, for the map to draw when no tile server is
+// configured.
+//
+// Generated by cmd/worldgen. Do not edit by hand — edit the generator, or the
+// tolerance, and run it again:
+//
+//	go run ./cmd/worldgen -kind lakes -in <the file below> -out internal/web/assets/lakes.js
+//
+%s
+// Filter:    none. Every ring in the source is here: %d ring(s) in %d lake(s), which at
+//            1:50m means Lake Victoria, the Great Lakes, the Bodensee. A ring rather
+//            than a lake, because a lake with an island in it is two rings. The lakes
+//            that are missing are missing from the dataset, not from this file.
+//
+//            The Caspian is not in this file, and that is not an omission: the 1:50m
+//            lakes file does not carry it, the coastline file has a hole there instead,
+//            and a hole in a fill-rule="evenodd" fill is the sea showing through. So
+//            the Caspian is drawn by world.js and its shore is stroked by the same
+//            path that strokes every coast.
+// Tolerance: %g degrees (Douglas-Peucker), -min-points %d
+//            %s
+//            A ring, so the floor is 4 like the coastline and not 2 like a border: a
+//            lake that simplifies to three points is a triangle, and a triangle is
+//            worse than no lake.
+// Bands:     min_zoom. This file and the rivers one spell it in lower case where the two
+//            border files spell MIN_ZOOM in upper case, and both are read here as the
+//            same number. WORLD_LAKE_BANDS lists the bands in data order and a map at
+//            zoom z draws every band whose number is z or less, so a world view is the
+//            three coarsest bands — Lake Victoria, the Great Lakes, the Aral — and
+//            nothing a country map would want in it.
+%s
+//
+// The lakes are part of the basemap rather than a layer of their own: they are drawn
+// under the borders, always, and the switch in Settings → appearance turns off the
+// borders and the names, not the water. The rivers are rivers.js, next to this file.
+
+export const WORLD_LAKE_BANDS = [%s];
+export const WORLD_LAKE_DATA = '%s';
+`, provenance(lakeSource, name, sum), len(shapes), areas, tol, minPoints, sharpness(tol),
+		strings.Join(table, "\n"), b.zooms(), data)
+
+	return write(out, body, fmt.Sprintf("%s: %d of %d ring(s), %d point(s), band(s) %v",
+		in, b.kept, len(shapes), b.points, b.bands))
+}
+
+// maxRiverRank is how important a river has to be for this map to draw it.
+//
+// The source ranks rivers 1 to 6, where 1 is the Amazon and 6 is a river a country map
+// shows and a world map has no room for. Rank 3 is the cut this project chose: it holds
+// the Danube without holding every tributary that reaches it.
+const maxRiverRank = 3
+
+// runRivers writes the largest rivers, as lines.
+func runRivers(name, sum, in, out string, tol float64, minPoints, maxRank int, source []byte) error {
+	shapes, kept, total, err := parseRiverShapes(source, maxRank)
+	if err != nil {
+		return fmt.Errorf("%s: %w", in, err)
+	}
+	b := groupBands(shapes, tol, minPoints, countryFilter{})
+	if b.kept == 0 {
+		return fmt.Errorf("%s: not one river survived -max-rank %d and -min-points %d; is "+
+			"this the 1:50m rivers file?", in, maxRank, minPoints)
+	}
+	data, table := b.encode("line")
+
+	body := fmt.Sprintf(`// The world's largest rivers, as lines, for the map to draw when no tile server is
+// configured.
+//
+// Generated by cmd/worldgen. Do not edit by hand — edit the generator, or the
+// tolerance, and run it again:
+//
+//	go run ./cmd/worldgen -kind rivers -in <the file below> -out internal/web/assets/rivers.js
+//
+%s
+// Filter:    scalerank <= %d, of 6. The source holds %d line(s) and %d of them are
+//            rank %d or better. Rank 1 is the Amazon, the Nile, the Yangtze; rank 2 is
+//            the Danube; rank 3 is the Volga, the Ganges, the Niger; rank 6 is the Po
+//            or the Loire, which a country map draws and a world map does not. -max-rank
+//            moves the cut, and 0 means no cut at all.
+// Tolerance: %g degrees (Douglas-Peucker), -min-points %d
+//            %s
+//            A line, so the floor is 2, as for a border.
+// Bands:     min_zoom, lower case as in the lakes file, and read the same way as in the
+//            two border files: WORLD_RIVER_BANDS lists the bands in data order and a map
+//            at zoom z draws every band whose number is z or less. The Danube is in band
+//            3, so a world view draws band 2 alone — the largest systems on the planet,
+//            one per continent, and nothing that belongs on a country map.
+%s
+//
+// Some of these lines run through a lake — Natural Earth publishes a river interrupted
+// by a lake as a river plus a centreline — and drawing them keeps a river that crosses
+// the Bodensee from appearing to stop at its shore. They are in the water layer, under
+// the borders and the names.
+
+export const WORLD_RIVER_BANDS = [%s];
+export const WORLD_RIVER_DATA = '%s';
+`, provenance(riverSource, name, sum), maxRank, total, kept, maxRank, tol, minPoints,
+		sharpness(tol), strings.Join(table, "\n"), b.zooms(), data)
+
+	return write(out, body, fmt.Sprintf("%s: %d of %d line(s) at rank <= %d, %d point(s), band(s) %v",
+		in, b.kept, total, maxRank, b.points, b.bands))
+}
+
+// classTotal is how many lines a file holds in all, of every class, which is the number
+// a header needs to say what its filter cost rather than only what it kept.
+func classTotal(classes map[string]int) int {
+	total := 0
+	for _, n := range classes {
+		total += n
+	}
+	return total
+}
+
+// classCounts names the classes a file holds besides the one kept, largest first. It is
+// for the header, and it is a list of names rather than a count on purpose: "the other
+// 35 lines" says nothing about whether they are a second copy of the same border or the
+// world's disputed frontiers, and a reader deciding whether to trust this file needs to
+// know which.
+func classCounts(classes map[string]int, keep string) []string {
+	type entry struct {
+		name string
+		n    int
+	}
+	rest := make([]entry, 0, len(classes))
+	for name, n := range classes {
+		if name != keep {
+			rest = append(rest, entry{name, n})
+		}
+	}
+	sort.Slice(rest, func(i, j int) bool {
+		if rest[i].n != rest[j].n {
+			return rest[i].n > rest[j].n
+		}
+		return rest[i].name < rest[j].name
+	})
+	parts := make([]string, 0, len(rest))
+	for _, e := range rest {
+		parts = append(parts, fmt.Sprintf("%q %d", e.name, e.n))
+	}
+	return parts
+}
+
+// fold wraps a list onto header lines. The header of a generated file is read on a
+// terminal, and a single line naming forty source classes is a line nobody reads.
+func fold(indent string, parts []string) string {
+	const width = 78
+	var lines []string
+	line := ""
+	for _, part := range parts {
+		switch {
+		case line == "":
+			line = part
+		case len(indent)+len(line)+len(", ")+len(part) > width:
+			lines = append(lines, indent+line)
+			line = part
+		default:
+			line += ", " + part
+		}
+	}
+	if line != "" {
+		lines = append(lines, indent+line)
+	}
+	return strings.Join(lines, "\n")
 }
 
 // runLabels writes the country names.
@@ -542,16 +908,25 @@ func quantise(point [2]float64) (int64, int64) {
 	return int64(math.Round(point[0] * 1000)), int64(math.Round(point[1] * 1000))
 }
 
-// parseLand reads the rings out of a GeoJSON FeatureCollection of Polygon and
+// polygonRing is one ring of a polygon: the outline, or one of its holes. GeoJSON
+// orders them that way — the first ring is the outline, the rest of the array is the
+// holes in it — so the distinction is the array index and nothing has to be worked out
+// from the geometry.
+type polygonRing struct {
+	points [][2]float64
+	hole   bool
+}
+
+// parsePolygons reads every ring out of a GeoJSON FeatureCollection of Polygon and
 // MultiPolygon geometries.
 //
-// Holes are dropped, and that is a decision rather than an oversight. A hole in a land
-// polygon is a lake, the coarsest Natural Earth layer draws the Caspian and the Great
-// Lakes and nothing smaller, and drawing them correctly means a fill-rule that gets the
-// winding of two nested rings right — in a projection where the rings are not polygons
-// any more anyway. A lake drawn as land at zoom 3 is a lake nobody notices; a lake
-// drawn inside out is a continent-shaped hole.
-func parseLand(source []byte) ([][][2]float64, error) {
+// Every ring, holes included. A hole in this file is a lake, ne_50m_land has exactly one
+// of them — the Caspian — and until this kept the outer rings alone the Caspian was
+// drawn as land. outline.js fills with fill-rule="evenodd" and always did, so a ring
+// nested inside another cuts a hole out of the fill by itself and no browser code had to
+// change. The hole is reported rather than dropped because the header counts it: it is
+// the sort of thing a reader of a generated file should be told about.
+func parsePolygons(source []byte) ([]polygonRing, error) {
 	var doc struct {
 		Features []struct {
 			Geometry struct {
@@ -567,65 +942,195 @@ func parseLand(source []byte) ([][][2]float64, error) {
 		return nil, fmt.Errorf("no features; this wants a GeoJSON FeatureCollection, not a shapefile or a TopoJSON")
 	}
 
-	var out [][][2]float64
+	var out []polygonRing
 	for _, feature := range doc.Features {
-		switch feature.Geometry.Type {
-		case "Polygon":
-			var poly [][][2]float64
-			if err := json.Unmarshal(feature.Geometry.Coordinates, &poly); err != nil {
-				return nil, err
-			}
-			if len(poly) > 0 {
-				out = append(out, poly[0])
-			}
-		case "MultiPolygon":
-			var multi [][][][2]float64
-			if err := json.Unmarshal(feature.Geometry.Coordinates, &multi); err != nil {
-				return nil, err
-			}
-			for _, poly := range multi {
-				if len(poly) > 0 {
-					out = append(out, poly[0])
-				}
+		polys, err := polygonsOf(feature.Geometry.Type, feature.Geometry.Coordinates)
+		if err != nil {
+			return nil, err
+		}
+		for _, poly := range polys {
+			for i, ring := range poly {
+				out = append(out, polygonRing{points: ring, hole: i > 0})
 			}
 		}
 	}
 	return out, nil
 }
 
-// rawLine is one border line with the two properties the generator needs from the
-// source: the zoom its author drew it for, and which country it belongs to.
-type rawLine struct {
+// polygonsOf unrolls one feature's geometry into its polygons, each a list of rings. A
+// Polygon is one polygon, a MultiPolygon is several, which for this dataset is a
+// country with islands in it. nil for any other geometry.
+//
+// The two polygon files — the land and the lakes — share this and nothing else, because
+// they differ in the one thing a shared parser would have to be told anyway: the tag
+// the file spells its zoom with, upper case in one and lower case in the other.
+func polygonsOf(geoType string, coordinates json.RawMessage) ([][][][2]float64, error) {
+	switch geoType {
+	case "Polygon":
+		var poly [][][2]float64
+		if err := json.Unmarshal(coordinates, &poly); err != nil {
+			return nil, err
+		}
+		return [][][][2]float64{poly}, nil
+	case "MultiPolygon":
+		var multi [][][][2]float64
+		if err := json.Unmarshal(coordinates, &multi); err != nil {
+			return nil, err
+		}
+		return multi, nil
+	}
+	return nil, nil
+}
+
+// rawShape is one ring or one line, with the two properties the banded kinds need from
+// the source: the zoom its author drew it for, and which country it belongs to. One type
+// for the four of them because they are read the same way — a lake ring and a river line
+// differ in nothing the grouping can see.
+type rawShape struct {
 	points  [][2]float64
 	minZoom float64
 	country string
 }
 
-// borderClass is the one feature class kept out of the admin-1 line file.
+// parseLakeShapes reads the lakes: polygons, every ring of them, with the zoom each was
+// drawn for.
+//
+// The property names are lower case in this file — "min_zoom", where the two border
+// files write "MIN_ZOOM" — which is why this is not the same parser as the one for the
+// borders. Writing it out rather than looking the tag up without regard to case is the
+// same decision as everywhere else in this file: a lookup that matched anything would
+// decode a file whose properties changed into a zoom of zero, and the only symptom would
+// be a map that draws every lake at every zoom.
+func parseLakeShapes(source []byte) (out []rawShape, areas int, err error) {
+	var doc struct {
+		Features []struct {
+			Properties struct {
+				MinZoom float64 `json:"min_zoom"`
+			} `json:"properties"`
+			Geometry struct {
+				Type        string          `json:"type"`
+				Coordinates json.RawMessage `json:"coordinates"`
+			} `json:"geometry"`
+		} `json:"features"`
+	}
+	if err := json.Unmarshal(source, &doc); err != nil {
+		return nil, 0, err
+	}
+	if len(doc.Features) == 0 {
+		return nil, 0, fmt.Errorf("no features; this wants a GeoJSON FeatureCollection, not a shapefile or a TopoJSON")
+	}
+
+	for _, feature := range doc.Features {
+		polys, err := polygonsOf(feature.Geometry.Type, feature.Geometry.Coordinates)
+		if err != nil {
+			return nil, 0, err
+		}
+		for _, poly := range polys {
+			areas++
+			for _, ring := range poly {
+				out = append(out, rawShape{points: ring, minZoom: feature.Properties.MinZoom})
+			}
+		}
+	}
+	if len(out) == 0 {
+		return nil, 0, fmt.Errorf("not one lake has a ring; is this the 1:50m lakes file?")
+	}
+	return out, areas, nil
+}
+
+// borderClass is the feature class kept out of the admin-1 line file.
 //
 // The file's other classes — "Admin-1 region boundary", "Admin-1 statistical boundary",
 // "Admin-1 statistical meta bounds", and a fourth the dataset names with an American
 // "z" — draw the same ground a second time in a second way. Measured on the 1:10m file: 36 167 lines are
 // this class and 9 000 more are the others, and of the 194 countries in the file only
 // two have no line of this class at all.
+//
+// It is a default for -class rather than a constant the parser knows, because the
+// admin-0 file next door keeps a different class of its own and the two parsers are the
+// same code.
 const borderClass = "Admin-1 boundary"
 
-// parseLines reads the border lines, and reports both how many of them are the class
-// kept and how many lines the file holds in all, so the header can say what the filter
-// cost rather than only what it produced.
+// countryClass is the one feature class kept out of the admin-0 line file.
 //
-// The property names are upper case here where the label-point file's are lower case.
-// That is the shape Natural Earth publishes them in, and it is written out rather than
-// papered over with a case-insensitive lookup: a file whose properties stopped matching
-// would otherwise decode into empty country codes and a zoom of zero, and the only
-// thing that would say so is a map with no borders on it.
-func parseLines(source []byte) (out []rawLine, kept, total int, err error) {
+// The rest of that file is Natural Earth being careful: "Disputed (please verify)",
+// "Line of control (please verify)", "Indefinite (please verify)" and "Indeterminant
+// frontier". Drawing those as borders is a map taking a side in somebody's argument, so
+// they are counted in the header and not drawn.
+const countryClass = "International boundary (verify)"
+
+// parseLines reads the border lines, and reports how many of them are the class kept,
+// how many lines the file holds in all, and the count per class, so a header can say
+// what its filter cost and what it left out rather than only what it produced.
+//
+// One parser for the two border files. They hold the same geometry and the same property
+// names — upper case, and the country code is genuinely absent from the admin-0 file
+// rather than spelled differently, which is why -only is refused for that kind instead
+// of quietly keeping nothing.
+func parseLines(source []byte, class, wants string) (out []rawShape, classes map[string]int, err error) {
 	var doc struct {
 		Features []struct {
 			Properties struct {
 				FeatureClass string  `json:"FEATURECLA"`
 				MinZoom      float64 `json:"MIN_ZOOM"`
 				Country      string  `json:"ADM0_A3"`
+			} `json:"properties"`
+			Geometry *struct {
+				Type        string          `json:"type"`
+				Coordinates json.RawMessage `json:"coordinates"`
+			} `json:"geometry"`
+		} `json:"features"`
+	}
+	if err := json.Unmarshal(source, &doc); err != nil {
+		return nil, nil, err
+	}
+	if len(doc.Features) == 0 {
+		return nil, nil, fmt.Errorf("no features; this wants a GeoJSON FeatureCollection, not a shapefile or a TopoJSON")
+	}
+
+	classes = map[string]int{}
+	for _, feature := range doc.Features {
+		if feature.Geometry == nil {
+			continue
+		}
+		lines, err := linesOf(feature.Geometry.Type, feature.Geometry.Coordinates)
+		if err != nil {
+			return nil, nil, err
+		}
+		// Every line counts towards the file's own total, whichever class it is: the
+		// header states what share of the file a filter keeps, and a total counted
+		// after the filter could only ever say "all of them".
+		for _, line := range lines {
+			classes[feature.Properties.FeatureClass]++
+			if feature.Properties.FeatureClass != class {
+				continue
+			}
+			out = append(out, rawShape{
+				points:  line,
+				minZoom: feature.Properties.MinZoom,
+				country: feature.Properties.Country,
+			})
+		}
+	}
+	if len(out) == 0 {
+		return nil, nil, fmt.Errorf("not one feature is a %q line; is this %s?", class, wants)
+	}
+	return out, classes, nil
+}
+
+// parseRiverShapes reads the river centerlines, keeping the ones at or above the rank
+// asked for, and reports how many lines the file holds in all.
+//
+// The properties are lower case here as in the lakes file, and there is no country code:
+// a river runs through several countries, so a filter by country would be a filter that
+// means something different here than it does for a border. -only is refused for this
+// kind rather than honoured with that other meaning.
+func parseRiverShapes(source []byte, maxRank int) (out []rawShape, kept, total int, err error) {
+	var doc struct {
+		Features []struct {
+			Properties struct {
+				Scalerank int     `json:"scalerank"`
+				MinZoom   float64 `json:"min_zoom"`
 			} `json:"properties"`
 			Geometry *struct {
 				Type        string          `json:"type"`
@@ -644,42 +1149,45 @@ func parseLines(source []byte) (out []rawLine, kept, total int, err error) {
 		if feature.Geometry == nil {
 			continue
 		}
-		var lines [][][2]float64
-		switch feature.Geometry.Type {
-		case "LineString":
-			var line [][2]float64
-			if err := json.Unmarshal(feature.Geometry.Coordinates, &line); err != nil {
-				return nil, 0, 0, err
-			}
-			lines = append(lines, line)
-		case "MultiLineString":
-			var multi [][][2]float64
-			if err := json.Unmarshal(feature.Geometry.Coordinates, &multi); err != nil {
-				return nil, 0, 0, err
-			}
-			lines = multi
+		lines, err := linesOf(feature.Geometry.Type, feature.Geometry.Coordinates)
+		if err != nil {
+			return nil, 0, 0, err
 		}
-		// Every line counts towards the file's own total, whichever class it is: the
-		// header states what share of the file this keeps, and a total counted after
-		// the filter could only ever say "all of them".
 		for _, line := range lines {
 			total++
-			if feature.Properties.FeatureClass != borderClass {
+			if maxRank > 0 && feature.Properties.Scalerank > maxRank {
 				continue
 			}
 			kept++
-			out = append(out, rawLine{
-				points:  line,
-				minZoom: feature.Properties.MinZoom,
-				country: feature.Properties.Country,
-			})
+			out = append(out, rawShape{points: line, minZoom: feature.Properties.MinZoom})
 		}
 	}
 	if len(out) == 0 {
-		return nil, 0, 0, fmt.Errorf("not one feature is a %q line; is this the "+
-			"admin-1 states-and-provinces line file?", borderClass)
+		return nil, 0, 0, fmt.Errorf("not one river is rank %d or better; is this the 1:50m "+
+			"rivers-and-lake-centrelines file?", maxRank)
 	}
 	return out, kept, total, nil
+}
+
+// linesOf is the same walk as polygonsOf for the two linear kinds: a LineString is one
+// line, and a MultiLineString is several, which is what a river delta or a border a lake
+// interrupts is published as.
+func linesOf(geoType string, coordinates json.RawMessage) ([][][2]float64, error) {
+	switch geoType {
+	case "LineString":
+		var line [][2]float64
+		if err := json.Unmarshal(coordinates, &line); err != nil {
+			return nil, err
+		}
+		return [][][2]float64{line}, nil
+	case "MultiLineString":
+		var multi [][][2]float64
+		if err := json.Unmarshal(coordinates, &multi); err != nil {
+			return nil, err
+		}
+		return multi, nil
+	}
+	return nil, nil
 }
 
 // parseCountryLabels reads the country names and where they should be drawn.
@@ -967,9 +1475,21 @@ var (
 		name: "Natural Earth 1:50m land",
 		url:  "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_50m_land.geojson",
 	}
+	countriesSource = source{
+		name: "Natural Earth 1:50m admin-0 boundary lines",
+		url:  "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_50m_admin_0_boundary_lines_land.geojson",
+	}
 	borderSource = source{
 		name: "Natural Earth 1:10m admin-1 boundaries",
 		url:  "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_admin_1_states_provinces_lines.geojson",
+	}
+	lakeSource = source{
+		name: "Natural Earth 1:50m lakes",
+		url:  "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_50m_lakes.geojson",
+	}
+	riverSource = source{
+		name: "Natural Earth 1:50m rivers and lake centrelines",
+		url:  "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_50m_rivers_lake_centerlines.geojson",
 	}
 	countrySource = source{
 		name:     "Natural Earth 1:110m admin-0 countries",

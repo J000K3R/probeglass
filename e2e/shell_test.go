@@ -26,6 +26,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/chromedp/cdproto/input"
 	"github.com/chromedp/chromedp"
 )
 
@@ -1300,17 +1301,18 @@ func TestSitesReachEveryViewAndTheMapIsHonest(t *testing.T) {
 }
 
 // TestTheMapDrawsItsOwnBordersAndNames is about the half of the map that is drawn
-// from the binary rather than fetched: the country and province borders, and the names.
+// from the binary rather than fetched: the water, the country and province borders, and
+// the names.
 //
 // Three things here cannot be checked anywhere but in a browser. The first is that the
-// two layers are built at all — they arrive from modules fetched after the first draw,
-// so a page that draws coastlines and pins and never grows borders looks exactly like a
-// map with no borders in its data. The second is that the bands behave: the finer lines
-// belong to deeper zooms, so a world view must not be carrying the streets of
-// Mecklenburg, and this is checked by counting what is on screen at two zooms rather
-// than by reading the generator's output. The third is the switch: turning the layer
-// off has to leave no borders and no names, on the big map and on the little one, and
-// the map has to keep drawing itself while it does not.
+// layers are built at all — they arrive from modules fetched after the first draw, so a
+// page that draws coastlines and pins and never grows borders or lakes looks exactly
+// like a map with none of them in its data. The second is that the bands behave: the
+// finer lines belong to deeper zooms, so a world view must not be carrying the streets
+// of Mecklenburg, and this is checked by counting what is on screen at two zooms rather
+// than by reading the generator's output. The third is the switch: it covers the two
+// border files and the names, and it must not reach the water, which is basemap — a
+// country with no lakes in it is not a country with its borders turned off.
 func TestTheMapDrawsItsOwnBordersAndNames(t *testing.T) {
 	browser := findBrowser(t)
 	base := startServer(t, buildBinary(t))
@@ -1369,14 +1371,140 @@ func TestTheMapDrawsItsOwnBordersAndNames(t *testing.T) {
 			deepPaths, deepShown)
 	}
 	// A band is a path of its own, and each holds thousands of points; a path that
-	// exists with nothing in it would pass a count of paths and draw nothing.
+	// exists with nothing in it would pass a count of paths and draw nothing. The
+	// provinces are the dense file and the one this check was written for: their
+	// shallowest bands are the whole world's districts, so the shortest of their paths
+	// is thousands of points long and a short one means the band never arrived.
 	shortest := read[int](t, ctx,
-		`Math.min(...[...document.querySelectorAll('.map-borders path')].map(p => (p.getAttribute('d') || '').length))`,
-		"the shortest border band")
+		`Math.min(...[...document.querySelectorAll('.map-borders path.k-province')].map(p => (p.getAttribute('d') || '').length))`,
+		"the shortest province band")
 	if shortest < 500 {
 		capture(t, ctx, dir, "borders-empty")
-		t.Errorf("the shortest border path is %d character(s) long; the bands the map builds at "+
+		t.Errorf("the shortest province path is %d character(s) long; the bands the map builds at "+
 			"this zoom are thousands of points each, so this one is empty", shortest)
+	}
+	// The province file is the boundaries *inside* a country and holds no national
+	// outline at all — a map drawn from it alone shows a few lines over Austria and no
+	// Austria, which is exactly what was wrong before. So the two files are counted
+	// apart, and what is asked here is that the country file is one of the ones drawn.
+	countries := read[int](t, ctx,
+		`document.querySelectorAll('.map-borders path.k-country').length`,
+		"how many country bands the map built")
+	if countries == 0 {
+		capture(t, ctx, dir, "no-country-borders")
+		t.Errorf("the map built %d border band(s) and not one of them is a country band; the "+
+			"province file is the boundaries between the parts of one country, so a map drawn "+
+			"from it is a map with lines over Austria and no Austria in it", deepPaths)
+	}
+	// How much country border the map drew, rather than how long its shortest band is.
+	// The country file's bands are of very different sizes and that is the data: the
+	// shallowest holds 384 of the file's 390 borders, and the next one holds four short
+	// ones — measured at this zoom, 132 523 characters against 470. A shortest-band
+	// check written for the provinces would call that second band empty. So the total is
+	// what is asked for: a country layer that arrived with the small band and without
+	// the world's borders would pass a count of bands and be a country with no country
+	// borders in it.
+	countryChars := read[int](t, ctx,
+		`[...document.querySelectorAll('.map-borders path.k-country')].reduce((n, p) => n + (p.getAttribute('d') || '').length, 0)`,
+		"how much country border the map drew")
+	if countryChars < 20000 {
+		capture(t, ctx, dir, "countries-empty")
+		t.Errorf("the country layer is %d character(s) of path in all; the shallowest band of the "+
+			"file is the whole world's international borders, which is tens of thousands of "+
+			"characters at any zoom that shows them, so this is a country layer that arrived "+
+			"empty", countryChars)
+	}
+
+	// --- the water, which is basemap and has no switch ------------------------
+
+	lakes := read[int](t, ctx, `document.querySelectorAll('.map-water path.k-lake').length`,
+		"how many lake bands the map built")
+	rivers := read[int](t, ctx, `document.querySelectorAll('.map-water path.k-river').length`,
+		"how many river bands the map built")
+	if lakes == 0 || rivers == 0 {
+		capture(t, ctx, dir, "no-water")
+		t.Errorf("the map built %d lake band(s) and %d river band(s); the water arrives from a "+
+			"module fetched after the first draw, so a page that stops at the coast is an honest "+
+			"picture of a world with no lakes in it — which is the failure this catches",
+			lakes, rivers)
+	}
+	// A path that exists with nothing in it would pass a count of paths, so the two are
+	// read by their geometry. The band the map builds first is the largest lakes and the
+	// largest river systems on the planet, and those are hundreds of points each.
+	if n := read[int](t, ctx,
+		`((document.querySelector('.map-water path.k-lake') || {getAttribute: () => ''}).getAttribute('d') || '').length`,
+		"the length of the shallowest lake path"); n < 500 {
+		capture(t, ctx, dir, "lakes-empty")
+		t.Errorf("the shallowest lake path is %d character(s) long; the first lake band is the "+
+			"largest lakes there are, so an empty path here is a map with no lakes on it", n)
+	}
+	if n := read[int](t, ctx,
+		`((document.querySelector('.map-water path.k-river') || {getAttribute: () => ''}).getAttribute('d') || '').length`,
+		"the length of the shallowest river path"); n < 500 {
+		capture(t, ctx, dir, "rivers-empty")
+		t.Errorf("the shallowest river path is %d character(s) long; the first river band is the "+
+			"largest systems on the planet, so an empty path here is a map with no rivers on it", n)
+	}
+	// Filled or stroked is the whole difference between a lake and a border line, and it
+	// is written in a stylesheet rather than on the path, so it is read back from what
+	// the browser laid out.
+	if n := read[int](t, ctx, `(() => {
+  const lake = document.querySelector('.map-water path.k-lake');
+  const river = document.querySelector('.map-water path.k-river');
+  if (!lake || !river) return 0;
+  const l = getComputedStyle(lake), r = getComputedStyle(river);
+  return l.fill !== 'none' && l.stroke === 'none' && r.fill === 'none' && r.stroke !== 'none' ? 1 : 0;
+})()`, "whether the lakes are filled and the rivers stroked"); n != 1 {
+		capture(t, ctx, dir, "water-not-drawn-as-water")
+		t.Errorf("the lake and river paths are not drawn as a fill and a line; the lakes are filled " +
+			"rings and the rivers are open lines, and a lake drawn as an outline is a lake nobody " +
+			"can tell from a border")
+	}
+
+	// --- one drag, and every layer moves with it ------------------------------
+
+	// The map moves a drag by writing the same transform onto each of its layers,
+	// and the water is one of them. That list is written by hand in the pointer
+	// handler, so a layer that is drawn and not put into the list slides against
+	// the country it belongs to until the pointer comes up — which is exactly how
+	// the lakes and rivers spent their first afternoon, sitting still while
+	// Europe went past them. The list cannot check itself, so this does: whatever
+	// the canvas holds is dragged, and all of it has to answer with the same
+	// transform.
+	from := read[[2]float64](t, ctx, `(() => {
+  const r = document.querySelector('.map-canvas').getBoundingClientRect();
+  return [r.left + r.width / 4, r.top + r.height / 4];
+})()`, "the point the drag starts on")
+	mouse := func(kind input.DispatchMouseEventType, x, y float64, buttons int64) {
+		t.Helper()
+		if _, err := chromedp.Call(ctx, input.DispatchMouseEvent, input.DispatchMouseEventParams{
+			Type: kind, X: x, Y: y, Button: input.MouseButtonLeft, Buttons: buttons, ClickCount: 1,
+		}); err != nil {
+			t.Fatalf("moving the pointer over the map (%s): %v", kind, err)
+		}
+	}
+	mouse(input.DispatchMouseEventTypeMousePressed, from[0], from[1], 1)
+	mouse(input.DispatchMouseEventTypeMouseMoved, from[0]+160, from[1]+40, 1)
+	shifted := read[[]string](t, ctx,
+		`[...document.querySelector('.map-canvas').children].map(el => el.style.transform)`,
+		"what each layer is carrying while the pointer is down")
+	mouse(input.DispatchMouseEventTypeMouseReleased, from[0]+160, from[1]+40, 0)
+
+	if len(shifted) < 6 {
+		capture(t, ctx, dir, "map-layers-missing")
+		t.Fatalf("the map's canvas holds %d layer(s); the coastlines, the water, the borders, the "+
+			"tiles, the names and the pins are six, and a layer that is not in the canvas is not "+
+			"going to move with one either", len(shifted))
+	}
+	for i, transform := range shifted {
+		if transform != "translate(160px, 40px)" {
+			capture(t, ctx, dir, "layer-left-behind")
+			t.Errorf("layer %d of %d is carrying %q while the map is dragged; every layer in the "+
+				"canvas has to take the same transform, and one that does not is a layer that "+
+				"stands still while the world slides out from under it: %v",
+				i+1, len(shifted), transform, shifted)
+			break
+		}
 	}
 
 	// --- the names, and what they must not do --------------------------------
@@ -1462,6 +1590,17 @@ func TestTheMapDrawsItsOwnBordersAndNames(t *testing.T) {
 		t.Errorf("a world view shows no borders at all; the country borders belong on the " +
 			"shallowest band there is, which is where the map opens")
 	}
+	// And the country borders are the ones that stay there. This is the view the missing
+	// national outlines showed up in: a world map with province lines over Europe and no
+	// country in Europe.
+	if n := read[int](t, ctx,
+		`document.querySelectorAll('.map-borders path.k-country:not([hidden])').length`,
+		"how many country bands a world view shows"); n == 0 {
+		capture(t, ctx, dir, "no-countries-at-world")
+		t.Errorf("a world view shows no country borders; the country file's shallowest band is "+
+			"band 0, which belongs at every zoom there is, and %d of them are built",
+			countries)
+	}
 	if built := read[int](t, ctx, `document.querySelectorAll('.map-borders path').length`,
 		"how many bands are built"); built != deepPaths {
 		t.Errorf("zooming out changed the number of built bands from %d to %d; the bands are "+
@@ -1528,6 +1667,26 @@ func TestTheMapDrawsItsOwnBordersAndNames(t *testing.T) {
 	eventually(t, ctx, `document.querySelectorAll('.map-borders path').length === 0`,
 		"the border layer was turned off and the borders are still being drawn",
 		dir, "borders-ignoring-the-switch", 20*time.Second)
+	// The countries are asked about by name as well, although the count above covers
+	// them: they are a file of their own, and the failure worth catching is a switch
+	// that takes one of the two files and leaves the other.
+	if n := read[int](t, ctx,
+		`document.querySelectorAll('.map-borders path.k-country').length`,
+		"how many country bands survived the switch"); n != 0 {
+		capture(t, ctx, dir, "countries-ignoring-the-switch")
+		t.Errorf("%d country band(s) are still drawn with the layer off; the switch covers the "+
+			"country borders and the province borders together, and a switch that takes one "+
+			"file and leaves the other is a switch nobody can predict", n)
+	}
+	// The water is not part of that switch: it is what makes a coastline read as a
+	// coastline, and a country whose lakes and rivers vanish when the borders are
+	// turned off is a map that changed something nobody asked it to. Waited for rather
+	// than read, because it arrives from a module of its own and this map was built a
+	// moment ago.
+	eventually(t, ctx, `document.querySelectorAll('.map-water path').length > 0`,
+		"with the border layer off the map never drew any water; the lakes and rivers are "+
+			"basemap and there is no switch for them",
+		dir, "water-lost-with-borders-off", 20*time.Second)
 	if n := read[int](t, ctx, `document.querySelectorAll('.map-label').length`,
 		"how many names the map drew with the layer off"); n != 0 {
 		capture(t, ctx, dir, "names-ignoring-the-switch")
@@ -1554,6 +1713,25 @@ func TestTheMapDrawsItsOwnBordersAndNames(t *testing.T) {
 	eventually(t, ctx, `document.querySelectorAll('.map-borders path').length === 0`,
 		"a reloaded page drew borders although the layer is off",
 		dir, "borders-after-reload", 20*time.Second)
+	// The water comes first, because it is the thing on this page that is supposed to
+	// arrive: waiting for it is also what makes the page settled, and the two counts
+	// below are about what a settled page did *not* ask for. The point of them is that
+	// the saving is not allowed to have swallowed the water — a page that stops fetching
+	// the borders still fetches the lakes and rivers, because the switch is not about
+	// them.
+	eventually(t, ctx, `document.querySelectorAll('.map-water path').length > 0`,
+		"a fresh page with the border layer off never drew any water; the water is drawn by a "+
+			"module of its own, and a page that never gets that far is a map that lost its "+
+			"lakes to a setting about borders",
+		dir, "water-not-drawn-after-reload", 20*time.Second)
+	if n := read[int](t, ctx,
+		`performance.getEntriesByType('resource').filter(r => /mapwater/.test(r.name)).length`,
+		"whether a fresh page with the borders off fetched the water"); n == 0 {
+		capture(t, ctx, dir, "water-not-fetched")
+		t.Errorf("a fresh page with the border layer off drew water without ever fetching it; " +
+			"the lakes it drew came from somewhere other than the file they are supposed to " +
+			"come from")
+	}
 	if n := read[int](t, ctx,
 		`performance.getEntriesByType('resource').filter(r => /mapborders|maplabels/.test(r.name)).length`,
 		"how many of the two layer files a fresh page fetched"); n != 0 {
@@ -1587,6 +1765,15 @@ func TestTheMapDrawsItsOwnBordersAndNames(t *testing.T) {
 	// the browser's queue for a widget that would not draw them. The two halves are
 	// checked together below, on a page that was reloaded for the purpose — the picture
 	// without names, and the file that was never asked for.
+	//
+	// Onto a layout that is not the map *before* the reload, and not after it. The
+	// account remembers the map layout, and the page that comes back would mount the big
+	// map on its way in and fetch both files for a map that is switched away a moment
+	// later — and `performance` remembers a fetch whether or not the map that asked for
+	// it is still on screen. Switching first is what makes the reloaded page a page
+	// whose only map is the widget.
+	clickLayout(t, ctx, dir, "list", `.sensors-table .row`)
+
 	if err := withTimeout(ctx, func(tctx context.Context) error {
 		return chromedp.Do(tctx,
 			chromedp.Evaluate[chromedp.Void](`location.hash = '#/dashboard'`),
@@ -1608,17 +1795,22 @@ func TestTheMapDrawsItsOwnBordersAndNames(t *testing.T) {
 
 	// Reloaded before the map is asked about, for the same reason as above: this page
 	// has already fetched the names for the big map, and what is being checked is what
-	// the little one asks for on its own.
+	// the little one asks for on its own. The wait on the session first is what makes
+	// "the layout is the list" a fact rather than a race with the request that stores
+	// it.
 	if err := withTimeout(ctx, func(tctx context.Context) error {
-		return chromedp.Do(tctx, chromedp.Reload(), chromedp.WaitVisible(`#app`))
+		return chromedp.Do(tctx,
+			chromedp.Poll[chromedp.Void](
+				`fetch('/api/session').then(r => r.json())`+
+					`.then(s => ((s.ui || {}).layout === 'list'))`,
+				chromedp.WithPollingTimeout(15*time.Second)),
+			chromedp.Reload(),
+			chromedp.WaitVisible(`#app`),
+		)
 	}); err != nil {
 		capture(t, ctx, dir, "minimap-reload")
 		t.Fatalf("could not reload the dashboard: %v", err)
 	}
-	// Onto a layout that is not the map, so that the only map on the page is the
-	// widget: the account remembers the map layout, and the big map fetches both files
-	// — which would make the check below about it instead of about the header.
-	clickLayout(t, ctx, dir, "list", `.sensors-table .row`)
 
 	// The widget starts its map when its host has a size, and it is only laid out once
 	// the dashboard is the view on screen — so an empty host is a real failure and not
@@ -1630,17 +1822,18 @@ func TestTheMapDrawsItsOwnBordersAndNames(t *testing.T) {
 		dir, "minimap-empty", 25*time.Second)
 
 	// And it is a picture of somewhere. The two places this test made are on it: the
-	// tile is laid out as the page loads, which is before the summary carrying them
-	// has arrived, and a map that is built once and never told about them again would
-	// draw an empty world with a note saying so.
-	if n := read[int](t, ctx,
-		`document.querySelectorAll('[data-widget="mini-map"] .site-marker').length`,
-		"how many places the mini map drew"); n != 2 {
-		capture(t, ctx, dir, "minimap-without-sites")
-		t.Errorf("the mini map drew %d place(s); this test made two with coordinates, and a "+
-			"header that keeps an empty world while the full map shows both is the same "+
-			"dashboard disagreeing with itself", n)
-	}
+	// tile is laid out as the page loads, which is before the summary carrying them has
+	// arrived, so the first map the header builds is an empty world — a correct picture
+	// of the second before they arrive, and a rebuild away from being wrong. That
+	// rebuild is what this waits for rather than reads: a map that is built once and
+	// never told about the places again keeps the empty world, with a note saying so,
+	// and the note is the only other place the failure shows.
+	eventually(t, ctx,
+		`document.querySelectorAll('[data-widget="mini-map"] .site-marker').length === 2`,
+		"the mini map never drew the two places this test made; the tile is laid out before "+
+			"the summary carrying them arrives, and a map that is built once and never told "+
+			"about them again keeps an empty world",
+		dir, "minimap-without-sites", 25*time.Second)
 
 	if n := read[int](t, ctx,
 		`document.querySelectorAll('[data-widget="mini-map"] .map-label').length`,
@@ -1658,6 +1851,17 @@ func TestTheMapDrawsItsOwnBordersAndNames(t *testing.T) {
 		capture(t, ctx, dir, "minimap-without-borders")
 		t.Errorf("the mini map drew no borders while the setting is on; the two maps read " +
 			"the same value")
+	}
+	// And the water is on it for the same reason, only more so: there is no setting to
+	// read. A second map that draws the basemap of a different world is the same
+	// dashboard disagreeing with itself.
+	if n := read[int](t, ctx,
+		`document.querySelectorAll('[data-widget="mini-map"] .map-water path').length`,
+		"how many water bands the mini map drew"); n == 0 {
+		capture(t, ctx, dir, "minimap-without-water")
+		t.Errorf("the mini map drew no lakes or rivers; it draws the same basemap as the big " +
+			"map, and a header picture of a country with no water in it is a picture of a " +
+			"country that does not exist")
 	}
 	// And the names were not fetched for it. This is the whole point of `labels: false`
 	// reaching the import and not only the drawing: a widget that never draws a name
