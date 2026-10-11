@@ -31,7 +31,7 @@ import { esc, fmtPct, fmtLatency, fmtAgo, heartbeat } from './charts.js';
  * Paused ranks below unknown on purpose. A paused sensor is a decision somebody
  * made; a sensor that has never answered is a question nobody has answered yet.
  */
-const RANK = { down: 3, unknown: 2, paused: 1, up: 0 };
+const RANK = { down: 4, warn: 3, unknown: 2, paused: 1, up: 0 };
 
 export function worstStatus(sensors) {
   let found = 'unknown';

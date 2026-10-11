@@ -168,12 +168,14 @@ const WIDGETS = [
       const donut = C.donut([
         { value: s.up, cls: 's-ok', label: t('status.up') },
         { value: s.down, cls: 's-crit', label: t('status.down') },
+        { value: s.warn, cls: 's-warn', label: t('status.warn') },
         { value: s.unknown, cls: 's-unknown', label: t('status.unknown') },
         { value: s.paused, cls: 's-paused', label: t('status.paused') },
       ], { size: 96, thickness: 12 });
       const counts = [
         ['status.up', s.up, 's-ok'],
         ['status.down', s.down, 's-crit'],
+        ['status.warn', s.warn, 's-warn'],
         ['status.unknown', s.unknown, 's-unknown'],
         ['status.paused', s.paused, 's-paused'],
       ].filter(([, value]) => value > 0)

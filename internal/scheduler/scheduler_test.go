@@ -133,8 +133,8 @@ func TestIncidentOpensOnTheFailureThatReachesRetries(t *testing.T) {
 		if tr.incident != nil {
 			t.Fatalf("failure %d of 3: incident opened too early", i+1)
 		}
-		if tr.current == model.StatusDown {
-			t.Fatalf("failure %d of 3: status = down, want the sensor to stay neutral", i+1)
+		if tr.current != model.StatusWarn {
+			t.Fatalf("failure %d of 3: status = %q, want flaky — the retries are not used up yet", i+1, tr.current)
 		}
 	}
 
@@ -174,6 +174,44 @@ func TestRestoreKeepsAnOpenIncidentWithoutAlertingAgain(t *testing.T) {
 	}
 	if !snap.Since.Equal(down) {
 		t.Errorf("restored since = %s, want the incident start %s", snap.Since, down)
+	}
+}
+
+// A blip survives a restart as a blip.
+//
+// The failure streak read back out of the history is what makes a sensor yellow
+// — not the "unknown" a restart used to report, which is the word for a sensor
+// nothing is known about at all. And going back up from yellow announces
+// nothing, exactly as going down into yellow announced nothing.
+func TestRestoreReadsABlipAsFlaky(t *testing.T) {
+	s, st := newTestScheduler(t)
+	ctx := context.Background()
+	c := newTestSensor(t, st, 3)
+
+	blip := time.Date(2026, 10, 8, 12, 0, 0, 0, time.UTC)
+	if err := st.InsertResult(ctx, &model.Result{SensorID: c.ID, TS: blip, Success: false, Message: "no reply"}); err != nil {
+		t.Fatalf("insert result: %v", err)
+	}
+
+	s.restoreState(ctx, c)
+	snap := s.Snapshot(c.ID)
+	if snap.Status != model.StatusWarn {
+		t.Fatalf("restored status = %q, want flaky after one failed probe below the retries", snap.Status)
+	}
+	if !snap.Since.Equal(blip) {
+		t.Errorf("restored since = %s, want the failed probe %s", snap.Since, blip)
+	}
+
+	tr := s.step(ctx, c, result(c.ID, blip.Add(time.Minute), true, "pong"))
+	if tr.current != model.StatusUp {
+		t.Errorf("recovery from flaky: status = %q, want up", tr.current)
+	}
+	if tr.alert != "" {
+		t.Errorf("recovery from flaky: alert = %q, want none — the blip never alerted", tr.alert)
+	}
+	if tr.incident != nil {
+		t.Errorf("recovery from flaky closed incident %d, want none: no incident was opened",
+			tr.incident.ID)
 	}
 }
 

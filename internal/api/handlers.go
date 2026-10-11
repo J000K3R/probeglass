@@ -150,6 +150,8 @@ func (s *Server) handleSummary(w http.ResponseWriter, r *http.Request) {
 			sum.Up++
 		case model.StatusDown:
 			sum.Down++
+		case model.StatusWarn:
+			sum.Warn++
 		case model.StatusPaused:
 			sum.Paused++
 		default:

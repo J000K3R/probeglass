@@ -333,6 +333,7 @@ function hitMarkup(hit, index) {
 function stateOf(state) {
   switch (state) {
     case 'down': return { text: t('status.down'), cls: 'st-down' };
+    case 'warn': return { text: t('status.warn'), cls: 'st-warn' };
     case 'paused': return { text: t('status.paused'), cls: 'st-paused' };
     case 'unknown': return { text: t('status.unknown'), cls: 'st-unknown' };
     case 'disabled': return { text: t('users.disabled'), cls: 'st-muted' };

@@ -6,9 +6,18 @@
 //
 //	unknown --first success--> up
 //	unknown --N failures-----> down  (N = sensor.Retries, at least 1)
+//	up      --first failure--> warn  (a blip: no incident, no alert)
+//	warn    --success--------> up
+//	warn    --N failures-----> down  (opens an incident, alerts)
 //	up      --N failures-----> down  (opens an incident, alerts)
 //	down    --success--------> up    (closes the incident, alerts)
 //	down    --every reminder-> reminder alert while it stays down
+//
+// The warn state is the one that used to be invisible: a single failed probe
+// above a sensor that was up left it looking green, and after a restart it read
+// as "unknown", which is the word for a sensor nothing is known about at all.
+// It is neither. Nothing is announced while a sensor is yellow — an alert for
+// every blip would be noise, and the incident log is for outages.
 //
 // State is rebuilt from the database on startup, including still-open
 // incidents and the length of the running failure streak. A container restart
@@ -253,8 +262,14 @@ func (s *Scheduler) restoreState(ctx context.Context, c model.Sensor) {
 		st.lastNotify = time.Now().UTC()
 		s.log.Info("reconstructed ongoing outage", "sensor", c.Name, "since", start)
 	case count > 0:
-		// Inside the grace period: stay neutral instead of flapping to up.
-		st.status = model.StatusUnknown
+		// Inside the grace period: the sensor has failed, but not often enough to
+		// call it down. Yellow says exactly that much and no more — it used to say
+		// "unknown", which is the word for a sensor nothing is known about.
+		st.status = model.StatusWarn
+		st.since = firstFail
+		if st.since.IsZero() {
+			st.since = time.Now().UTC()
+		}
 	default:
 		if !lastSuccess.IsZero() {
 			st.status = model.StatusUp
@@ -432,6 +447,16 @@ func (s *Scheduler) step(ctx context.Context, c model.Sensor, res model.Result) 
 		st.failStreak++
 
 		switch {
+		case st.failStreak > 0 && st.failStreak < threshold && st.status != model.StatusDown:
+			// A blip: the last probe failed, the retries are not used up. The sensor
+			// may be on its way down or already on its way back, and until the streak
+			// reaches the threshold there is no honest way to tell those apart — so
+			// the status says that much and nothing more. No incident, no alert: the
+			// incident log is for outages, and a message per blip is noise.
+			st.status = model.StatusWarn
+			st.since = st.firstFail
+			tr.statusChanged = tr.previous != model.StatusWarn
+
 		case st.failStreak >= threshold && st.status != model.StatusDown:
 			start := st.firstFail
 			if start.IsZero() {
