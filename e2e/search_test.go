@@ -54,10 +54,10 @@ func titlesAre(title string) string {
 // clearSearch empties the field and tells the module it changed, so that a second
 // search in a test types into a fresh box rather than onto the end of the first query.
 //
-// chromedp.SetValue will not do: it writes `.value` through a JavaScript assignment
-// and dispatches no event, so the field would look emptied while the module went on
-// holding the query it had, and the second search would be the first one again. The
-// input event is the whole of what this needs to be.
+// An explicit input event rather than chromedp.SetValue. SetValue would work —
+// since v0.20 it goes through the same script that fires input and change, whatever
+// older notes here said — but it fires both, and `input` alone is the whole of what
+// the search field listens to.
 var clearSearch = chromedp.Evaluate[chromedp.Void](`(() => {
   const el = document.querySelector('#search');
   el.value = '';
