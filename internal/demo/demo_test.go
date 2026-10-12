@@ -189,6 +189,153 @@ func TestAShortWindowBacksEveryIncidentWithAProbe(t *testing.T) {
 	}
 }
 
+// TestAnOutageThatHasNotEndedIsLeftOpen is the pair to the test above, and the one
+// the demo's red pin stands on. An outage that is over before the window ends is
+// closed by the probe that found the service back; one whose end reaches the newest
+// probe has no such probe, and closing it there would be a claim the history cannot
+// back — the service may well still be down. So the incident stays open, and a
+// sensor restored from this history reads as down rather than as up.
+func TestAnOutageThatHasNotEndedIsLeftOpen(t *testing.T) {
+	ctx := context.Background()
+
+	write := func(name string, o Outage) (*store.Store, model.Sensor) {
+		t.Helper()
+		st := testStore(t)
+		c := model.Sensor{
+			Name: name, Type: model.SensorHTTP, Target: "https://vps.example.net",
+			Interval: int(Spacing / time.Second), Timeout: 5, Retries: 1, Enabled: true,
+			Origin: model.OriginExample,
+		}
+		store.NormaliseSensor(&c)
+		if err := st.CreateSensor(ctx, &c); err != nil {
+			t.Fatalf("create sensor: %v", err)
+		}
+		if _, err := Write(ctx, st, c, History{
+			Window: 48 * time.Hour, BaseMS: 100, JitterMS: 20,
+			SuccessMsg: "HTTP 200 OK", FailMsg: "no such host",
+			Outages: []Outage{o},
+		}); err != nil {
+			t.Fatalf("write: %v", err)
+		}
+		return st, c
+	}
+
+	// Ninety minutes of failures ending at the newest probe in the series.
+	st, c := write("Ongoing", Outage{
+		Before: 90 * time.Minute, Length: 90 * time.Minute, Cause: "no such host",
+	})
+	open, err := st.ListIncidents(ctx, store.IncidentFilter{SensorID: c.ID, OnlyOpen: true})
+	if err != nil {
+		t.Fatalf("list ongoing incidents: %v", err)
+	}
+	if len(open) != 1 {
+		t.Fatalf("%d ongoing incident(s) for an outage that reaches the newest probe, want 1",
+			len(open))
+	}
+	if age := time.Since(open[0].StartedAt); age < 89*time.Minute || age > 91*time.Minute {
+		t.Errorf("the incident starts %s ago, want the first failing probe, at 90 minutes",
+			age.Round(time.Minute))
+	}
+	last, err := st.LastResult(ctx, c.ID)
+	if err != nil || last == nil {
+		t.Fatalf("last result: %v, %v", last, err)
+	}
+	if last.Success {
+		t.Error("the newest probe succeeded, so a sensor restored from this history " +
+			"would read as up and the pin would be green")
+	}
+
+	// The same outage moved a day back is over, and is closed by the probe that found
+	// the service back.
+	st2, c2 := write("Recovered", Outage{
+		Before: 24 * time.Hour, Length: 90 * time.Minute, Cause: "no such host",
+	})
+	resolved, err := st2.ListIncidents(ctx, store.IncidentFilter{SensorID: c2.ID, OnlyResolved: true})
+	if err != nil {
+		t.Fatalf("list resolved incidents: %v", err)
+	}
+	if len(resolved) != 1 {
+		t.Fatalf("%d resolved incident(s) for an outage that ended a day ago, want 1", len(resolved))
+	}
+}
+
+// TestTheDatasetHasOnePinInEachState is the demo's own claim, checked where the
+// claim is made. The map draws one pin per place and colours it by the worst sensor
+// standing on it, so three pins in three colours takes three states: a place where
+// everything is up, a place where everything is paused, and a place with something
+// down on it. The demo on the website had one colour and no map worth looking at,
+// and this is the test that keeps it that way.
+func TestTheDatasetHasOnePinInEachState(t *testing.T) {
+	ctx := context.Background()
+	st := testStore(t)
+
+	if _, err := Seed(ctx, st, 7); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	// Which place each sensor stands on, and whether it is switched on.
+	byName := map[string]sensor{}
+	all := map[string]int{}
+	enabled := map[string]int{}
+	for _, d := range sensors {
+		byName[d.name] = d
+		all[d.site]++
+		if !d.paused {
+			enabled[d.site]++
+		}
+	}
+
+	// Green: a place every sensor on which is enabled and answering.
+	// Grey: one where nothing is switched on, which is a homelab's own addresses.
+	// Red: one with an ongoing outage on it, from here.
+	open, err := st.ListIncidentsWithNames(ctx, store.IncidentFilter{OnlyOpen: true, Limit: 100})
+	if err != nil {
+		t.Fatalf("list ongoing incidents: %v", err)
+	}
+	if len(open) != 1 {
+		t.Fatalf("%d ongoing incident(s) in the example data, want exactly 1 — the one "+
+			"that draws the red pin", len(open))
+	}
+	down, ok := byName[open[0].SensorName]
+	if !ok {
+		t.Fatalf("the ongoing incident is on %q, which is not a sensor in the dataset",
+			open[0].SensorName)
+	}
+	if down.paused {
+		t.Errorf("%q is paused, so its site reads as grey rather than red", down.name)
+	}
+
+	green, gray := "", ""
+	for name, n := range all {
+		// A tagged switch on the count rather than on both ends of the range: a place
+		// with some switched on and some not is neither pin, and is deliberately left
+		// to fall through.
+		switch enabled[name] {
+		case n:
+			green = name
+		case 0:
+			gray = name
+		}
+	}
+	if green == "" {
+		t.Error("no place has every sensor switched on, so no pin is green")
+	}
+	if gray == "" {
+		t.Error("no place has every sensor paused, so no pin is grey")
+	}
+	if green == down.site {
+		t.Errorf("the place with the ongoing outage is %q, which is also the one that is "+
+			"meant to be all green", green)
+	}
+	if gray == down.site {
+		t.Errorf("the place with the ongoing outage is %q, which is also the one that is "+
+			"meant to be all grey", gray)
+	}
+	if gray == green && gray != "" {
+		t.Errorf("one place cannot be both the green pin and the grey one: %q", gray)
+	}
+}
+
 // TestABlipIsOneProbeAndNoIncident pins the difference between the two ways a
 // synthetic probe fails. An outage is a stretch of them and belongs in the incident
 // log; a blip is one probe, writes nothing, and is what leaves a sensor reading

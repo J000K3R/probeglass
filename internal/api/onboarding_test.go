@@ -76,17 +76,24 @@ func TestSetupCreatesExampleSensors(t *testing.T) {
 
 // TestSetupCreatesTheExamplePlaces covers the map, which was the one screen a fresh
 // installation had nothing at all to say about: the four examples stood nowhere, so
-// the world view came up empty behind the button that draws it. They stand on the two
-// places the demo data set uses now, with real coordinates on both, because a pin in
-// the Gulf of Guinea is what a missing coordinate pair would look like.
+// the world view came up empty behind the button that draws it. They stand on places
+// now, with real coordinates on both, because a pin in the Gulf of Guinea is what a
+// missing coordinate pair would look like.
+//
+// The count is the places the examples actually stand on and not everything the demo
+// data set knows about. The difference is a pin with nothing on it on the first map
+// anybody looks at, which is why the setup screen makes only the two it needs.
 func TestSetupCreatesTheExamplePlaces(t *testing.T) {
 	h := newHarness(t)
 	h.setup()
 
+	dial := config.DialAddr(h.server.cfg.Listen)
+	wantPlaces := exampleSiteNames(dial)
+
 	sites := h.listSites()
-	if len(sites) != len(demo.Places()) {
+	if len(sites) != len(wantPlaces) {
 		t.Fatalf("a fresh installation has %d place(s), want %d (%v)",
-			len(sites), len(demo.Places()), siteNames(sites))
+			len(sites), len(wantPlaces), siteNames(sites))
 	}
 	byName := map[string]model.Site{}
 	for _, s := range sites {

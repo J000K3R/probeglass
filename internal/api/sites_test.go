@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/j000k3r/probeglass/internal/demo"
 	"github.com/j000k3r/probeglass/internal/model"
 )
 
@@ -290,11 +289,14 @@ func TestSummaryCarriesSitesAndHeartbeat(t *testing.T) {
 	}
 	decode(t, resp, &body)
 
-	// The two the setup step wrote are in here as well, which is the point of them:
-	// a dashboard somebody has just set the password on has a map with something on
-	// it. Counted from the list rather than written as a number, so that adding a
-	// place to the example data does not fail a test about the payload's shape.
-	want := len(demo.Places()) + 1
+	// The places the setup step wrote are in here as well, which is the point of
+	// them: a dashboard somebody has just set the password on has a map with
+	// something on it. Counted from the list rather than written as a number, so that
+	// adding a place to the example data does not fail a test about the payload's
+	// shape — and taken from the sensors rather than from demo.Places(), because the
+	// setup step makes the places its examples stand on and not every place the demo
+	// data set knows.
+	want := len(exampleSiteNames(h.server.cfg.Listen)) + 1
 	if len(body.Sites) != want {
 		t.Errorf("the summary carries %d sites, want %d", len(body.Sites), want)
 	}

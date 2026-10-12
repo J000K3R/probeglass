@@ -841,6 +841,94 @@ func TestTheEmbeddedDistrictsDecode(t *testing.T) {
 	}
 }
 
+// TestTheEmbeddedTownNamesDecode reads the towns the geography of a Bezirk needs.
+//
+// This file exists for one measured reason and the test is written around it: Natural
+// Earth's populated places holds about thirty places per country, and thirty places in
+// Austria is Vienna and the capitals of the eight other states. Wels, Steyr, Krems an der
+// Donau and Wiener Neustadt are not in it, so a map zoomed into a district had a border
+// around it and nothing inside it. The four are asserted by name because they are the
+// answer to that; a file with 41 000 names in it and none of those four has fixed
+// nothing.
+//
+// The two absences are asserted as well, and they are the failure that is easiest to make
+// and hardest to see. GeoNames files every one of Vienna's districts as a place of its
+// own, under the feature code PPLX, each with the population of the quarter — Favoriten
+// at 201 882, Donaustadt at 187 007 — so a file without the section rule in it has
+// twenty-two names across Vienna and the map looks like it has been tagged by somebody
+// walking around the city.
+func TestTheEmbeddedTownNamesDecode(t *testing.T) {
+	js := readAsset(t, Assets(), "towns.js")
+
+	names := exportStrings(t, js, "WORLD_TOWN_NAMES")
+	if len(names) < 40000 {
+		t.Fatalf("WORLD_TOWN_NAMES holds %d name(s); cities5000 has 69 793 rows and 41 850 "+
+			"of them are a place of at least ten thousand people once the sections are "+
+			"dropped, so this list has lost a continent", len(names))
+	}
+	for _, want := range []string{"Wels", "Steyr", "Krems an der Donau", "Wiener Neustadt",
+		"Dornbirn", "Feldkirch", "Amstetten"} {
+		if !slices.Contains(names, want) {
+			t.Errorf("WORLD_TOWN_NAMES has no %q; the whole point of this file is the "+
+				"Austrian towns Natural Earth has not got, and this one is a place with "+
+				"more than ten thousand people in it", want)
+		}
+	}
+	for _, unwanted := range []string{"Favoriten", "Ottakring", "Donaustadt", "Simmering"} {
+		if slices.Contains(names, unwanted) {
+			t.Errorf("WORLD_TOWN_NAMES holds %q, which is a district of Vienna and not a "+
+				"town: GeoNames files each of them under PPLX with the population of the "+
+				"quarter, and twenty-two of them would be drawn across the one city", unwanted)
+		}
+	}
+
+	// And the spelling rule, which is a fact about the source rather than a choice made
+	// here: GeoNames publishes a romanized preferred name, so it says "Vienna" and not
+	// "Wien", exactly as cities.js does. That is what makes the overlap between the two
+	// files free — the duplicate is the same word and the collision pass can drop it
+	// without anybody deciding which spelling wins.
+	if !slices.Contains(names, "Vienna") || !slices.Contains(names, "Munich") {
+		t.Errorf("WORLD_TOWN_NAMES has no Vienna or no Munich; GeoNames' name column is its " +
+			"preferred romanized spelling — Vienna is \"Vienna\" in both files and not " +
+			"\"Wien\" — and a file that holds the local names instead is a file that " +
+			"disagrees with cities.js on every large place they share")
+	}
+	if slices.Contains(names, "Wien") {
+		t.Errorf("WORLD_TOWN_NAMES holds \"Wien\"; nothing here translates or picks from the " +
+			"alternate names, and a name this program invented is a name the header cannot " +
+			"account for")
+	}
+
+	points, groups := decodeLabels(t, strings.Trim(exportValue(t, js, "WORLD_TOWN_POINTS"), "'"))
+	if points != len(names) {
+		t.Fatalf("the stream holds %d point(s) and the name list %d name(s); the two are "+
+			"halves of one record, so a difference is every name after it drawn on the "+
+			"wrong place", points, len(names))
+	}
+	// Eight, one per step of townZoom's ladder: zoom 4 down to zoom 11. Fewer means the
+	// ladder has collapsed and every town arrives at once; more means a zoom nobody asked
+	// for. decodeLabels has already checked that they are in order, which for this file
+	// is the whole of the rule — the reader stops at the first name that belongs deeper.
+	if groups != 8 {
+		t.Errorf("%d group(s); the population ladder has eight steps and one group each, "+
+			"so this is a file where the zooms have been derived differently than the "+
+			"generator derives them", groups)
+	}
+
+	// The shallowest group is where the ladder starts, and it has to be 4: the towns are
+	// drawn after the cities, and a town arriving at zoom 3 would be a name on the world
+	// map where Natural Earth's own places are not yet.
+	p := newPacked(t, strings.Trim(exportValue(t, js, "WORLD_TOWN_POINTS"), "'"))
+	if got := p.count("the group count", 1000); got != groups {
+		t.Fatalf("the group count is %d and the walk found %d", got, groups)
+	}
+	if zoom := p.count("the first group's zoom", 24); zoom != 4 {
+		t.Errorf("the first group belongs on the map from zoom %d, want 4; the ladder starts "+
+			"where cities.js already has the same places, so nothing here appears earlier "+
+			"than the city it belongs to", zoom)
+	}
+}
+
 // TestTheEmbeddedCityNamesDecode reads the city names.
 //
 // The names and their coordinates are two halves of one record in two exports, so what

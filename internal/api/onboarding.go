@@ -116,14 +116,19 @@ const exampleSensorInterval = 300
 // somebody's chat room before they have configured a single thing is not a
 // helpful default.
 //
-// Two of them stand on a place as well, the same two places the demo data set uses —
-// "Homelab" and a server somewhere else — because otherwise the map is the one screen
-// a new installation has nothing to say about at all. The two that are about this
-// machine go on the first, the two that are about something out there on the second,
-// so that the pins are where the sensors are. Those places carry the example marker,
-// which is what makes them removable in one click along with the sensors, and they are
-// the same names and coordinates as the demo set's so that loading that data later
-// folds into them instead of drawing a second pin beside each of them.
+// Two of them stand on a place as well — "Homelab" for the two that are about this
+// machine and "Rented server" for the two that are about something out there —
+// because otherwise the map is the one screen a new installation has nothing to say
+// about at all. Both are places the demo data set also uses, with the same names and
+// coordinates, so that loading that data later folds into them instead of drawing a
+// second pin beside each of them. Those places carry the example marker, which is
+// what makes them removable in one click along with the sensors.
+//
+// The demo set knows a third place, "Frankfurt", which the four examples here do not
+// stand on and which the setup screen therefore does not create: a fresh
+// installation's map would have a named pin on it with nothing on the pin. What that
+// place is for is the other half of the demo — the public checks, and a pin that is
+// green rather than grey.
 func exampleSensors(dialAddr string) []exampleSensor {
 	window := time.Duration(exampleDays) * 24 * time.Hour
 	// The one failure each of the last-probe and the outage is described against.
@@ -183,6 +188,28 @@ func exampleSensors(dialAddr string) []exampleSensor {
 	}
 }
 
+// exampleSiteNames returns the places the example sensors stand on, each once, in
+// the order they are named.
+//
+// The setup screen creates these and not every place the demo data set knows about,
+// and that is the whole point of the function: the demo set describes a homelab and
+// the world it reaches out to, and it has a place on the map for the checks that go
+// out to the internet. A fresh installation has four sensors standing on two of
+// those places, so creating the third would put a named pin with nothing on it on
+// the very first map anybody looks at.
+func exampleSiteNames(dialAddr string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, ex := range exampleSensors(dialAddr) {
+		if ex.Site == "" || seen[ex.Site] {
+			continue
+		}
+		seen[ex.Site] = true
+		out = append(out, ex.Site)
+	}
+	return out
+}
+
 // createExampleSensors seeds the four examples with a week of invented past, and
 // reports how many it created.
 //
@@ -202,8 +229,9 @@ func exampleSensors(dialAddr string) []exampleSensor {
 // The order below is the part that matters, and each step is there because of
 // what the next one would otherwise see:
 //
-//  0. Create the two places the sensors stand on. They are what the map draws, and
-//     they have to exist before the first sensor names one.
+//  0. Create the places the sensors stand on. They are what the map draws, and
+//     they have to exist before the first sensor names one. Only the ones actually
+//     named are made — see exampleSiteNames.
 //  1. Create the sensors disabled. Enabling one hands it to the scheduler, and a
 //     real probe landing in the middle of this would put a live result next to a
 //     week of invented ones — and, on the gateway, in front of the failed probe
@@ -232,8 +260,17 @@ func (s *Server) createExampleSensors(ctx context.Context, dialAddr string) (int
 	// place that is already there is left as it is, which is the same contract the
 	// demo data set follows — somebody who moved the pin to where they really are
 	// must not have it moved back.
+	known := map[string]model.Site{}
 	for _, place := range demo.Places() {
-		if _, err := s.store.GetSite(ctx, place.Name); err == nil {
+		known[place.Name] = place
+	}
+	for _, name := range exampleSiteNames(dialAddr) {
+		place, ok := known[name]
+		if !ok {
+			return 0, fmt.Errorf("an example sensor stands on the place %q, which the "+
+				"demo data set does not know", name)
+		}
+		if _, err := s.store.GetSite(ctx, name); err == nil {
 			continue
 		} else if !errors.Is(err, store.ErrNotFound) {
 			return 0, err

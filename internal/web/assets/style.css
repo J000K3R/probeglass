@@ -58,9 +58,21 @@
      loud as the two above it — it is only on screen from zoom 8. Water is one
      colour for the lakes and the rivers both — it is the same water, and a lake
      whose colour did not match the river running into it would be a lake
-     somebody had drawn by hand. */
+     somebody had drawn by hand.
+
+     The district fill and the district name are the third and fourth of that
+     family, and they are the only two colours on the map that are deliberately
+     too quiet to read on their own. A district is the one name here that is
+     drawn on the area it names rather than on a place, and the point of it is
+     that the area still shows through: the fill is a tint of a few percent and
+     the name sits at a little over half opacity, so an Austrian view reads as
+     districts with their names on them rather than as a second set of labels
+     competing with the cities. Both are the same hue as the border between
+     them, which is what makes the fill and the line belong to each other. */
   --map-country: #8399b0;
   --map-district: #3d4f63;
+  --map-district-fill: #7a96ba17;
+  --map-district-name: #94a8c0;
   --map-water: #2b4257;
 
   --radius: 12px;
@@ -112,6 +124,8 @@
     --map-label: #33415a;
     --map-country: #657c9b;
     --map-district: #a3b6cb;
+    --map-district-fill: #46608012;
+    --map-district-name: #6b7a8e;
     --map-water: #b9cfe4;
   }
 
@@ -151,6 +165,8 @@
   --map-label: #33415a;
   --map-country: #657c9b;
   --map-district: #a3b6cb;
+  --map-district-fill: #46608012;
+  --map-district-name: #6b7a8e;
   --map-water: #b9cfe4;
 }
 
@@ -1079,6 +1095,81 @@ button.widget-pick-label {
   overflow: auto;
 }
 
+/* The tables in Settings, which are a different animal from the three above.
+   Those are the dashboard: a reading, a status and a sparkline, rebuilt once a
+   minute and read at a glance, and their rows are clickable because clicking one
+   opens the sensor. These are a list of things somebody configured — sites, user
+   accounts — where the row is text and the thing to do with it is at the end of
+   the line. So they get a head, rules between the rows, and a right-hand column
+   that holds still while the eye runs down it.
+
+   `vertical-align: middle` is not decoration here: a row with a two-line first
+   cell and a one-line button puts the button at the top without it, and a column
+   of buttons that do not line up reads as a broken table. */
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.data-table th {
+  padding: 8px 12px;
+  text-align: left;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+  white-space: nowrap;
+  border-bottom: 1px solid var(--border);
+}
+
+.data-table td {
+  padding: 9px 12px;
+  vertical-align: middle;
+  border-bottom: 1px solid var(--border);
+}
+
+/* The last row's rule would double the border the .table-wrap already draws. */
+.data-table tbody tr:last-child td { border-bottom: 0; }
+.data-table tbody tr:hover { background: var(--surface-2); }
+.data-table th:first-child, .data-table td:first-child { padding-left: 14px; }
+.data-table th:last-child, .data-table td:last-child { padding-right: 14px; }
+
+/* A count in a table is read by its column, not by its row, so the digits have
+   to sit still: same width everywhere, aligned on the right edge. */
+.data-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-dim);
+}
+
+/* And the actions column is the same idea at the other end of the row: the
+   buttons of a row, all of them in the same place, so the eye can go down the
+   column and act.
+
+   `display: table-cell` is the load-bearing line. The `.row-actions` rule up in
+   the accounts section gives its cell `display: flex`, which is right for the
+   card it was written for and wrong here: a `td` with a display of anything but
+   table-cell is not a cell any more, and the browser takes it out of the table
+   layout — the row stops lining up with its own head and the buttons float
+   against the row above. The gap between the buttons is a margin instead, and
+   `white-space: nowrap` plus a width of 1% is what keeps the column at the width
+   of its buttons and lets the name column have everything else. */
+.data-table .row-actions {
+  display: table-cell;
+  text-align: right;
+  white-space: nowrap;
+  width: 1%;
+}
+
+.data-table .row-actions .btn {
+  padding: 4px 9px;
+  font-size: 0.8rem;
+}
+
+.data-table .row-actions .btn + .btn { margin-left: 6px; }
+
 /* ------------------------------------------------------------------- pills */
 
 .pill {
@@ -1327,6 +1418,15 @@ label.field.check > span { color: var(--text); font-size: 0.88rem; }
 .form-actions { display: flex; gap: 8px; align-items: end; }
 .form-error { color: var(--crit); font-size: 0.85rem; min-height: 1.1em; }
 
+/* The password form is a .grid-2 like every other pair of fields, but a button and
+   an error line are not fields. Left alone, auto-fit puts the button in the next
+   free column beside the input it belongs to — and at four columns wide that is a
+   "Change password" sitting to the right of the new-password box, which reads as a
+   third field. Given the whole row, it stands under the two fields it acts on,
+   which is what a save button does in every other panel. */
+#password-form .form-actions,
+#password-form .form-error { grid-column: 1 / -1; }
+
 .btn {
   padding: 8px 14px;
   border: 1px solid var(--border);
@@ -1426,7 +1526,20 @@ label.field.check > span { color: var(--text); font-size: 0.88rem; }
 .tab-btn[aria-selected='true'] { background: var(--surface-3); color: var(--text); }
 
 .panel { padding: var(--pad) calc(var(--pad) + 2px); display: grid; gap: 14px; }
-.panel h2 { color: var(--text-dim); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; }
+/* A panel's heading is now a title rather than a label. It used to be 0.8rem of
+   uppercase grey — the same treatment .section-title gets for the headings inside
+   a panel — which made it read as one more line of the panel instead of as the
+   thing that opens it. It is one size up and in the text colour; the headings
+   inside a panel stay where they were, so the two levels are told apart by weight
+   now and not by both being small and grey. */
+.panel h2 { color: var(--text); font-size: 0.95rem; font-weight: 600; letter-spacing: 0; }
+
+/* The heading and the sentence that says what the panel is for, held together.
+   Without the wrapper the panel's own 14px gap would stand between them, and a
+   hint that far from its heading reads as the first line of the panel's content
+   rather than as part of its title. */
+.panel-head { display: grid; gap: 4px; }
+.panel-hint { margin: 0; color: var(--text-dim); font-size: 0.85rem; }
 
 .kv { display: grid; grid-template-columns: max-content 1fr; gap: 6px 18px; margin: 0; font-size: 0.9rem; }
 .kv dt { color: var(--text-dim); }
@@ -1446,6 +1559,31 @@ label.field.check > span { color: var(--text); font-size: 0.88rem; }
 
 .channel.is-paused { opacity: 0.7; }
 .channel .card-actions { justify-content: flex-end; }
+
+/* The foot of the settings page. It is the one part of that page which is not
+   rebuilt whenever a panel changes — it lives in index.html, outside
+   #settings-body — so it is styled as a footer and not as a panel: a rule across
+   the top rather than a surface of its own, because there is nothing to act on
+   here, only something to read and something to click. */
+.settings-footer {
+  display: grid;
+  gap: 8px;
+  padding-top: var(--pad);
+  border-top: 1px solid var(--border);
+}
+
+.settings-links { display: flex; flex-wrap: wrap; gap: 6px 20px; }
+
+/* Dimmed until it is pointed at, the way the rest of this page treats anything
+   that is not the thing being worked on. The underline is the border rather than
+   text-decoration so that it sits clear of the descenders at this size. */
+.settings-links a {
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  text-decoration: none;
+  border-bottom: 1px solid var(--border);
+}
+.settings-links a:hover { color: var(--text); border-bottom-color: currentColor; }
 
 /* ------------------------------------------------------------------ toasts */
 
@@ -2047,12 +2185,21 @@ label.field.check > span { color: var(--text); font-size: 0.88rem; }
    the three files: the countries brighter than the provinces they contain, and the
    districts — which are filled rings and not lines, so they are the one path here that
    is stroked and not left open — dimmer than both, because they are only on screen from
-   zoom 8 and a Bezirk border as loud as a country border would make Austria a texture. */
+   zoom 8 and a Bezirk border as loud as a country border would make Austria a texture.
+
+   The districts are also the one layer here that is filled, and that fill is the whole
+   difference between a district and a country on this map: a country is a shape the
+   coast already drew, a district is a shape that only exists because somebody said so.
+   It is a tint of a few percent over the land — see the token — so the Austrian view
+   reads as a mosaic of districts without any of them becoming a block of colour. The
+   fill rule does the rest on its own: six districts have their statutory city cut out as
+   a hole, and evenodd leaves those holes unpainted, which is right, because the hole is
+   a district of its own. */
 .map-borders { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .map-borders path { fill: none; stroke-width: 1;
   stroke-linejoin: round; stroke-linecap: round; }
 .map-borders path.k-country { stroke: var(--map-country); }
-.map-borders path.k-district { stroke: var(--map-district); }
+.map-borders path.k-district { stroke: var(--map-district); fill: var(--map-district-fill); }
 .map-borders path.k-province { stroke: var(--map-border); }
 
 .map-tiles, .map-markers { position: absolute; inset: 0; }
@@ -2074,6 +2221,15 @@ label.field.check > span { color: var(--text); font-size: 0.88rem; }
    size as a province name and dimmer rather than smaller, because smaller than 10px is
    where a name stops being readable at all. */
 .map-label.k-city { font-size: 10px; opacity: .68; }
+/* The district names are the one set of labels here that is not a name on a place. They
+   sit on the middle of the area they name, over the fill that area is painted with, and
+   the point of them is that the map underneath still reads: a little smaller than a city
+   name, in the district hue at a little over half opacity, so an Austrian view can be
+   read as districts and as towns without one layer washing the other out. The text
+   shadow the base rule carries is left out — it is there to lift a dark word off dark
+   land, and a grey word with a shadow under it stops being grey. */
+.map-label.k-district { font-size: 9.5px; color: var(--map-district-name); opacity: .55;
+  text-shadow: none; }
 .map-tile { position: absolute; width: 256px; height: 256px; user-select: none;
   pointer-events: none; }
 

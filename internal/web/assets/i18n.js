@@ -273,6 +273,9 @@ const en = {
   'settings.group.help': 'Help and maintenance',
   'settings.tabsAria': 'Settings categories',
   'settings.appearance': 'Appearance',
+  // The line under a panel's heading. It says what the panel is for rather than
+  // restating its name, which is the one thing a heading cannot do.
+  'settings.appearanceHint': 'How this dashboard looks to you and how much it shows. These are your own choices — they are stored with your account and change nothing for anybody else.',
   'settings.theme': 'Theme',
   'settings.theme.auto': 'Match system',
   'settings.theme.dark': 'Dark',
@@ -310,6 +313,7 @@ const en = {
   'settings.doctorFail': 'fail',
   'settings.doctorOutput': 'Full command output',
   'settings.dashboard': 'Dashboard defaults',
+  'settings.dashboardHint': 'What this installation has stored, and how long it keeps it. The header widgets below are the same list that is arranged by dragging the tiles on the dashboard itself.',
   // The header of the dashboard is arranged on the dashboard itself; this panel
   // is the same list, spelled out, for anybody who would rather see it as a list
   // than drag tiles around.
@@ -321,6 +325,7 @@ const en = {
   'settings.retentionDaily': 'Daily rollups',
   'settings.retentionDailyValue': 'kept forever',
   'settings.security': 'Access',
+  'settings.securityHint': 'The account you are signed in with: its password, its second factor, and the API key that lets a script read everything here and change it.',
   'settings.password': 'Change password',
   'settings.currentPassword': 'Current password',
   'settings.newPassword': 'New password',
@@ -360,6 +365,8 @@ const en = {
   'backup.secretWarning': 'This file holds the password hashes, the two-factor secrets and the credentials of every alert channel in plain text. It is worth as much as the database itself — keep it somewhere you would keep the database.',
   'backup.epochWarning': 'Sign-ins stay valid across a restore. Restoring an older file brings back sessions that were signed out after it was written.',
   'settings.about': 'About',
+  'settings.aboutHint': 'Which build is running, and where it keeps its files. Both are the first thing anybody asks for when something looks wrong.',
+  'settings.version': 'Version',
   'settings.storage': 'Storage',
   'settings.sensors': 'Sensors',
   'settings.channels': 'Channels',
@@ -376,8 +383,21 @@ const en = {
   'settings.logLevel': 'Log level',
   'settings.none': 'not set',
 
+  // The footer under the settings page: the way out to the pages that are not in
+  // this dashboard. Every one of them leaves the installation, so each is opened in
+  // a new tab rather than replacing the dashboard somebody is in the middle of.
+  // The licence is a link and not just a word because "MIT" is a question, and the
+  // answer is one click away instead of one search away.
+  'settings.linksAria': 'ProbeGlass on the web',
+  'settings.link.website': 'Website',
+  'settings.link.docs': 'Documentation',
+  'settings.link.github': 'Source on GitHub',
+  'settings.link.licence': 'MIT licence',
+  'settings.linksHint': 'The manual, the project website and the source. The dashboard works without any of them — these are what to read when a check or a setting is not doing what you expected.',
+
   // ------------------------------------------------------------------ the map
   'settings.map': 'Map',
+  'settings.mapHint': 'Where the map gets its tiles, and what is drawn over them. Left empty, the map draws the world that ships inside the program and asks no server for anything.',
   'settings.tileUrl': 'Tile URL',
   'settings.tileAttribution': 'Attribution',
   'settings.mapBorders': 'Draw country, province and district borders',
@@ -445,6 +465,7 @@ const en = {
 
   // ------------------------------------------------------------------ accounts
   'users.title': 'Users',
+  'users.panelHint': 'Everyone who can sign in here. An administrator can add an account, set a password for somebody who has lost theirs, and switch an account off without deleting it.',
   'users.hint': 'Everyone with an account can sign in to this dashboard. A viewer reads everything and changes nothing, an operator can also pause sensors and acknowledge outages, and an administrator can change anything.',
   'users.new': 'New user',
   'users.edit': 'Edit user',

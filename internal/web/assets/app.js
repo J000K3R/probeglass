@@ -3176,8 +3176,10 @@ function backupPanel() {
   if (!can('admin')) return '';
   return `
     <section class="panel" data-panel="backup" data-group="backup">
-      <h2>${esc(t('settings.backup'))}</h2>
-      <p class="muted">${esc(t('backup.hint'))}</p>
+      <div class="panel-head">
+        <h2>${esc(t('settings.backup'))}</h2>
+        <p class="panel-hint">${esc(t('backup.hint'))}</p>
+      </div>
 
       <div class="grid-2">
         <label class="field"><span>${esc(t('backup.scope'))}</span>
@@ -3215,8 +3217,10 @@ function examplePanel() {
   const has = data.sensors > 0;
   return `
     <section class="panel" id="examples-panel" data-panel="examples" data-group="monitor">
-      <h2>${esc(t('examples.title'))}</h2>
-      <p class="muted">${esc(t('examples.hint'))}</p>
+      <div class="panel-head">
+        <h2>${esc(t('examples.title'))}</h2>
+        <p class="panel-hint">${esc(t('examples.hint'))}</p>
+      </div>
       ${has ? `
       <p class="muted small">${esc(t('examples.count', { sensors: data.sensors, results: data.results, incidents: data.incidents, sites: data.sites || 0 }))}</p>
       <div class="form-actions">
@@ -3260,8 +3264,10 @@ function sitesPanel() {
 
   return `
     <section class="panel" id="sites-panel" data-panel="sites" data-group="monitor">
-      <h2>${esc(t('sites.title'))}</h2>
-      <p class="muted">${esc(t('sites.hint'))}</p>
+      <div class="panel-head">
+        <h2>${esc(t('sites.title'))}</h2>
+        <p class="panel-hint">${esc(t('sites.hint'))}</p>
+      </div>
       ${sites.length ? `
       <div class="table-wrap">
         <table class="data-table sites-table">
@@ -3294,7 +3300,10 @@ function mapPanel() {
   const admin = can('admin');
   return `
     <section class="panel" id="map-panel" data-panel="map" data-group="look">
-      <h2>${esc(t('settings.map'))}</h2>
+      <div class="panel-head">
+        <h2>${esc(t('settings.map'))}</h2>
+        <p class="panel-hint">${esc(t('settings.mapHint'))}</p>
+      </div>
       <label class="field"><span>${esc(t('settings.tileUrl'))}</span>
         <input name="tile_url" value="${esc(map.tile_url || '')}"
                placeholder="${esc(map.default_tile_url || '')}"${admin ? '' : ' disabled'}></label>
@@ -3305,10 +3314,10 @@ function mapPanel() {
              ${map.borders === 'off' ? '' : 'checked'}${admin ? '' : ' disabled'}>
         <span>${esc(t('settings.mapBorders'))}</span></label>
       <p class="muted small">${esc(t('settings.mapBordersHint'))}</p>
+      <p class="muted small">${esc(t('settings.tilePrivacy'))}</p>
       <div class="form-actions">
         <button class="btn btn-primary" data-action="map-save"${denied('admin')}>${esc(t('common.save'))}</button>
       </div>
-      <p class="muted small">${esc(t('settings.tilePrivacy'))}</p>
     </section>`;
 }
 
@@ -3568,7 +3577,10 @@ async function renderSettings() {
     ${settingsTabs()}
 
     <section class="panel" data-panel="appearance" data-group="look">
-      <h2>${esc(t('settings.appearance'))}</h2>
+      <div class="panel-head">
+        <h2>${esc(t('settings.appearance'))}</h2>
+        <p class="panel-hint">${esc(t('settings.appearanceHint'))}</p>
+      </div>
       <div class="grid-2">
         ${choice('mode', ui.mode, ['simple', 'advanced'])}
         ${choice('theme', ui.theme, ['auto', 'dark', 'light'])}
@@ -3586,7 +3598,10 @@ async function renderSettings() {
     ${mapPanel()}
 
     <section class="panel" data-panel="dashboard" data-group="monitor">
-      <h2>${esc(t('settings.dashboard'))}</h2>
+      <div class="panel-head">
+        <h2>${esc(t('settings.dashboard'))}</h2>
+        <p class="panel-hint">${esc(t('settings.dashboardHint'))}</p>
+      </div>
       <div class="detail-stats">
         <div class="stat"><span class="stat-label">${esc(t('settings.sensors'))}</span><span class="stat-value">${stats.sensors ?? 0}</span></div>
         <div class="stat"><span class="stat-label">${esc(t('settings.channels'))}</span><span class="stat-value">${stats.channels ?? 0}</span></div>
@@ -3610,7 +3625,10 @@ async function renderSettings() {
     ${examplePanel()}
 
     <section class="panel" data-panel="access" data-group="access">
-      <h2>${esc(t('settings.security'))}</h2>
+      <div class="panel-head">
+        <h2>${esc(t('settings.security'))}</h2>
+        <p class="panel-hint">${esc(t('settings.securityHint'))}</p>
+      </div>
       <h3 class="section-title">${esc(t('settings.password'))}</h3>
       <form id="password-form" class="grid-2">
         <label class="field"><span>${esc(t('settings.currentPassword'))}</span>
@@ -3636,23 +3654,30 @@ async function renderSettings() {
 
     ${can('admin') ? `
     <section class="panel adv-hide" id="users-panel" data-panel="users" data-group="access">
-      <h2>${esc(t('users.title'))}</h2>
+      <div class="panel-head">
+        <h2>${esc(t('users.title'))}</h2>
+        <p class="panel-hint">${esc(t('users.panelHint'))}</p>
+      </div>
       ${usersUI.panel({ users: state.users, me: state.session?.user })}
     </section>` : ''}
 
     ${backupPanel()}
 
     <section class="panel" data-panel="help" data-group="help">
-      <h2>${esc(t('settings.help'))}</h2>
-      <p class="muted">${esc(t('settings.tourHint'))}</p>
+      <div class="panel-head">
+        <h2>${esc(t('settings.help'))}</h2>
+        <p class="panel-hint">${esc(t('settings.tourHint'))}</p>
+      </div>
       <div class="form-actions">
         <button class="btn" data-action="tour">${esc(t('settings.tourStart'))}</button>
       </div>
     </section>
 
     <section class="panel" data-panel="diagnostics" data-group="help">
-      <h2>${esc(t('settings.diagnostics'))}</h2>
-      <p class="muted">${esc(t('settings.doctorHint'))}</p>
+      <div class="panel-head">
+        <h2>${esc(t('settings.diagnostics'))}</h2>
+        <p class="panel-hint">${esc(t('settings.doctorHint'))}</p>
+      </div>
       <div class="form-actions">
         <button class="btn" data-action="doctor-run">${esc(t('settings.doctorRun'))}</button>
       </div>
@@ -3664,9 +3689,12 @@ async function renderSettings() {
     </section>
 
     <section class="panel" data-panel="about" data-group="help">
-      <h2>${esc(t('settings.about'))}</h2>
+      <div class="panel-head">
+        <h2>${esc(t('settings.about'))}</h2>
+        <p class="panel-hint">${esc(t('settings.aboutHint'))}</p>
+      </div>
       <dl class="kv">
-        <dt>Version</dt><dd>${esc(runtime.version || '—')}</dd>
+        <dt>${esc(t('settings.version'))}</dt><dd>${esc(runtime.version || '—')}</dd>
         <dt>${esc(t('settings.built'))}</dt><dd>${esc(when(runtime.build_date))}</dd>
         <dt>${esc(t('settings.baseUrl'))}</dt><dd>${esc(runtime.base_url || '—')}</dd>
         <dt>${esc(t('settings.dataDir'))}</dt><dd>${esc(runtime.data_dir || '—')}</dd>

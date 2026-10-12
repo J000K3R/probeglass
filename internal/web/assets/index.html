@@ -308,6 +308,21 @@
     <section id="view-settings" class="view" hidden>
       <h1 data-i18n="settings.title">Settings</h1>
       <div id="settings-body"></div>
+      <!-- The way out of the dashboard. It stands outside #settings-body for the
+           same reason the h1 does: that div is rewritten from top to bottom every
+           time a panel changes, and a footer inside it would go with it. Every link
+           leaves the installation, so each one opens its own tab and carries
+           rel="noopener noreferrer" — a page that can reach back into this window
+           is a page the dashboard did not need to trust. -->
+      <footer class="settings-footer">
+        <nav class="settings-links" data-i18n-aria="settings.linksAria">
+          <a href="https://j000k3r.github.io/probeglass-website/" target="_blank" rel="noopener noreferrer" data-i18n="settings.link.website">Website</a>
+          <a href="https://j000k3r.github.io/probeglass-docs/" target="_blank" rel="noopener noreferrer" data-i18n="settings.link.docs">Documentation</a>
+          <a href="https://github.com/j000k3r/probeglass" target="_blank" rel="noopener noreferrer" data-i18n="settings.link.github">Source on GitHub</a>
+          <a href="https://github.com/j000k3r/probeglass/blob/main/LICENSE" target="_blank" rel="noopener noreferrer" data-i18n="settings.link.licence">MIT licence</a>
+        </nav>
+        <p class="panel-hint" data-i18n="settings.linksHint">The manual, the project website and the source. The dashboard works without any of them — these are what to read when a check or a setting is not doing what you expected.</p>
+      </footer>
     </section>
   </main>
 </div>

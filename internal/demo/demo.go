@@ -42,11 +42,12 @@ type Result struct {
 // than 0/0, because a pin in the Gulf of Guinea is the one thing on the map that
 // would look like a bug.
 //
-// The two of them are also far enough apart to be worth a map. The map starts out
+// The three of them are also far enough apart to be worth a map. The map starts out
 // zoomed to whatever holds every marker on it, so two places in the same country
 // give a view of one region with the coastlines far off the edge — which is a fine
-// map and a poor demonstration of one. Berlin and Virginia start at a zoom where
-// the world is the thing being drawn.
+// map and a poor demonstration of one. Berlin, Virginia and Frankfurt start at a
+// zoom where the world is the thing being drawn, and the three of them are the
+// three colours a pin can be: see the table of sensors below for which is which.
 type site struct {
 	name      string
 	kind      model.SiteKind
@@ -57,15 +58,16 @@ type site struct {
 var sites = []site{
 	{name: "Homelab", kind: model.SiteLocal, lat: 52.5200, lon: 13.4050, sortOrder: 1},
 	{name: "Rented server", kind: model.SiteExternal, lat: 39.0438, lon: -77.4874, sortOrder: 2},
+	{name: "Frankfurt", kind: model.SiteExternal, lat: 50.1109, lon: 8.6821, sortOrder: 3},
 }
 
-// Places returns these two, ready to be written to the sites table.
+// Places returns these three, ready to be written to the sites table.
 //
-// The setup screen creates the same two places, and it asks here rather than keeping a
-// second list of its own. Two lists of the same places drift, and this particular drift
+// The setup screen creates the same three places, and it asks here rather than keeping
+// a second list of its own. Two lists of the same places drift, and this particular drift
 // is one somebody would see: the button that loads the example data leaves a place that
 // is already there exactly as it is, so a fresh install whose places had other names
-// would end up with four pins, two of them on top of each other.
+// would end up with six pins, two of them on top of each other.
 func Places() []model.Site {
 	out := make([]model.Site, 0, len(sites))
 	for _, d := range sites {
@@ -91,25 +93,35 @@ func (d site) place() model.Site {
 // synthetic history. The numbers are deliberately boring — the point is a
 // dashboard that looks like a homelab, not a benchmark.
 //
-// Two rules decide what may go in this table, and both come from the fact that
-// these sensors are real rows the scheduler really probes:
+// Three states, and this table carries one of each. The map draws one pin per place
+// and colours it by the worst sensor standing on it, so a demonstration in which
+// every pin is grey demonstrates nothing — which is exactly what the demo on the
+// website used to be. The three states come from the fact that these sensors are
+// real rows the scheduler really probes:
 //
-//   - An enabled entry's target has to answer from here, always. The dashboard is
-//     seeded with a week of green history, and a sensor that started failing a
-//     minute after it was seeded would contradict the very history printed above
-//     it. This is why every enabled target below is a public service.
-//   - A homelab's own addresses — a NAS, a router, a printer — are therefore
-//     disabled. They are what belongs at the two sites, and they are what gives
-//     the map something to draw, but 192.168.1.10 does not answer on anybody
-//     else's network. Paused, they place the pins without claiming anything about
-//     a network this installation cannot see. Turning one on is a click.
+//   - Green — enabled, and its target answers from here, always. A sensor that
+//     started failing a minute after it was seeded would contradict the very history
+//     printed above it, and this is why the enabled public checks are public
+//     services. They stand on the site called Frankfurt.
+//   - Grey — disabled. A homelab's own addresses — a NAS, a router, a printer — are
+//     paused rather than enabled, because 192.168.1.10 does not answer on anybody
+//     else's network. Paused, they place the pin without claiming anything about a
+//     network this installation cannot see, and the sensor list says "paused", which
+//     is the truth. Turning one on is a click.
+//   - Red — enabled, and failing on purpose. See the note on "Rented server: web":
+//     its target is a name that really does not resolve, so the demo and a real
+//     installation tell the same story about it, and its invented history ends in an
+//     outage that is still running. It is the one entry here that an installation
+//     will act on by itself — an incident is opened and, with a channel configured, a
+//     message goes out about it. The example data is one click from gone.
 type sensor struct {
 	name       string
 	sensorType model.SensorType
 	target     string
 	group      string
-	// site is the name of the place this sensor belongs to, empty for the ones that
-	// are simply somewhere on the internet.
+	// site is the name of the place this sensor belongs to. Every entry has one: a
+	// sensor without a place is one the map does not draw, and the map is half of
+	// what this dataset is for.
 	site string
 	// paused is for the entries a fresh installation cannot reach. See above.
 	paused     bool
@@ -146,7 +158,7 @@ func (d sensor) history(window time.Duration) History {
 var sensors = []sensor{
 	{
 		name: "Example website", sensorType: model.SensorHTTP, target: "https://example.org",
-		group: "Internet", tags: []string{"web", "public"},
+		group: "Internet", site: "Frankfurt", tags: []string{"web", "public"},
 		baseMS: 148, jitterMS: 45, intervalS: 60,
 		options:    model.Options{"expected_status": "200-299", "cert_warn_days": 14},
 		successMsg: "HTTP 200 OK", failMsg: "dial tcp: i/o timeout",
@@ -157,7 +169,7 @@ var sensors = []sensor{
 	},
 	{
 		name: "Public resolver", sensorType: model.SensorDNS, target: "one.one.one.one",
-		group: "Internet", tags: []string{"dns"},
+		group: "Internet", site: "Frankfurt", tags: []string{"dns"},
 		baseMS: 24, jitterMS: 11, intervalS: 60,
 		options:    model.Options{"record_type": "A"},
 		successMsg: "1 A record", failMsg: "no such host",
@@ -167,7 +179,7 @@ var sensors = []sensor{
 	},
 	{
 		name: "Internet ping", sensorType: model.SensorPing, target: "1.1.1.1",
-		group: "Network", tags: []string{"latency"},
+		group: "Network", site: "Frankfurt", tags: []string{"latency"},
 		baseMS: 11, jitterMS: 5, intervalS: 30,
 		options:    model.Options{"count": 3},
 		successMsg: "3/3 replies, 0% loss", failMsg: "100% packet loss",
@@ -177,7 +189,7 @@ var sensors = []sensor{
 	},
 	{
 		name: "Resolver port", sensorType: model.SensorTCP, target: "1.1.1.1:53",
-		group: "Network", tags: []string{"tcp"},
+		group: "Network", site: "Frankfurt", tags: []string{"tcp"},
 		baseMS: 31, jitterMS: 9, intervalS: 120,
 		successMsg: "connected in 31ms", failMsg: "connection refused",
 		outages: []Outage{
@@ -187,7 +199,7 @@ var sensors = []sensor{
 	},
 	{
 		name: "Example website TLS", sensorType: model.SensorTLS, target: "example.org:443",
-		group: "Internet", tags: []string{"tls", "public"},
+		group: "Internet", site: "Frankfurt", tags: []string{"tls", "public"},
 		baseMS: 162, jitterMS: 52, intervalS: 300,
 		options:    model.Options{"server_name": "example.org", "cert_warn_days": 14},
 		successMsg: "TLS 1.3 · certificate valid for 82 day(s)", failMsg: "TLS certificate expires in 6 day(s)",
@@ -195,7 +207,7 @@ var sensors = []sensor{
 	},
 	{
 		name: "Package mirror", sensorType: model.SensorHTTP, target: "https://deb.debian.org",
-		group: "Internet", tags: []string{"web", "public"},
+		group: "Internet", site: "Frankfurt", tags: []string{"web", "public"},
 		baseMS: 121, jitterMS: 38, intervalS: 300,
 		options:    model.Options{"expected_status": "200-399", "body_contains": "Debian"},
 		successMsg: "HTTP 200 OK", failMsg: "body does not contain \"Debian\"",
@@ -205,7 +217,7 @@ var sensors = []sensor{
 	},
 	{
 		name: "DNS over TLS", sensorType: model.SensorTLS, target: "1.1.1.1:853",
-		group: "Internet", tags: []string{"tls", "dns"},
+		group: "Internet", site: "Frankfurt", tags: []string{"tls", "dns"},
 		baseMS: 44, jitterMS: 14, intervalS: 600,
 		options:    model.Options{"server_name": "cloudflare-dns.com", "cert_warn_days": 21},
 		successMsg: "TLS 1.3 · certificate valid for 61 day(s)", failMsg: "TLS handshake failed",
@@ -267,11 +279,30 @@ var sensors = []sensor{
 	},
 	{
 		name: "Rented server: web", sensorType: model.SensorHTTP, target: "https://vps.example.net",
-		group: "Rented server", site: "Rented server", paused: true, tags: []string{"web"},
+		group: "Rented server", site: "Rented server", tags: []string{"web"},
 		baseMS: 174, jitterMS: 44, intervalS: 300,
 		options:    model.Options{"expected_status": "200-399", "cert_warn_days": 21},
 		successMsg: "HTTP 200 OK", failMsg: "no such host",
-		outages: []Outage{},
+		// The one entry here that is enabled and supposed to fail, and the reason it
+		// is the web check rather than the SSH one beside it: it is the pin the map
+		// draws red.
+		//
+		// vps.example.net is in RFC 2606's reserved space, so it really does not
+		// resolve — the invented history and the probes that follow it agree, and the
+		// demo on the website and an installation of this running on a real network
+		// tell the same story about it. What a real installation will do with it is
+		// open an incident and, if a channel is set up, send a message: it is the price
+		// of a red pin that is not staged, and the example data is one click from gone.
+		//
+		// Before and Length are the same ninety minutes on purpose. That puts the whole
+		// outage inside the window with its first failing probe ninety minutes back, and
+		// its last one on the newest probe in the series — which is what leaves the
+		// incident open rather than closed, and the sensor down rather than up, when the
+		// demo's scheduler restores from this history. At 300s per probe that is
+		// eighteen failures in a row.
+		outages: []Outage{
+			{Before: 90 * time.Minute, Length: 90 * time.Minute, Cause: "dial tcp: lookup vps.example.net: no such host"},
+		},
 	},
 }
 
@@ -397,6 +428,12 @@ func ensureSites(ctx context.Context, st *store.Store) (int, error) {
 const Spacing = 5 * time.Minute
 
 // Outage is one stretch of failing probes in a sensor's invented past.
+//
+// Where the two ends up leave it is what decides the incident. An outage that is
+// over before the window ends is closed by the probe that found the service back,
+// and the sensor reads as recovered. One whose end reaches the newest probe in the
+// window has no such probe: its incident is left open and the sensor reads as down,
+// which is what a red pin on the map is drawn from.
 type Outage struct {
 	// Before is how long before the end of the window the outage began.
 	Before time.Duration
@@ -553,6 +590,9 @@ func Write(ctx context.Context, st *store.Store, c model.Sensor, h History) (int
 			count++
 		}
 
+		// The series ends one Spacing before now — see the note on the loop below — so
+		// this is the newest moment this history has an opinion about.
+		newest := now.Add(-Spacing)
 		for j := range windows {
 			if first[j].IsZero() {
 				// No probe in this outage failed, so there is nothing to report. An
@@ -560,19 +600,25 @@ func Write(ctx context.Context, st *store.Store, c model.Sensor, h History) (int
 				// cover.
 				continue
 			}
-			// The outage ended where a probe found the service back, which is where
-			// the probe loop itself would have closed it. If the failures run to the
-			// end of the window there is no such probe, and the last failure is as
-			// far as this history can honestly see.
-			to := last[j].Add(Spacing)
-			if !to.Before(now) {
-				to = last[j]
-			}
 			id, err := tx.OpenIncident(ctx, c.ID, first[j], windows[j].cause)
 			if err != nil {
 				return err
 			}
-			if err := tx.CloseIncident(ctx, id, to); err != nil {
+			// An outage ends where a probe found the service back, and that is where the
+			// probe loop itself would have closed it: the failures stop at last[j], so
+			// the probe that ended them stands one Spacing later.
+			//
+			// If the end of the outage reaches the newest probe in the series, none of
+			// that has happened yet. The outage is still running as far as this history
+			// can see, so the incident stays open. It used to be closed on the last
+			// failure, which is a claim nothing here can make — the service may well
+			// still be down — and it is why a sensor restored from this data reads as
+			// up when it should read as down. See the "Rented server: web" entry, which
+			// is the one stretch of invented history that ends this way.
+			if newest.Before(windows[j].to) {
+				continue
+			}
+			if err := tx.CloseIncident(ctx, id, last[j].Add(Spacing)); err != nil {
 				return err
 			}
 		}

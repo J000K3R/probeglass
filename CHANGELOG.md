@@ -532,6 +532,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sent to the browser — the water is a fifth file and it is still sent, which is the
   point. The map's data is 1.1 MB now rather than 965 KB, and only the first zoom bands
   of it are built at any given zoom, exactly as before.
+- **The districts have names.** `districts.js` carried the 117 shapes and no words, so a
+  map zoomed onto Austria showed where the Bezirke are and not what they are called. The
+  file now carries a name stream beside its geometry — the same packing the province
+  names use, with the delta chain anchored on the centre of each district's largest ring
+  — and `cmd/worldgen` reads `g_name` where it used to read it and throw it away. The
+  names are drawn dim and at half opacity so they read as lying on the area rather than
+  over it, and the areas themselves gained a faint grey fill, which is what makes a
+  district visible as a district when the lines alone are lost in the province grid. The
+  header says the anchor is a centroid and not an official administrative seat, because
+  it is not one.
+- **The map has towns, not only cities.** Natural Earth's populated places stop at about
+  7300 names, and the middle of a country is where that runs out: a map of Austria drew
+  Vienna, Graz and Linz and no Krems an der Donau, no Wiener Neustadt and no Wels. The
+  GeoNames `cities5000` dump is embedded as a twelfth data set — 41 850 places of 10 000
+  people and up — and the two files are drawn as one layer, so nothing about the picture
+  says which file a name came from. The two overlap on 5060 names, which the browser
+  drops as a duplicate where the anchor is the same place rather than trying to resolve
+  it here; GeoNames carries no zoom, so the generator derives one from the population
+  (zoom 4 at five million down to 11 under twenty thousand) and the header says that it
+  computed it. The file is **CC BY 4.0** like the districts and is the second obligation
+  this project passes on; a settlement that is a district or a quarter of a city rather
+  than a city is dropped, which is what keeps Vienna's own twenty-two districts from
+  arriving as twenty-two towns and no Vienna.
+- **The Settings screen has a way out of it.** The last panel ends, and so did the page:
+  no link to the manual, the website or the source, on the one screen somebody is on
+  when they are stuck. A footer under the panels now carries four links — the project
+  website, the documentation, the source on GitHub and the MIT licence — with one
+  sentence saying what they are for. It lives outside the element the panels are
+  rewritten into, so switching category does not take it with it.
 
 ### Changed
 
@@ -717,6 +746,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pixels as it is at 2400. Every breakpoint is measured against what the bar is
   actually holding rather than guessed at, and `e2e/shell_test.go` measures them —
   including the tab strip, which nothing else in the bar would have caught.
+
+- **The map's lines are no longer angular when you zoom in.** Every layer here was
+  simplified with a tolerance of 0.02° — about two kilometres — and the layers that are
+  drawn deepest are the ones that showed it: a country border or a coastline that is
+  honest at a world view is a polygon by zoom 12, and zooming into one was the one thing
+  the map did badly. The tolerance is 0.005°, about 550 m, for every layer but the
+  districts, which stay at 0.002° because they are the only shapes drawn at zoom 8 and
+  nothing else. The obvious fix — simplify only the deep zoom bands finely — would have
+  fixed almost nothing, and the reason is worth remembering: a band is the zoom a shape
+  is *first* drawn at and every band up to the current zoom is drawn, so a border filed
+  in band 0 is still on screen at zoom 12 and still carries whatever tolerance band 0 was
+  written with. The tolerance is a property of the layer, not of a band. The map's data
+  grows from 2.0 MB to 3.9 MB for it, and the lines are now under a pixel out to about
+  zoom 8 rather than zoom 6.
+- **The demo data shows three pins in three colours.** Every sensor on a place was
+  paused, and a paused sensor outranks a running one, so the clickable demo drew one grey
+  pin per place and demonstrated nothing about what the map is for. The seven public
+  checks now stand on a third place, Frankfurt — they are enabled and they answer, so
+  that pin is green; the four homelab addresses stay paused, so that pin is grey; and the
+  rented server's web check is enabled against a name that genuinely does not resolve,
+  with an outage in its invented history that has not ended, so that pin is red. It is a
+  real failure rather than a staged one: the demo and an installation running on a real
+  network tell the same story about that target. The consequence is that the one enabled,
+  permanently failing example sensor opens an incident in a real installation and
+  notifies on it if a channel is configured — which is why the example data is one click
+  from gone, and why the docs say so where the data set is described.
+- **A demo history that ends mid-outage is no longer closed on the way in.** The writer
+  closed every outage at its last failing probe, so an outage running up to the newest
+  probe in the window was recorded as recovered by a probe that never happened — and the
+  sensor restored from that history read as up rather than as down. It is now left open,
+  which is what the red pin above stands on and what a restored installation would really
+  see.
+- **The setup screen creates the places its examples stand on, and not every place the
+  demo data set knows.** It was asking for the whole set, so a fresh installation drew a
+  named pin for Frankfurt with nothing on the pin — a place that exists for a check that
+  is not there yet. It now takes the names off its own example sensors.
+- **The Settings panels have one kind of heading.** Eleven panels opened with a bare
+  `h2` and their explanation in a paragraph below it, at the panel's own spacing, so
+  every panel had a slightly different gap under its title and a sentence that read like
+  a second heading. They share a head now — title and one sentence at 4 px, separated
+  from the body by the panel gap — and the About panel's hardcoded `Version` goes through
+  the translator like every other label on the screen.
 
 ### Fixed
 

@@ -368,18 +368,20 @@ than per account, and administrator-only:
 | `map.attribution` | empty by default; shown in the corner of the map when a tile URL is set |
 | `map.borders` | `on` by default (`DefaultMapBorders`); `off` takes the borders and the names off the map and does not send the six files behind them to the browser at all. The coastlines and the water stay: they are the ground, and there is no switch for them |
 
-**With no tile URL the map draws its own world.** Eleven data sets are embedded in
+**With no tile URL the map draws its own world.** Twelve data sets are embedded in
 the binary and decoded in the browser — 1:10m coastlines, 1:10m country borders,
 1:10m first-order administrative borders, 1:10m lakes and 1:10m large rivers each in
 two copies (the world's and Natural Earth's finer one of Europe), country names,
-province names, city names, and Austria's political districts from Statistik Austria
+province names, city names, town names, and Austria's political districts from
+Statistik Austria
 — so a dashboard on a network with no internet still shows where its sites
-are, and nothing about it is disclosed to anybody. Ten of the eleven are public
-domain Natural Earth data; **the districts are the exception and carry a licence**:
-Statistik Austria publishes them under CC BY 4.0, which asks to be named when the
-work is shown. Whoever runs a ProbeGlass map with the Austrian districts on it
-should name Statistik Austria — the file's own header carries the wording, and so
-does the dashboard documentation. The layers are stacked in that order, and the
+are, and nothing about it is disclosed to anybody. Ten of the twelve are public
+domain Natural Earth data; **the other two carry a licence**: Statistik Austria
+publishes the districts under CC BY 4.0 and GeoNames publishes the towns under the
+same licence, and both ask to be named when the work is shown. Whoever runs a
+ProbeGlass map with the Austrian districts or the GeoNames towns on it should name
+them — each file's own header carries the wording, and so does the dashboard
+documentation. The layers are stacked in that order, and the
 stacking is the design: the coastlines first, then the water inside
 them, then the country borders, then the districts, then the provinces, then any
 tiles you configured,
@@ -392,16 +394,18 @@ Everything but the coastlines arrives with the zoom, in the bands Natural Earth
 itself puts its data in: the country borders and their names at a world view, the
 provinces and their names from about zoom 5, the finer province bands and the rivers
 after that, the finer half of the water at about zoom 6, the cities between about
-zoom 3 and 10 depending on their size, and Austria's districts at zoom 8.
-`map.borders` is the switch, and it covers the three border files and the three name
+zoom 3 and 10 depending on their size, the towns from about zoom 4 down to 11 by
+population, and Austria's districts at zoom 8.
+`map.borders` is the switch, and it covers the three border files and the four name
 files together — turning it off does not merely stop the drawing, it stops
-the fetch, so it costs the operator 220 KB less and nothing else. The water is not
+the fetch, so it costs the operator about 2 MB of the 3.9 MB the map's data comes to
+and nothing else. The water is not
 behind it: a country
 whose lakes and rivers vanished when somebody turned the borders off would be a map
-that drew a different world without being asked to. The data is simplified to 0.02°
-— about two kilometres, honest to about zoom 6 and visibly angular by about zoom 10 —
-with the districts at 0.002°, because they are only ever drawn at a zoom where two
-kilometres of error would be visible. Entering a tile URL is what that field is for.
+that drew a different world without being asked to. The data is simplified to 0.005°
+— about 550 m, under a pixel to about zoom 8 and visibly angular by about zoom 12 —
+with the districts at 0.002°, about 220 m, because they are only ever drawn at a
+zoom where 550 m of error would be visible. Entering a tile URL is what that field is for.
 
 **With a tile URL the browser fetches the tiles directly**, so that server sees the
 viewer's address and roughly where they are looking; the daemon never proxies them.
@@ -416,8 +420,9 @@ policy automatically, which is what lets the tiles load at all — see `SECURITY
 ### Regenerating the map data
 
 `internal/web/assets/world.js`, `countries.js`, `borders.js`, `lakes.js`,
-`lakes_europe.js`, `rivers.js`, `rivers_europe.js`, `cities.js`, `districts.js`,
-`labels.js` and `regions.js` are generated and committed. To rebuild all eleven:
+`lakes_europe.js`, `rivers.js`, `rivers_europe.js`, `cities.js`, `towns.js`,
+`districts.js`, `labels.js` and `regions.js` are generated and committed. To rebuild
+all twelve:
 
 ```sh
 ne=https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson
@@ -431,6 +436,9 @@ curl -LO $ne/ne_10m_rivers_europe.geojson
 curl -LO $ne/ne_10m_populated_places_simple.geojson
 curl -LO $ne/ne_110m_admin_0_countries.geojson
 curl -LO $ne/ne_10m_admin_1_label_points.geojson
+# GeoNames, CC BY 4.0 — the towns the Natural Earth file does not carry. The dump is
+# a zip of a tab-separated text file, not GeoJSON.
+curl -LO https://download.geonames.org/export/dump/cities5000.zip && unzip -o cities5000.zip
 # Statistik Austria, CC BY 4.0. The typeName carries the year of the register, so this
 # is the one source URL here that has to be kept up to date.
 curl -o bezirke.geojson 'https://www.statistik.at/gs-open/GEODATA/ows?service=WFS&version=1.1.0&request=GetFeature&typeName=GEODATA:STATISTIK_AUSTRIA_POLBEZ_20260101&srsName=EPSG:4326&outputFormat=application/json'
@@ -443,26 +451,33 @@ go run ./cmd/worldgen -kind lakes     -in ne_10m_lakes_europe.geojson -minus ne_
 go run ./cmd/worldgen -kind rivers    -in ne_10m_rivers_lake_centerlines.geojson         -out internal/web/assets/rivers.js
 go run ./cmd/worldgen -kind rivers    -in ne_10m_rivers_europe.geojson -minus ne_10m_rivers_lake_centerlines.geojson -out internal/web/assets/rivers_europe.js
 go run ./cmd/worldgen -kind cities    -in ne_10m_populated_places_simple.geojson         -out internal/web/assets/cities.js
+go run ./cmd/worldgen -kind towns     -in cities5000.txt
 go run ./cmd/worldgen -kind labels    -in ne_110m_admin_0_countries.geojson              -out internal/web/assets/labels.js
 go run ./cmd/worldgen -kind regions   -in ne_10m_admin_1_label_points.geojson            -out internal/web/assets/regions.js
 go run ./cmd/worldgen -kind districts -in bezirke.geojson
 ```
 
-`-kind` picks the reader — closed rings, open lines, named points, or the two kinds
+`-kind` picks the reader — closed rings, open lines, named points, a tab-separated
+place file, or the two kinds
 the water arrives in twice — so one
-program produces all eleven files. `-minus <geojson>` drops the shapes whose name the
+program produces all twelve files. `-minus <geojson>` drops the shapes whose name the
 file you hand it already draws, and it is what keeps the two copies of the water from
 being drawn on top of each other: the Europe supplements repeat 8 lakes and 72 rivers
 of the world files, at the same zooms. It takes the world file's *source*, because the
 names are in the source, and an empty name never matches — 610 of the world's lakes
-have no name. `-out` is required for every kind except `land`
+have no name. `-out` is required for every kind except `land`, `towns`
 and `districts`, whose defaults are the files they belong to: an accidental run that
 wrote provinces over
 `world.js` would be a map that lost its land. `-max-rank` is the river cut, and its
 default belongs to the file: 4 for the world's rivers and 11 for Europe's, whose ranks
-run 10 to 12 rather than 0 to 10. `cmd/worldgen` fetches nothing
+run 10 to 12 rather than 0 to 10. It is refused for `towns`, which is cut by
+`-min-population` instead — GeoNames publishes a population and no rank, so a rank cut
+on that file would drop nothing and its header would lie. `-only` on `towns` takes the
+two-letter ISO 3166-1 code (`AT`), not the three-letter one the Natural Earth files use
+(`AUT`); the wrong one is refused rather than answered with an empty file.
+`cmd/worldgen` fetches nothing
 itself. It validates the shape of what it reads, simplifies (Douglas-Peucker,
-0.02° by default), quantises to
+0.005° for every layer but the districts, which get 0.002°), quantises to
 thousandths of a degree and writes the coordinates delta-coded, and the header of
 every file it writes records the source URL, the SHA-256 of the input, the
 tolerance and the point counts — so a file in the repository can be checked against
@@ -472,9 +487,15 @@ over-simplifies longitude near the poles; the Arctic is coarse either way. The
 borders, the lakes and the rivers are grouped into their zoom bands by Natural
 Earth's own `MIN_ZOOM` rather than by a threshold of ours, and the bands are
 exported with them, so the browser shows exactly what the data says belongs at that
-zoom. The districts are the one kind that reads no zoom at all: the Austrian register
+zoom. The coastlines are the one layer that is not banded: the whole world is one
+ring, drawn at every zoom, which is why it carries the same fine tolerance as the
+rest — a band is the zoom a shape is *first* drawn at and every band up to the
+current zoom is drawn, so a coarse band 0 is still on screen at zoom 12. The
+districts are the one kind that reads no zoom at all: the Austrian register
 has none, so the generator sets the single band 8 and the header says so instead of
-pretending the file has a zoom field. Every file is written deterministically: same
+pretending the file has a zoom field, and the towns are the one kind whose zoom is
+computed rather than read — GeoNames publishes no zoom, so the generator derives one
+from the population. Every file is written deterministically: same
 input, same bytes.
 
 ## Validation

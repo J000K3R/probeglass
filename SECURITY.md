@@ -216,8 +216,8 @@ If the community matters, treat it as compromised the moment it crosses one.
 ## The map draws itself, and fetches nothing by default
 
 The dashboard draws your sites on a map. The map's world comes out of the binary —
-coastlines, the lakes and rivers, the country, district and province borders and the
-names of all three, nearly
+coastlines, the lakes and rivers, the country, district and province borders, and the
+names of the countries, provinces, cities and towns, nearly
 all of it from
 public-domain datasets decoded in the browser — and **out of the box nothing about it
 leaves the machine**. No request is made to any server to draw it, so there is nobody to
@@ -225,14 +225,17 @@ disclose anything to: not your IP address, not your browser, and not the part of
 world you are looking at. The daemon never contacts a map server either, by default or
 otherwise.
 
-**One file on that map is not public domain, and this is where that is written down.**
+**Two files on that map are not public domain, and this is where that is written down.**
 The district borders are Austria's, and they come from Statistik Austria under
-**CC BY 4.0**, which is not a licence that asks for nothing: it asks to be named when the
-work is shown. Ten of the eleven embedded datasets are Natural Earth's and are public
-domain; this one is the exception, it is the only obligation this project passes on to
-whoever runs it, and it is also the only source URL here that changes from year to year,
-because the register in it carries a date. The wording to use is in the file's own header
-(`internal/web/assets/districts.js`) and in the dashboard documentation.
+**CC BY 4.0**; the town names come from GeoNames under the same licence. CC BY is not a
+licence that asks for nothing: it asks to be named when the
+work is shown. Ten of the twelve embedded datasets are Natural Earth's and are public
+domain; these two are the exception, they are the only obligation this project passes on
+to whoever runs it, and one of them is also the only source URL here that changes from
+year to year, because the register in it carries a date. The wording to use is in each
+file's own header
+(`internal/web/assets/districts.js` and `internal/web/assets/towns.js`) and in the
+dashboard documentation.
 
 An administrator can still enter a tile URL in **Settings → Look → Map**, and that is a
 real decision with a real cost, so it is written down here rather than buried in a
@@ -288,12 +291,12 @@ What that does not protect you from:
   point the map at a host that serves other things, the browser may fetch those too.
   That is the same trust you extend to any server you type into a setting.
 - **Coarse data.** The bundled coastlines, country borders, lakes and rivers are 1:10m,
-  the province borders, their names and the city names are
-  1:10m as well, the country names 1:110m — and all of it is simplified to about two
-  kilometres, which is
-  under a pixel to about zoom 6 and visible by about zoom 10. In a city it is a straight
+  the province borders, their names, the city names and the town names are
+  1:10m as well, the country names 1:110m — and all of it is simplified to about 550
+  metres, which is
+  under a pixel to about zoom 8 and visible by about zoom 12. In a city it is a straight
   line between distant points, and the districts are the only layer simplified harder
-  (about 200 metres) because they are only ever drawn at a zoom where two kilometres
+  (about 200 metres) because they are only ever drawn at a zoom where 550 metres
   would show. Only the 472 largest river systems are in the world file and only the
   middle-sized ones of Europe are added to it, so a stream through a valley is not on
   this map and neither is a river in a country Natural Earth did not draw one for. That

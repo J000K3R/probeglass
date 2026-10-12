@@ -131,13 +131,15 @@ frontend pipeline to keep alive.
   a heartbeat, and a **map** of your sites. The map draws the world from
   public-domain data embedded in the binary — coastlines, the lakes and rivers,
   country, district and province
-  borders, and the names of countries, provinces and cities, appearing as you zoom —
+  borders, and the names of countries, provinces, cities and towns, appearing as you
+  zoom —
   so it works on a network
   with no internet and tells nobody anything; a tile URL in Settings puts real
   tiles under it for anybody running a tile server of their own, and a switch turns
-  the borders and names off without touching the water. One
-  exception to the public domain: Austria's district borders come from Statistik
-  Austria under CC BY 4.0, which asks to be named — say so wherever you show them. One
+  the borders and names off without touching the water. Two
+  exceptions to the public domain: Austria's district borders come from Statistik
+  Austria and the town names from GeoNames, both under CC BY 4.0, which asks to be
+  named — say so wherever you show them. One
   setting, not five pages, with a switcher in the top bar. Per-sensor
   response-time charts, uptime bars, incident timeline. Updates over SSE: a probe
   result redraws the one card it belongs to — the status dot, the latency, the

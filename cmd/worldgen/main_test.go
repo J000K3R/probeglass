@@ -1,7 +1,9 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"math"
 	"strings"
 	"testing"
 )
@@ -163,7 +165,7 @@ func TestTheDistrictFileIsRefusedWhenItIsNotTheWholeCountry(t *testing.T) {
 	  {"type":"Feature","properties":{"g_id":"1","g_name":"Bregenz"},
 	   "geometry":{"type":"Polygon","coordinates":[[[9.7,47.4],[9.8,47.4],[9.8,47.5],[9.7,47.5],[9.7,47.4]]]}}
 	]}`
-	if _, _, err := parseDistrictShapes([]byte(small)); err == nil {
+	if _, _, _, _, err := parseDistricts([]byte(small)); err == nil {
 		t.Errorf("a one-district file was accepted; Austria has 117 and a file that answers " +
 			"with one of them is a query that went wrong, not a country that lost its districts")
 	} else if !strings.Contains(err.Error(), "Austria") {
@@ -189,12 +191,12 @@ func TestTheDistrictFileIsRefusedWhenItIsNotTheWholeCountry(t *testing.T) {
 	}
 	b.WriteString(`]}`)
 
-	out, areas, err := parseDistrictShapes([]byte(b.String()))
+	out, labels, areas, rings, err := parseDistricts([]byte(b.String()))
 	if err != nil {
-		t.Fatalf("parseDistrictShapes: %v", err)
+		t.Fatalf("parseDistricts: %v", err)
 	}
-	if areas != 120 || len(out) != 120 {
-		t.Errorf("%d area(s) and %d ring(s), want 120 of each", areas, len(out))
+	if areas != 120 || rings != 120 || len(out) != 120 {
+		t.Errorf("%d area(s), %d ring(s) and %d shape(s), want 120 of each", areas, rings, len(out))
 	}
 	for _, shape := range out {
 		if shape.minZoom != districtBand {
@@ -203,6 +205,225 @@ func TestTheDistrictFileIsRefusedWhenItIsNotTheWholeCountry(t *testing.T) {
 				"wrong band is a district that appears at a zoom nobody asked for",
 				shape.minZoom, districtBand)
 		}
+	}
+
+	// The names are the half of this file that is not geometry, and they are the reason
+	// the districts are readable at all: 117 outlines on their own are 117 shapes with
+	// nothing on them. One per district, none empty, and each on the middle of its own
+	// square — the grid is regular, so any other anchor is a centroid that went wrong.
+	if len(labels) != 120 {
+		t.Fatalf("%d name(s) for 120 areas; every district carries a g_name and every one "+
+			"of them has to reach the map", len(labels))
+	}
+	for i, l := range labels {
+		if l.name != fmt.Sprintf("Bezirk %d", i) {
+			t.Fatalf("name %d is %q, want %q", i, l.name, fmt.Sprintf("Bezirk %d", i))
+		}
+		wantLon := 9.5 + float64(i%12)*0.6 + 0.25
+		wantLat := 46.5 + float64(i/12)*0.5 + 0.2
+		if math.Abs(l.lon-wantLon) > 1e-9 || math.Abs(l.lat-wantLat) > 1e-9 {
+			t.Errorf("%s is anchored at (%g, %g), want (%g, %g): the anchor is the middle of "+
+				"the district and a name anywhere else is a name on the wrong district",
+				l.name, l.lon, l.lat, wantLon, wantLat)
+		}
+		if l.zoom != districtBand || l.rank != 0 {
+			t.Errorf("%s carries zoom %d and rank %d, want %d and 0", l.name, l.zoom, l.rank, districtBand)
+		}
+	}
+}
+
+func TestADistrictIsNamedInTheMiddleOfItselfAndNotOfItsOutline(t *testing.T) {
+	// The six that are not plain: a district with a statutory city cut out of it. The
+	// hole is off centre on purpose, because a hole in the middle of a square shifts a
+	// centroid by nothing at all and would pass whether the subtraction happened or not.
+	//
+	// The square is (0,0) to (1,1); the hole is (0.7,0.7) to (0.9,0.9), area 0.04. The
+	// outline's own centre is (0.5,0.5); taking the hole back out moves both coordinates
+	// away from it, to (0.5 - 0.8*0.04) / 0.96.
+	polys, err := polygonsOf("Polygon", json.RawMessage(`[
+	     [[0,0],[1,0],[1,1],[0,1],[0,0]],
+	     [[0.7,0.7],[0.9,0.7],[0.9,0.9],[0.7,0.9],[0.7,0.7]]]`))
+	if err != nil {
+		t.Fatalf("polygonsOf: %v", err)
+	}
+
+	lon, lat := districtAnchor(polys)
+	want := (0.5 - 0.8*0.04) / 0.96
+	if math.Abs(lon-want) > 1e-9 || math.Abs(lat-want) > 1e-9 {
+		t.Errorf("the anchor is (%g, %g), want (%g, %g). A centroid that ignored the hole "+
+			"would be (0.5, 0.5), and on a real district that is the statutory city that "+
+			"sits inside it — Graz inside Graz-Umgebung — which is a different district "+
+			"with a name of its own",
+			lon, lat, want, want)
+	}
+
+	// Largest polygon wins, and the smaller one is not allowed to pull the anchor. A
+	// district with an exclave in it is still mostly where it is.
+	two := [][][][2]float64{
+		{{{0, 0}, {1, 0}, {1, 1}, {0, 1}, {0, 0}}},
+		{{{8, 8}, {8.1, 8}, {8.1, 8.1}, {8, 8.1}, {8, 8}}},
+	}
+	lon, lat = districtAnchor(two)
+	if math.Abs(lon-0.5) > 1e-9 || math.Abs(lat-0.5) > 1e-9 {
+		t.Errorf("the anchor is (%g, %g) for a shape whose smaller half is at (8.05, 8.05); "+
+			"the name belongs on the larger polygon", lon, lat)
+	}
+
+	// A ring with no area is a division by zero in the shoelace sum, and the middle of
+	// its bounding box is the answer that costs nothing and lands in the right country.
+	lon, lat = districtAnchor([][][][2]float64{{{{2, 4}, {6, 4}, {4, 4}, {2, 4}}}})
+	if math.Abs(lon-4) > 1e-9 || math.Abs(lat-4) > 1e-9 {
+		t.Errorf("a degenerate ring is anchored at (%g, %g), want the middle of its box "+
+			"(4, 4)", lon, lat)
+	}
+}
+
+// A GeoNames row is nineteen tab-separated columns and nothing else, so the test builds
+// them in that shape rather than pasting one: the column a value sits in is the only thing
+// identifying it, there is no header to check it against, and a row that is one column
+// short shifts every field after the gap into the wrong one — which for this file means a
+// population read as a longitude.
+//
+// The indexes here are the ones the parser reads: 1 name, 4 latitude, 5 longitude, 7
+// feature code, 8 country code, 14 population. The other thirteen are filled with
+// something that is not empty so that a parser reading the wrong column gets a wrong
+// answer rather than an empty one.
+func geonamesRow(geonameid, name, lat, lon, feature, country, population string) string {
+	other := []string{"", "", "", "", "", "", "", "", "", "", "", "", ""}
+	row := make([]string, 19)
+	copy(row, other)
+	row[0], row[1] = geonameid, name
+	row[2], row[3] = name, name
+	row[4], row[5], row[6], row[7] = lat, lon, "P", feature
+	row[8], row[9] = country, ""
+	row[10], row[11], row[12], row[13] = "01", "", "", ""
+	row[14], row[15], row[16], row[17], row[18] = population, "", "150", "Europe/Vienna", "2026-01-01"
+	return strings.Join(row, "\t")
+}
+
+// TestATownIsNotAQuarterOfACityAndNotAVillage is about the two rules that decide what
+// towns.js holds, both of which fail invisibly.
+//
+// The first is the section rule. GeoNames files all 23 of Vienna's districts under the
+// feature code PPLX, each with the population of the quarter and each a place of its own,
+// so a file without the rule in it has twenty-two names across one city — Favoriten at
+// 201 882 and Donaustadt at 187 007 — and the map reads as though it had been tagged by
+// somebody walking around Vienna.
+//
+// The second is the cut. It is what makes the file a megabyte instead of fifteen, and it
+// is the one thing in this file a person can move: -min-population 50000 is a map of the
+// larger towns and a tenth of the size.
+func TestATownIsNotAQuarterOfACityAndNotAVillage(t *testing.T) {
+	source := strings.Join([]string{
+		geonamesRow("2761369", "Vienna", "48.20849", "16.37208", "PPLC", "AT", "1691468"),
+		geonamesRow("8063098", "Favoriten", "48.16891", "16.37546", "PPLX", "AT", "201882"),
+		geonamesRow("2761524", "Wels", "48.15731", "14.02494", "PPLA3", "AT", "16946"),
+		geonamesRow("7871499", "Kremsmünster", "48.05404", "14.12818", "PPL", "AT", "6585"),
+		geonamesRow("2867714", "Munich", "48.13743", "11.57549", "PPLA", "DE", "1505005"),
+	}, "\n") + "\n"
+
+	labels, counts, err := parseTownLabels([]byte(source), countryFilter{}, 10000)
+	if err != nil {
+		t.Fatalf("parseTownLabels: %v", err)
+	}
+	if counts.total != 5 {
+		t.Errorf("total is %d, want 5 — it is a fact about the file rather than about the "+
+			"cut, and the header's \"of the N in the file\" line is written from it", counts.total)
+	}
+	if counts.sections != 1 {
+		t.Errorf("sections is %d, want 1 — Favoriten is a PPLX and it is the one row that "+
+			"is a quarter of a city rather than a city", counts.sections)
+	}
+	if counts.above != 3 {
+		t.Errorf("above is %d, want 3: Vienna, Wels and Munich are at or above the cut and "+
+			"are not sections; Kremsmünster is below it and Favoriten is a section. The "+
+			"number is the population cut on its own, before -only, so it is what the "+
+			"header can print without lying when somebody keeps one country", counts.above)
+	}
+	if len(labels) != 3 {
+		t.Fatalf("%d label(s), want 3 — Vienna, Wels and Munich", len(labels))
+	}
+	for _, l := range labels {
+		if l.name == "Favoriten" {
+			t.Errorf("Favoriten reached the map; it is a district of Vienna filed as a place " +
+				"of its own, and twenty-two of them would be drawn across the city")
+		}
+		if l.name == "Kremsmünster" {
+			t.Errorf("Kremsmünster reached the map at %d inhabitant(s); the cut is 10 000", 6585)
+		}
+	}
+
+	// The zoom is derived from the population and from nothing else, because this file
+	// has no rank in it. Vienna at 1.69 million and Wels at 16 946 are five steps apart,
+	// which is the whole of the rule: ten times as many people, one step nearer.
+	if labels[0].zoom != 5 || labels[1].zoom != 11 {
+		t.Errorf("Vienna came out at zoom %d and Wels at %d, want 5 and 11 — the ladder is "+
+			"a staircase of population, and a town that arrived at the wrong step would "+
+			"either be lost among the capitals or drawn over a city",
+			labels[0].zoom, labels[1].zoom)
+	}
+	if labels[0].rank != 0 {
+		t.Errorf("Vienna carries rank %d; this file has no ranks in it at all, and a rank "+
+			"invented here would sort the towns against each other by a rule the source "+
+			"does not have", labels[0].rank)
+	}
+
+	// And -only, which is the two-letter code here. The three-letter one is what every
+	// other name file takes and it matches nothing in this one, which is why the run()
+	// refuses it rather than writing an empty file.
+	aut, counts, err := parseTownLabels([]byte(source), newCountryFilter("AT"), 10000)
+	if err != nil {
+		t.Fatalf("parseTownLabels -only AT: %v", err)
+	}
+	if len(aut) != 2 || counts.above != 3 {
+		t.Errorf("-only AT kept %d label(s) and reported %d above the cut; the filter is the "+
+			"last thing applied, so the cut's own count must not move when a country is "+
+			"picked", len(aut), counts.above)
+	}
+	if _, _, err := parseTownLabels([]byte(source), newCountryFilter("AUT"), 10000); err == nil {
+		t.Errorf("-only AUT was accepted; GeoNames files a place under \"AT\" and there is no " +
+			"Austria under that spelling in this file, so a run that kept nothing has to say " +
+			"so rather than write a towns file with no towns in it")
+	}
+}
+
+func TestTheTownZoomLadderIsAStepPerPowerOfTen(t *testing.T) {
+	// The ladder is the one number this program invents for GeoNames, so it is checked
+	// at every step and at the boundary of each: a place exactly at a threshold belongs
+	// to the deeper of the two groups, which is what "at least" means and what makes the
+	// numbers in the header reproducible.
+	for _, tc := range []struct {
+		population int
+		zoom       int
+	}{
+		{20_000_000, 4}, {5_000_000, 4}, {4_999_999, 5},
+		{1_000_000, 5}, {999_999, 6},
+		{500_000, 6}, {499_999, 7},
+		{200_000, 7}, {199_999, 8},
+		{100_000, 8}, {99_999, 9},
+		{50_000, 9}, {49_999, 10},
+		{20_000, 10}, {19_999, 11},
+		{10_000, 11}, {9_999, 11},
+	} {
+		if got := townZoom(tc.population); got != tc.zoom {
+			t.Errorf("townZoom(%d) = %d, want %d", tc.population, got, tc.zoom)
+		}
+	}
+}
+
+func TestARowWithTheWrongNumberOfColumnsIsRefused(t *testing.T) {
+	// The failure this guards is not a corrupt file but a subtly different one: a line
+	// that is one tab short shifts every field after the gap, so the population is read
+	// out of the elevation column and the town lands at a zoom derived from a number
+	// about a mountain. Nothing about the output would look wrong.
+	short := geonamesRow("2761369", "Vienna", "48.20849", "16.37208", "PPLC", "AT", "1691468")
+	short = short[:strings.LastIndex(short, "\t")]
+	if _, _, err := parseTownLabels([]byte(short+"\n"), countryFilter{}, 10000); err == nil {
+		t.Errorf("a row with 18 columns was accepted; every row of this file has 19 and the " +
+			"column a value is in is the only thing identifying it")
+	} else if !strings.Contains(err.Error(), "column") {
+		t.Errorf("the refusal is %q; it has to say that the shape of the row is what is "+
+			"wrong, because nothing else about the failure is visible", err)
 	}
 }
 

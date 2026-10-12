@@ -4,8 +4,8 @@
 // servers stopped being usable by anybody but their own websites, no tiles either.
 // What it draws instead is this: the world's coastlines, its country and
 // first-order administrative borders, Austria's political districts, its lakes and
-// its rivers, and the names of the countries, the provinces and the cities on it —
-// all from files small enough to embed in the binary. The map is
+// its rivers, and the names of the countries, the provinces, the cities and the towns
+// on it — all from files small enough to embed in the binary. The map is
 // still a real map: places land where they belong, a border is where the border is, and
 // the graticule underneath is honest. It simply has nothing on it that somebody else's
 // server had to be asked for.
@@ -24,9 +24,10 @@
 //	labels     ne_110m_admin_0_countries                 labels.js
 //	regions    ne_10m_admin_1_label_points               regions.js
 //	cities     ne_10m_populated_places_simple            cities.js
+//	towns      GeoNames cities5000                        towns.js
 //	districts  Statistik Austria political districts      districts.js
 //
-// Two of the eleven rows are the same kind run twice on two files, which is the one
+// Two of the twelve rows are the same kind run twice on two files, which is the one
 // thing worth knowing about the shape of this table: Natural Earth publishes Europe a
 // second time, with more water in it, and the second copy is where the middle-sized
 // rivers and lakes of the Alps are — the Salzach, the Enns, the Zürichsee. Where the two
@@ -41,14 +42,14 @@
 // It is the only thing in this repository that reads something nobody committed. So
 // the output carries everything needed to reproduce it: the source URL, the checksum
 // of the input, the command line, and the licence. Fetching the input is not this
-// program's business — it is nine fetches in docs/CONFIGURATION.md, so that regenerating
-// a file is a thing a person can actually do rather than a thing this program would
-// have to be trusted about.
+// program's business — it is the dozen commands in docs/CONFIGURATION.md, so that
+// regenerating a file is a thing a person can actually do rather than a thing this
+// program would have to be trusted about.
 //
-// Eight of the nine sources are Natural Earth and in the public domain. The ninth is
-// Austria's districts, from Statistik Austria under CC BY 4.0 — the one thing on this
-// map that carries an attribution, which is why its licence is in its header and not
-// in a footnote somewhere.
+// Ten of the twelve files are Natural Earth's and in the public domain. The other two
+// ask to be named: GeoNames' towns and Statistik Austria's districts, both CC BY 4.0.
+// Those two are the only things on this map that carry an attribution, which is why
+// their licences are in their headers and not in a footnote somewhere.
 //
 // # The format
 //
@@ -111,10 +112,11 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 )
 
-// The command line, one flag set for all nine kinds. The defaults that matter differ
+// The command line, one flag set for all ten kinds. The defaults that matter differ
 // per kind — a coastline and a border are not simplified the same way, a ring is not a
 // line, and a district is drawn at a zoom where a country border's tolerance would show
 // — so they are applied after parsing, from the kind, and only to the flags nobody set.
@@ -138,6 +140,7 @@ const (
 	kindLabels    = "labels"
 	kindRegions   = "regions"
 	kindCities    = "cities"
+	kindTowns     = "towns"
 	kindDistricts = "districts"
 )
 
@@ -148,19 +151,21 @@ const (
 // a river runs through several, and Austria's district file is one country by
 // construction. -only with one of those kinds is refused rather than ignored — see run().
 func hasCountryCode(kind string) bool {
-	return kind == kindBorders || kind == kindLabels || kind == kindRegions || kind == kindCities
+	return kind == kindBorders || kind == kindLabels || kind == kindRegions ||
+		kind == kindCities || kind == kindTowns
 }
 
 func run() error {
-	kind := flag.String("kind", kindLand, "what to generate: land, countries, borders, lakes, rivers, labels, regions, cities or districts")
+	kind := flag.String("kind", kindLand, "what to generate: land, countries, borders, lakes, rivers, labels, regions, cities, towns or districts")
 	in := flag.String("in", "", "Natural Earth GeoJSON file to read (see docs/CONFIGURATION.md for where to get it)")
 	out := flag.String("out", "", "file to write; the default is the asset belonging to -kind")
 	tol := flag.Float64("tol", 0, "Douglas-Peucker tolerance in degrees; 0 means the default for -kind")
 	minPoints := flag.Int("min-points", 0, "drop lines left with fewer points than this after simplifying; 0 means the default for -kind")
-	only := flag.String("only", "", "keep only these countries (comma-separated ADM0_A3 codes); empty keeps all of them. Not every -kind has country codes in its source")
+	only := flag.String("only", "", "keep only these countries (comma-separated codes — ADM0_A3 like AUT for the Natural Earth files, ISO 3166-1 alpha-2 like AT for the GeoNames towns file); empty keeps all of them. Not every -kind has country codes in its source")
 	maxRank := flag.Int("max-rank", 0, "labels, regions, cities: drop names ranked less important than this; rivers: drop rivers ranked less important than this; unset means the default for -kind, and 0 means no limit")
 	class := flag.String("class", "", "countries, borders: the one FEATURECLA to draw; unset means the default for -kind")
 	minus := flag.String("minus", "", "lakes, rivers: a GeoJSON file whose named shapes are already drawn; shapes sharing a name with one of them are dropped here. Empty drops nothing")
+	minPopulation := flag.Int("min-population", 0, "towns: drop places below this many inhabitants; 0 means the default for -kind")
 	flag.Parse()
 
 	if *in == "" {
@@ -171,7 +176,7 @@ func run() error {
 	flag.Visit(func(f *flag.Flag) { given[f.Name] = true })
 	// defaulted takes the flag from the kind when nobody asked for one. A tolerance is
 	// not a property of a file format, it is a property of the thing being drawn:
-	// 0.02 flattens a coastline at the same visible cost as 0.05 flattens a border.
+	// 0.005 flattens a coastline at the same visible cost as 0.002 flattens a district.
 	defaulted := func(name string, value float64, fallback float64) float64 {
 		if given[name] {
 			return value
@@ -194,7 +199,7 @@ func run() error {
 			kindLand: "world.js", kindCountries: "countries.js", kindBorders: "borders.js",
 			kindLakes: "lakes.js", kindRivers: "rivers.js",
 			kindLabels: "labels.js", kindRegions: "regions.js",
-			kindCities: "cities.js", kindDistricts: "districts.js",
+			kindCities: "cities.js", kindTowns: "towns.js", kindDistricts: "districts.js",
 		}[*kind]
 		if !ok {
 			return fmt.Errorf("-kind %q is not one of %s", *kind, strings.Join(kinds(), ", "))
@@ -209,13 +214,42 @@ func run() error {
 		*out = filepath.Join("internal", "web", "assets", asset)
 	}
 
-	// -only names a country, and four of the nine sources have no country in them.
+	// -only names a country, and seven of the twelve sources have no country in them.
 	// Refusing it is the point: an ignored filter would write a file with nothing in
 	// it, which on the dashboard is a map with no rivers on it — a thing that looks
 	// exactly like a dataset that has no rivers in it, and so is a thing nobody can
 	// debug.
 	if *only != "" && !hasCountryCode(*kind) {
 		return fmt.Errorf("-kind %s reads a file with no country code in it: -only cannot be used with it", *kind)
+	}
+
+	// -max-rank is the same kind of refusal for the other half of the towns question. The
+	// three name files cut themselves by a rank the source publishes; GeoNames publishes
+	// no rank at all, so a -max-rank here would be accepted and would do nothing, and a
+	// file generated by a flag that did nothing is a file whose header lies about how it
+	// was made. -min-population is what cuts this one and it is named here so the person
+	// who typed the wrong flag is told the right one.
+	if given["max-rank"] && *kind == kindTowns {
+		return fmt.Errorf("-kind towns is cut by -min-population, not by -max-rank: " +
+			"GeoNames publishes a population and no rank, and a rank cut on a file that has " +
+			"no ranks in it would drop nothing at all")
+	}
+
+	// And the country codes of the towns file are a different kind of code, which is not
+	// a detail a person can be expected to guess. Every other name file here is Natural
+	// Earth's and is filtered by the ADM0_A3 code — AUT, DEU, CHE — while GeoNames files
+	// a place under the ISO 3166-1 alpha-2 code, AT, DE, CH. Both are called "the country
+	// code" and neither is wrong, so -only AUT would match nothing at all and would be
+	// reported as a code that is not real — which is true of this file and false of AUT,
+	// and a message that is right for the wrong reason is the worst kind.
+	if *kind == kindTowns && *only != "" {
+		for _, code := range strings.Split(*only, ",") {
+			if len(strings.TrimSpace(code)) != 2 {
+				return fmt.Errorf("-only %s with -kind towns: GeoNames files a place under the "+
+					"two-letter ISO 3166-1 code, not the three-letter one the Natural Earth "+
+					"files use — -only AT, not -only AUT", *only)
+			}
+		}
 	}
 
 	// -minus drops the shapes another file already draws. It exists for one measured
@@ -241,19 +275,19 @@ func run() error {
 
 	switch *kind {
 	case kindLand:
-		return runLand(name, sum, *in, *out, defaulted("tol", *tol, 0.02), defaultInt(given, "min-points", *minPoints, 4), source)
+		return runLand(name, sum, *in, *out, defaulted("tol", *tol, worldTolerance), defaultInt(given, "min-points", *minPoints, 4), source)
 	case kindCountries:
 		code := *class
 		if !given["class"] {
 			code = countryClass
 		}
-		return runCountries(name, sum, *in, *out, defaulted("tol", *tol, 0.02), defaultInt(given, "min-points", *minPoints, 2), code, source)
+		return runCountries(name, sum, *in, *out, defaulted("tol", *tol, worldTolerance), defaultInt(given, "min-points", *minPoints, 2), code, source)
 	case kindBorders:
 		code := *class
 		if !given["class"] {
 			code = borderClass
 		}
-		return runBorders(name, sum, *in, *out, defaulted("tol", *tol, 0.02), defaultInt(given, "min-points", *minPoints, 2), code, filter, source)
+		return runBorders(name, sum, *in, *out, defaulted("tol", *tol, worldTolerance), defaultInt(given, "min-points", *minPoints, 2), code, filter, source)
 	case kindLakes:
 		// The Europe supplement is the same kind on the second file: it writes the same
 		// stream with its own header, and its own band table, which is deeper than the
@@ -262,9 +296,9 @@ func run() error {
 		// named by its path — and `-in /tmp/ne_10m_lakes_europe.geojson` is how anybody
 		// runs this.
 		if europeKinds[name] == kindLakes {
-			return runEuropeLakes(name, sum, *in, *out, defaulted("tol", *tol, 0.02), defaultInt(given, "min-points", *minPoints, 4), skip, source)
+			return runEuropeLakes(name, sum, *in, *out, defaulted("tol", *tol, worldTolerance), defaultInt(given, "min-points", *minPoints, 4), skip, source)
 		}
-		return runLakes(name, sum, *in, *out, defaulted("tol", *tol, 0.02), defaultInt(given, "min-points", *minPoints, 4), skip, source)
+		return runLakes(name, sum, *in, *out, defaulted("tol", *tol, worldTolerance), defaultInt(given, "min-points", *minPoints, 4), skip, source)
 	case kindRivers:
 		// The Europe supplement ranks on its own scale, where the world file's cut would
 		// keep nothing at all, so it carries its own default rather than a flag every
@@ -272,15 +306,17 @@ func run() error {
 		rank := defaultInt(given, "max-rank", *maxRank, maxRiverRank)
 		if europeKinds[name] == kindRivers {
 			rank = defaultInt(given, "max-rank", *maxRank, europeRiverRank)
-			return runEuropeRivers(name, sum, *in, *out, defaulted("tol", *tol, 0.02), defaultInt(given, "min-points", *minPoints, 2), rank, skip, source)
+			return runEuropeRivers(name, sum, *in, *out, defaulted("tol", *tol, worldTolerance), defaultInt(given, "min-points", *minPoints, 2), rank, skip, source)
 		}
-		return runRivers(name, sum, *in, *out, defaulted("tol", *tol, 0.02), defaultInt(given, "min-points", *minPoints, 2), rank, skip, source)
+		return runRivers(name, sum, *in, *out, defaulted("tol", *tol, worldTolerance), defaultInt(given, "min-points", *minPoints, 2), rank, skip, source)
 	case kindLabels:
 		return runLabels(name, sum, *in, *out, filter, *maxRank, source)
 	case kindRegions:
 		return runRegions(name, sum, *in, *out, filter, *maxRank, source)
 	case kindCities:
 		return runCities(name, sum, *in, *out, filter, *maxRank, source)
+	case kindTowns:
+		return runTowns(name, sum, *in, *out, filter, defaultInt(given, "min-population", *minPopulation, minTownPopulation), source)
 	case kindDistricts:
 		return runDistricts(name, sum, *in, *out, defaulted("tol", *tol, districtTolerance), defaultInt(given, "min-points", *minPoints, 4), source)
 	}
@@ -312,7 +348,7 @@ func europeAsset(kind, file string) string {
 // in the package comment.
 func kinds() []string {
 	return []string{kindLand, kindCountries, kindBorders, kindLakes, kindRivers,
-		kindLabels, kindRegions, kindCities, kindDistricts}
+		kindLabels, kindRegions, kindCities, kindTowns, kindDistricts}
 }
 
 func defaultInt(given map[string]bool, name string, value, fallback int) int {
@@ -380,7 +416,8 @@ func runLand(name, sum, in, out string, tol float64, minPoints int, source []byt
 //
 // The borders, the water and the names are next to this file, from the same generator
 // and with the same kind of header: countries.js, borders.js, lakes.js, lakes_europe.js,
-// rivers.js, rivers_europe.js, districts.js, labels.js, regions.js and cities.js. See
+// rivers.js, rivers_europe.js, districts.js, labels.js, regions.js, cities.js and
+// towns.js. See
 // docs/CONFIGURATION.md for where the input comes from.
 
 export const WORLD_RINGS = %d;
@@ -902,12 +939,25 @@ export const WORLD_RIVER_EUROPE_DATA = '%s';
 // Every other layer keeps the tolerance it had. This is not an inconsistency, it is the
 // same rule applied to a layer that is drawn 500 times closer: the tolerance is a property
 // of the thing being drawn, not of the program.
+//
+// The world tolerance was 0.02 until somebody watched a border come apart at zoom 12.
+// What that measurement showed is worth writing down, because the obvious reading of the
+// bands is wrong: a band is the zoom a shape is *first* drawn at, and every band up to the
+// current zoom is drawn, so a country border filed in band 0 is still on screen at zoom
+// 12 and is still simplified at whatever tolerance band 0 was written with. Simplifying
+// only the deep bands finely would therefore have fixed almost nothing — the lines that
+// look angular when somebody zooms in are the shallow ones. The tolerance is a property
+// of the layer as a whole, and 0.005 is about 550 m: under a pixel to about zoom 8, one
+// or two at zoom 9 and into the tens by zoom 12. It costs 1.2 MB — the geometry assets
+// are 2.9 MB instead of 1.7.
 const (
+	worldTolerance    = 0.005
 	districtTolerance = 0.002
 	districtBand      = 8
 )
 
-// runDistricts writes Austria's political districts, filled, as one band.
+// runDistricts writes Austria's political districts, filled and stroked as one band, with
+// their names.
 //
 // This is the only layer on this map that has no zoom in its source. The file carries a
 // district number and a name and nothing else, so the band is chosen here rather than
@@ -916,9 +966,12 @@ const (
 // the second thing about this file that is a decision instead of a reading; the licence
 // is the first.
 func runDistricts(name, sum, in, out string, tol float64, minPoints int, source []byte) error {
-	shapes, areas, err := parseDistrictShapes(source)
+	shapes, labels, areas, rings, err := parseDistricts(source)
 	if err != nil {
 		return fmt.Errorf("%s: %w", in, err)
+	}
+	if len(labels) == 0 {
+		return fmt.Errorf("%s: %d area(s) and not one of them carries a g_name", in, areas)
 	}
 	b := groupBands(shapes, tol, minPoints, countryFilter{})
 	if b.kept == 0 {
@@ -927,8 +980,15 @@ func runDistricts(name, sum, in, out string, tol float64, minPoints int, source 
 	}
 	data, table := b.encode("ring")
 
+	nameData, names, groups := encodeLabels(labels)
+	encodedNames, err := json.Marshal(names)
+	if err != nil {
+		return err
+	}
+
 	body := fmt.Sprintf(`// Austria's political districts — the 94 Bezirke and the 23 statutory cities — as filled
-// rings stroked as borders, for the map to draw when no tile server is configured.
+// rings stroked as borders, and their names, for the map to draw when no tile server is
+// configured.
 //
 // Generated by cmd/worldgen. Do not edit by hand — edit the generator, or the
 // tolerance, and run it again:
@@ -954,6 +1014,31 @@ func runDistricts(name, sum, in, out string, tol float64, minPoints int, source 
 //            place in this program where a band is chosen rather than read, and the
 //            choice is Vorarlberg: at zoom 8 its four districts and Vienna's one are
 //            separately visible.
+// Names:     one per district, %d name(s) in %d group(s), from g_name. The anchor is the
+//            area of the district's largest polygon, and the centre of it — largest
+//            because five districts are two polygons each, and a name on the smaller
+//            piece would be a name in the wrong valley.
+//
+//            A centre and not a seat. The source carries a name, a number and an outline
+//            and no town at all, so the middle of the area is what it can support and an
+//            administrative capital would be a claim it cannot make. That is also why the
+//            map draws these names under the city names instead of over them.
+//
+//            The centre is the polygon's centroid with the holes taken back out of it,
+//            which is the textbook formula for a shape with a hole in it and not a
+//            detail: six of the 117 are a district with a statutory city cut out of the
+//            middle — Graz out of Graz-Umgebung, Innsbruck out of Innsbruck-Land, Wels
+//            out of Wels-Land — and a centroid that ignored the hole would be the centre
+//            of a district that is not a disk. It is a shift and not a rescue: the plain
+//            centre of the outline lands outside the hole in all six anyway, so a city's
+//            name and the name of the district around it stay close together, and the
+//            map's collision pass is what decides which of the two gets drawn.
+//
+//            The stream is the one regions.js uses — a group count, then per group its
+//            zoom, its rank and a name count, then the coordinates as one delta chain —
+//            and WORLD_DISTRICT_POINTS is the second half of this file that is not
+//            geometry. All 117 districts share one zoom and one rank, so there is one
+//            group and the rank is 0 everywhere.
 %s
 //
 // Austria and nowhere else. Every other country's district band is empty, because there
@@ -964,43 +1049,157 @@ func runDistricts(name, sum, in, out string, tol float64, minPoints int, source 
 
 export const WORLD_DISTRICT_BANDS = [%s];
 export const WORLD_DISTRICT_DATA = '%s';
-`, provenance(districtSource, name, sum), areas, len(shapes), tol, minPoints,
-		sharpness(tol), districtBand, districtBand, strings.Join(table, "\n"), b.zooms(), data)
+export const WORLD_DISTRICT_POINTS = '%s';
+export const WORLD_DISTRICT_NAMES = %s;
+`, provenance(districtSource, name, sum), areas, rings, tol, minPoints,
+		sharpness(tol), districtBand, districtBand, len(names), groups,
+		strings.Join(table, "\n"), b.zooms(), data, nameData, encodedNames)
 
-	return write(out, body, fmt.Sprintf("%s: %d of %d ring(s), %d point(s), band(s) %v",
-		in, b.kept, len(shapes), b.points, b.bands))
+	return write(out, body, fmt.Sprintf("%s: %d of %d ring(s), %d point(s), %d name(s), band(s) %v",
+		in, b.kept, rings, b.points, len(names), b.bands))
 }
 
-// parseDistrictShapes reads the Austrian districts: every ring of every MultiPolygon, all
-// of them in the one band.
+// parseDistricts reads the Austrian districts: every ring of every polygon, all of them
+// in the one band, and one name per district.
 //
-// It is parsePolygons with a band stapled on and nothing else, which is the whole
-// difference between this file and the land file: the geometry is read the same way, and
-// the zoom, which the land file carries per ring, has to be supplied. The property names
-// are g_id and g_name, lower case and with a prefix, because this file comes out of a WFS
-// rather than out of Natural Earth — and neither is read, since nothing on this map draws
-// a district's number.
-func parseDistrictShapes(source []byte) (out []rawShape, areas int, err error) {
-	rings, err := parsePolygons(source)
+// It is the only parser here that returns two kinds of thing at once, and it does so
+// because the source is the only one that carries both in one place: a district is a
+// shape and a name, and there is no second file to take the names from. The geometry is
+// read the way the land file reads it; the zoom, which the land file carries per ring, has
+// to be supplied, because this one is an administrative register rather than a map and has
+// no zoom field at all.
+//
+// The property names are g_id and g_name, lower case and with a prefix, because this file
+// comes out of a WFS rather than out of Natural Earth. The number is thrown away —
+// nothing on this map draws a district's number — and the name is kept.
+func parseDistricts(source []byte) (shapes []rawShape, labels []label, areas, rings int, err error) {
+	features, err := parseFeatures(source)
 	if err != nil {
-		return nil, 0, err
+		return nil, nil, 0, 0, err
 	}
-	for _, ring := range rings {
-		if !ring.hole {
-			areas++
+
+	for _, feature := range features {
+		var props struct {
+			Name string `json:"g_name"`
 		}
-		out = append(out, rawShape{points: ring.points, minZoom: districtBand})
+		if err := json.Unmarshal(feature.properties, &props); err != nil {
+			return nil, nil, 0, 0, err
+		}
+		polys, err := polygonsOf(feature.geoType, feature.coordinates)
+		if err != nil {
+			return nil, nil, 0, 0, err
+		}
+
+		name := strings.TrimSpace(props.Name)
+		lon, lat := districtAnchor(polys)
+		if name != "" {
+			labels = append(labels, label{lon: lon, lat: lat, zoom: districtBand, name: name})
+		}
+		for _, poly := range polys {
+			areas++
+			for _, ring := range poly {
+				rings++
+				shapes = append(shapes, rawShape{points: ring, minZoom: districtBand})
+			}
+		}
 	}
+
 	// A guard rather than a filter: Austria has had between 94 and 121 political districts
 	// since 1868, so a file with a handful of areas in it is a bad query — a bounding box
 	// that answered for one state, or a WFS that returned the first page — and a map with
 	// three districts on it looks exactly like a map of a country with three districts.
 	if areas < 100 {
-		return nil, 0, fmt.Errorf("%d area(s): this does not look like the whole of "+
+		return nil, nil, 0, 0, fmt.Errorf("%d area(s): this does not look like the whole of "+
 			"Austria. Is the typeName in the URL the one the layer is published under? It "+
 			"carries a date, and the date changes", areas)
 	}
-	return out, areas, nil
+	return shapes, labels, areas, rings, nil
+}
+
+// districtAnchor is where a district's name goes: the centre of its largest polygon.
+//
+// A centre and not a seat. The source carries a name and a numbered shape and no town at
+// all, so there is nothing to put a district's name on but the district — which is why
+// these names are drawn under the city names rather than over them, and why the header of
+// the file says centre rather than capital. A district whose name sits where its
+// administrative seat is would be a claim this data cannot support; one that sits in the
+// middle of the district is a description of what is actually known.
+//
+// Largest polygon, because a district with an island or an exclave in it is still mostly
+// the mainland, and a name on the smaller piece would be a name in the wrong valley.
+func districtAnchor(polys [][][][2]float64) (lon, lat float64) {
+	bestArea := -1.0
+	for _, poly := range polys {
+		if len(poly) == 0 || len(poly[0]) == 0 {
+			continue
+		}
+		cx, cy, area := polygonCentre(poly)
+		if area > bestArea {
+			bestArea, lon, lat = area, cx, cy
+		}
+	}
+	return lon, lat
+}
+
+// polygonCentre is the centroid of one polygon and its area, with the holes taken back out
+// of both.
+//
+// The subtraction is not pedantry: six of Austria's districts have the statutory city that
+// sits inside them cut out as a hole — Graz out of Graz-Umgebung, Innsbruck out of
+// Innsbruck-Land, Wels out of Wels-Land — and that city is a district of its own with a
+// name of its own. A centroid of the outline alone would put "Graz-Umgebung" in the middle
+// of Graz, which is a different district, and the map would then show one of the two names
+// and drop the other as a collision.
+func polygonCentre(poly [][][2]float64) (lon, lat, area float64) {
+	for i, ring := range poly {
+		rlon, rlat, rarea := ringCentroid(ring)
+		if i == 0 {
+			lon, lat, area = rlon*rarea, rlat*rarea, rarea
+			continue
+		}
+		lon -= rlon * rarea
+		lat -= rlat * rarea
+		area -= rarea
+	}
+	if area <= 0 {
+		// A hole as big as the ring around it leaves no area to take a centroid of. The
+		// outline's own centre is the only answer left.
+		lon, lat, _ = ringCentroid(poly[0])
+		return lon, lat, 0
+	}
+	return lon / area, lat / area, area
+}
+
+// ringCentroid is the shoelace centroid of one closed ring, and its area.
+//
+// A ring with no area at all — three points in a line, or a file that closed nothing —
+// divides by zero in the shoelace sum, and the middle of its bounding box is the answer
+// that costs nothing and lands in the right country. The last point of a GeoJSON ring is
+// the first one again, which contributes nothing to the sum and needs no special case.
+func ringCentroid(ring [][2]float64) (lon, lat, area float64) {
+	minLon, maxLon := ring[0][0], ring[0][0]
+	minLat, maxLat := ring[0][1], ring[0][1]
+	for _, p := range ring {
+		minLon, maxLon = math.Min(minLon, p[0]), math.Max(maxLon, p[0])
+		minLat, maxLat = math.Min(minLat, p[1]), math.Max(maxLat, p[1])
+	}
+	centre := func() (float64, float64) {
+		return (minLon + maxLon) / 2, (minLat + maxLat) / 2
+	}
+
+	var twice, sumLon, sumLat float64
+	for i, p := range ring {
+		q := ring[(i+1)%len(ring)]
+		cross := p[0]*q[1] - q[0]*p[1]
+		twice += cross
+		sumLon += (p[0] + q[0]) * cross
+		sumLat += (p[1] + q[1]) * cross
+	}
+	if twice == 0 {
+		clon, clat := centre()
+		return clon, clat, 0
+	}
+	return sumLon / (3 * twice), sumLat / (3 * twice), math.Abs(twice) / 2
 }
 
 // runCities writes the names of the world's cities and towns.
@@ -1017,6 +1216,249 @@ func runCities(name, sum, in, out string, filter countryFilter, maxRank int, sou
 		return fmt.Errorf("%s: %w", in, err)
 	}
 	return writeLabels(name, sum, in, out, labels, maxRank, citySource)
+}
+
+// runTowns writes the names of the world's towns: the places between the cities in
+// cities.js and nothing at all.
+//
+// It exists because of a measurement rather than an opinion. Natural Earth's populated
+// places is a curated list of about thirty places per country — 24 in Austria, 92 in
+// Germany — and thirty places in Austria means Vienna, Graz, Linz, Salzburg, Innsbruck,
+// Klagenfurt, Bregenz and a handful of others. Wels, Steyr, Krems, Leoben, Amstetten and
+// every other district seat of the country are not in it and never were, so a map
+// zoomed into a Bezirk had a border around it and no town in it.
+//
+// GeoNames is the dataset that has them, and it is the second of the two sources on this
+// map that is not public domain — see the licence in the header, which is the point of
+// writing it into the file rather than into a page about the file.
+func runTowns(name, sum, in, out string, filter countryFilter, minPopulation int, source []byte) error {
+	labels, counts, err := parseTownLabels(source, filter, minPopulation)
+	if err != nil {
+		return fmt.Errorf("%s: %w", in, err)
+	}
+
+	data, names, groups := encodeLabels(labels)
+	encodedNames, err := json.Marshal(names)
+	if err != nil {
+		return err
+	}
+
+	body := fmt.Sprintf(`// The names of the world's towns, for the map
+// to draw when no tile server is configured.
+//
+// Generated by cmd/worldgen. Do not edit by hand — edit the generator and run it
+// again:
+//
+//	curl -LO https://download.geonames.org/export/dump/cities5000.zip
+//	unzip cities5000.zip
+//	go run ./cmd/worldgen -kind towns -in cities5000.txt
+//
+%s
+// Filter:    the %d places whose population field is at least %d, of the %d in the
+//            file — and no section of a place: %d of the rows are a PPLX, a district
+//            or a quarter of a city rather than a city, and twenty-two of those are the
+//            districts of Vienna, each carrying the population of its own quarter. A map
+//            that drew them would have "Favoriten" and "Ottakring" on it at the size of
+//            a city.
+//
+//            There is no rank cut here, because this file has no ranks in it: GeoNames
+//            publishes a population and no opinion about what a map should draw first,
+//            and -max-rank is refused rather than ignored. See townZoom for the one
+//            place this program turns one of those numbers into the other.
+// Sizes:     %d name(s) of the %s in the dataset.
+//            The cut is the knob that makes this file smaller — -min-population 50000
+//            is a tenth of its size and a map of only the larger towns — and -only
+//            keeps one country and is the one that makes it small enough to read.
+//
+//            -only takes the two-letter ISO 3166-1 code here and not the three-letter
+//            one the Natural Earth files take: GeoNames files a place under "AT", and
+//            "-only AUT" matches nothing in this file. That is refused rather than
+//            answered with an empty file, because an empty towns file on the dashboard
+//            is a map with no towns on it and no way to tell why.
+//
+//            This file is a supplement to cities.js and is drawn with it: the two are
+//            one layer of names on the map, and where both have a place, the label that
+//            lands on the other is dropped rather than drawn over it. That is the whole
+//            of the overlap rule, and it needs no more than that because the two sources
+//            agree on the spelling of the places they share — see the Names block below.
+//            Nothing here is filtered against cities.js either, which is deliberate: the
+//            collision is resolved where the boxes are known, which is the browser, and
+//            not by a rule about names up here that would silently lose a town called
+//            Neustadt because some other country has one.
+%s//
+// The stream is the one labels.js, regions.js and cities.js use — a group count, then
+// per group its zoom, its rank and a name count, then the coordinates as one delta chain
+// — and the file is read by the same read() in maplabels.js that walks the other four.
+//
+// What this file is not: it is not more of the world, it is more of the middle of it.
+// Natural Earth's thirty places per country are the ones whose names everybody knows,
+// and GeoNames' ten thousand is where the map stops being a list of capitals.
+
+export const WORLD_TOWN_POINTS = '%s';
+export const WORLD_TOWN_NAMES = %s;
+`, provenance(townSource, name, sum), counts.above, minPopulation, counts.total, counts.sections,
+		len(names), townSource.expected, namesParagraph(townSource), data, encodedNames)
+
+	return write(out, body, fmt.Sprintf("%s: %d of %d place(s) at %d inhabitant(s), %d name(s) in %d group(s)",
+		in, counts.kept, counts.total, minPopulation, len(names), groups))
+}
+
+// The GeoNames columns this reads, counted from zero. They are read by index because
+// there is no header line to read them by — the file is a table and nothing else, and
+// the field that says which column a value is in is the documentation of GeoNames rather
+// than of the file.
+const (
+	townColumnName       = 1
+	townColumnLatitude   = 4
+	townColumnLongitude  = 5
+	townColumnFeature    = 7
+	townColumnCountry    = 8
+	townColumnPopulation = 14
+	townColumns          = 19
+)
+
+// minTownPopulation is the smallest place towns.js names: ten thousand inhabitants, in
+// the source's own field.
+//
+// It is a cut and not a fact about the world, and the number was chosen by reading the
+// file rather than by taste. At fifteen thousand — what GeoNames' own cities15000 file is
+// cut at — Austria has 29 places in it, because that file's population for an Austrian
+// town is not the census: Krems an der Donau is in it at 14 473 and Leoben at 8 264, and
+// neither is small. At ten thousand the same file yields 51 for Austria, which is every
+// district seat and a few besides, and the whole world still fits in under a megabyte.
+//
+// The cut is written into the header of every file it produces, so the number and the
+// file cannot drift apart.
+const minTownPopulation = 10000
+
+// notTowns are the GeoNames feature codes that are not a place somebody lives in.
+//
+// PPLX is the one that matters and the reason this list exists at all: it is a section
+// of a populated place, and GeoNames files every one of Vienna's 23 districts, every
+// quarter of Innsbruck and Graz and Linz under it, each with the population of the
+// quarter. Drawn, they are a dozen names across one city and no city.
+//
+// The other four are places that are gone or were never lived in: PPLQ abandoned, PPLW
+// destroyed, PPLH a historical place, PPLCH a historical capital. A map that names them
+// is a map that tells somebody a village is somewhere they can walk to.
+var notTowns = map[string]bool{
+	"PPLX": true, "PPLQ": true, "PPLW": true, "PPLH": true, "PPLCH": true,
+}
+
+// townZoom is the zoom a town's name belongs on, and it is computed here rather than read
+// from the source.
+//
+// The cities file takes its zoom from Natural Earth, which publishes a min_zoom per
+// place: somebody looked at a world map and wrote down when each name should appear.
+// GeoNames publishes a population and no such opinion, so one of the two numbers this
+// program needs has to be derived from the other, and this is the only place it happens.
+//
+// The ladder is a staircase of population and nothing else, which is honest: it says
+// that ten times as many people puts a town one step nearer to the world view, and it
+// does not pretend to know that a town of 60 000 in a valley matters more than one of
+// 80 000 on a plain. The steps start at zoom 4, not at 1, because that is where
+// cities.js already has the same places — Vienna is in that file at zoom 4 and in this
+// one at 5, so the large towns arrive after the cities and never replace one.
+func townZoom(population int) int {
+	switch {
+	case population >= 5_000_000:
+		return 4
+	case population >= 1_000_000:
+		return 5
+	case population >= 500_000:
+		return 6
+	case population >= 200_000:
+		return 7
+	case population >= 100_000:
+		return 8
+	case population >= 50_000:
+		return 9
+	case population >= 20_000:
+		return 10
+	default:
+		return 11
+	}
+}
+
+// townCounts is what the parser saw, for the header to report.
+//
+// Four numbers, and the header needs all four: total is what the file holds, sections is
+// how many of the rows were a section of a place rather than one — the number a reader
+// wondering where their town went needs, because Vienna is in this file twenty-four times
+// and the map draws it once — above is the population cut on its own, and kept is what
+// survived both the cut and -only, which is what the map actually gets.
+type townCounts struct {
+	kept     int
+	total    int
+	sections int
+	above    int
+}
+
+// parseTownLabels reads GeoNames' towns file, which is a table rather than a map: one
+// place per line, nineteen tab-separated columns, no header, and no geometry anywhere in
+// it — a town in this file is a pair of numbers in column 5 and column 6.
+//
+// The counts it returns are the header's business rather than the parser's: how many
+// places were kept, how many the file holds, and how many were a section of a place. A
+// parser that returned only the labels would leave the file unable to say what it left
+// out, and what it left out is most of this file.
+func parseTownLabels(source []byte, filter countryFilter, minPopulation int) (out []label, counts townCounts, err error) {
+	for _, line := range strings.Split(string(source), "\n") {
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		fields := strings.Split(line, "\t")
+		if len(fields) != townColumns {
+			return nil, townCounts{}, fmt.Errorf("row %s has %d column(s); every row of this file "+
+				"has %d, and one that does not is a file that is not the GeoNames dump or "+
+				"a line of it that was edited by hand", fields[0], len(fields), townColumns)
+		}
+		counts.total++
+
+		population, err := strconv.Atoi(fields[townColumnPopulation])
+		if err != nil {
+			return nil, townCounts{}, fmt.Errorf("row %s has %q where the population goes: %w",
+				fields[0], fields[townColumnPopulation], err)
+		}
+		if notTowns[fields[townColumnFeature]] {
+			counts.sections++
+			continue
+		}
+		if population < minPopulation {
+			continue
+		}
+		counts.above++
+		if !filter.keep(fields[townColumnCountry]) {
+			continue
+		}
+
+		lon, err := strconv.ParseFloat(fields[townColumnLongitude], 64)
+		if err != nil {
+			return nil, townCounts{}, fmt.Errorf("row %s has %q where the longitude goes: %w",
+				fields[0], fields[townColumnLongitude], err)
+		}
+		lat, err := strconv.ParseFloat(fields[townColumnLatitude], 64)
+		if err != nil {
+			return nil, townCounts{}, fmt.Errorf("row %s has %q where the latitude goes: %w",
+				fields[0], fields[townColumnLatitude], err)
+		}
+
+		one := label{
+			lon: lon, lat: lat, zoom: townZoom(population),
+			name: strings.TrimSpace(fields[townColumnName]),
+		}
+		if err := checkLabel(one); err != nil {
+			return nil, townCounts{}, err
+		}
+		out = append(out, one)
+		counts.kept++
+	}
+	if len(out) == 0 {
+		return nil, townCounts{}, fmt.Errorf("not one place survived -min-population %d and -only; "+
+			"is this the GeoNames towns file, and is the -only code the two-letter ISO 3166-1 "+
+			"one — \"AT\" for Austria and not \"AUT\"?", minPopulation)
+	}
+	return out, counts, nil
 }
 
 // placeClasses are the FEATURECLA values that are a place somebody lives in. The three
@@ -1398,9 +1840,47 @@ type polygonRing struct {
 // change. The hole is reported rather than dropped because the header counts it: it is
 // the sort of thing a reader of a generated file should be told about.
 func parsePolygons(source []byte) ([]polygonRing, error) {
+	features, err := parseFeatures(source)
+	if err != nil {
+		return nil, err
+	}
+
+	var out []polygonRing
+	for _, feature := range features {
+		polys, err := polygonsOf(feature.geoType, feature.coordinates)
+		if err != nil {
+			return nil, err
+		}
+		for _, poly := range polys {
+			for i, ring := range poly {
+				out = append(out, polygonRing{points: ring, hole: i > 0})
+			}
+		}
+	}
+	return out, nil
+}
+
+// geojsonFeature is one feature of a FeatureCollection, with its geometry still raw.
+//
+// The split is at the properties and nowhere else. Which tag a file spells its zoom with
+// differs from file to file — "min_zoom" in the lakes, "MIN_ZOOM" in the borders, "g_name"
+// in the districts — so the properties stay unread here and each parser decodes the ones
+// it wants. The geometry below them is the same shape in all of them, and this is the
+// part that is shared.
+type geojsonFeature struct {
+	properties  json.RawMessage
+	geoType     string
+	coordinates json.RawMessage
+}
+
+// parseFeatures reads a FeatureCollection down to its features, which is the one thing
+// every geometry file here has in common. It is also where the "this is not a
+// FeatureCollection" guard lives, so that there is one of it rather than one per parser.
+func parseFeatures(source []byte) ([]geojsonFeature, error) {
 	var doc struct {
 		Features []struct {
-			Geometry struct {
+			Properties json.RawMessage `json:"properties"`
+			Geometry   struct {
 				Type        string          `json:"type"`
 				Coordinates json.RawMessage `json:"coordinates"`
 			} `json:"geometry"`
@@ -1413,17 +1893,13 @@ func parsePolygons(source []byte) ([]polygonRing, error) {
 		return nil, fmt.Errorf("no features; this wants a GeoJSON FeatureCollection, not a shapefile or a TopoJSON")
 	}
 
-	var out []polygonRing
+	out := make([]geojsonFeature, 0, len(doc.Features))
 	for _, feature := range doc.Features {
-		polys, err := polygonsOf(feature.Geometry.Type, feature.Geometry.Coordinates)
-		if err != nil {
-			return nil, err
-		}
-		for _, poly := range polys {
-			for i, ring := range poly {
-				out = append(out, polygonRing{points: ring, hole: i > 0})
-			}
-		}
+		out = append(out, geojsonFeature{
+			properties:  feature.Properties,
+			geoType:     feature.Geometry.Type,
+			coordinates: feature.Geometry.Coordinates,
+		})
 	}
 	return out, nil
 }
@@ -2003,6 +2479,10 @@ type source struct {
 	expected string // how many of them the dataset has, for the header's size line
 	picked   string // a header block, or empty, for a dataset that needs one
 	names    string // the header's Names block; empty means the local-spelling one
+
+	// checksum is an extra paragraph under the header's SHA-256, for a source whose
+	// bytes are not stable. Empty for every file whose download is the same file twice.
+	checksum string
 }
 
 // ne is where every Natural Earth file in this program comes from. Written once because
@@ -2084,6 +2564,34 @@ var (
 //            on them, and not places anybody lives.
 `,
 	}
+	townSource = source{
+		name: "GeoNames cities5000",
+		url:  "https://download.geonames.org/export/dump/cities5000.zip",
+		home: "https://www.geonames.org/",
+		// The licence is the same CC BY 4.0 as the districts' and is a different
+		// paragraph, because the condition is a different one: GeoNames asks for the
+		// attribution and names no particular page to put it on.
+		licence:  townLicence,
+		noun:     "of the world's towns",
+		kind:     "towns",
+		upper:    "TOWN",
+		expected: "69 793 places",
+		names: `// Names:     GeoNames' own name column, which is its preferred romanized spelling and
+//            not the local one: Vienna is "Vienna" here exactly as it is in cities.js,
+//            Munich is "Munich", Tokyo is "Tokyo". The two files therefore agree word for
+//            word wherever they overlap, and what this file adds is the places Natural
+//            Earth has not got at all — "Krems an der Donau", "Wiener Neustadt", "Wels".
+//            That is why the overlap needs no rule: a town whose name is already on the
+//            map has its duplicate dropped by the collision pass, and there is no
+//            question of which spelling wins because there is only one.
+//
+//            Where the two do differ it is the long official form against the short one —
+//            GeoNames writes "Krems an der Donau" and nothing else writes Krems at all —
+//            and the long form is the one kept. A reader zoomed into a district is
+//            looking at a town two kilometres wide; the name may as well be the one on
+//            the sign.
+`,
+	}
 	districtSource = source{
 		name: "Statistik Austria political districts",
 		url: "https://www.statistik.at/gs-open/GEODATA/ows?service=WFS&version=1.1.0\n" +
@@ -2095,16 +2603,24 @@ var (
 		kind:     "districts",
 		upper:    "DISTRICT",
 		expected: "117 areas",
+		checksum: `//            Not for this file, and that is the WFS rather than the data: every response
+//            from it carries a timeStamp of the moment it was built, so two downloads of
+//            the same register differ in that one field and in nothing else — 21 588 222
+//            bytes agreeing up to the last 124. What the checksum above identifies is
+//            therefore the geometry on the day it was fetched, and a re-download that is
+//            the same size and does not match it is still the same 117 districts.
+`,
 	}
 )
 
-// licence is the same paragraph in every file but one, because they are the same
-// dataset.
+// licence is the same paragraph in every file but the two that are not public domain,
+// because they are the same dataset.
 const licence = `// Licence:   public domain. Natural Earth asks for no attribution and this project
 //            gives none, which is the whole reason it was chosen over a dataset that
 //            would have put somebody else's name on the operator's own map.`
 
-// districtLicence is the one licence block in this program that asks for something.
+// districtLicence is one of the two licence blocks in this program that ask for
+// something. The other is townLicence.
 //
 // Austria's political districts are not in any public-domain dataset — Natural Earth's
 // only second-order layer is the 3 224 counties of the United States — so the choice was
@@ -2113,15 +2629,40 @@ const licence = `// Licence:   public domain. Natural Earth asks for no attribut
 // stated here, in the file, rather than in a footnote somewhere, because the file is
 // what a person reads when they wonder where a border on their dashboard came from.
 const districtLicence = `// Licence:   CC BY 4.0 — Statistik Austria, "Gliederung Österreichs in politische
-//            Bezirke", https://data.statistik.gv.at/. This is the one file on this map
-//            that is not public domain and the one that carries a condition: showing
-//            the map shows Statistik Austria's data, and CC BY 4.0 asks to be named for
-//            it. Nothing else here asks for anything.
+//            Bezirke", https://data.statistik.gv.at/. This is one of the two files on
+//            this map that are not public domain, and one of the two that carry a
+//            condition: showing the map shows Statistik Austria's data, and CC BY 4.0
+//            asks to be named for it. The other is the towns layer, under the same
+//            licence and a different author. Nothing else here asks for anything.
 //
 //            The layer is Austria and only Austria. Everywhere else on the map the
 //            district band is empty, because everywhere else there is no public-domain
 //            source to fill it from — an empty band is the honest picture of that, and
 //            a band drawn from a dataset with a different licence would not be.`
+
+// townLicence is the second of the two licence blocks that ask for something.
+//
+// GeoNames is the only dataset here that has the towns in it — Natural Earth's populated
+// places stops at about thirty per country and the difference is a map of Austria with no
+// Krems on it — and it is CC BY 4.0, not public domain. The condition is that whoever
+// shows the names says where they came from, and this file says it in its own header,
+// where somebody looking at a town on their dashboard will find it.
+//
+// It is honest about the one thing a reader may wonder about, which is whether a name
+// from here can be trusted next to a name from Natural Earth: both sources publish a
+// preferred romanized spelling, and on the large places they are the same word.
+const townLicence = `// Licence:   CC BY 4.0 — GeoNames, https://www.geonames.org/, from the cities5000
+//            dump. This file is not public domain and it carries a condition: showing
+//            the map shows GeoNames' names, and CC BY 4.0 asks to be named for them.
+//            The other file on this map that asks for anything is Austria's districts,
+//            which are under the same licence and name Statistik Austria in their own
+//            header, in districts.js.
+//
+//            GeoNames' name column is a romanized preferred spelling rather than a local
+//            one, which is the same habit Natural Earth has: Vienna is "Vienna" in both
+//            files and not "Wien". Nothing here was rewritten, and the header says what
+//            the source's own spelling rule is so that a reader can tell a name they
+//            disagree with from a name this program changed.`
 
 func provenance(src source, in, sum string) string {
 	home, lic := src.home, src.licence
@@ -2139,7 +2680,7 @@ func provenance(src source, in, sum string) string {
 //            The checksum is what identifies the input; the name above is only what
 //            it happened to be saved as. Re-download the URL, check the checksum, and
 //            the file this produced can be reproduced byte for byte.
-`, src.name, home, src.url, lic, in, sum)
+%s`, src.name, home, src.url, lic, in, sum, src.checksum)
 }
 
 // localNames is the header block for every dataset whose names are in the language of
