@@ -17,6 +17,7 @@ package e2e
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math"
 	"os"
@@ -2113,6 +2114,126 @@ func TestTheMapDrawsItsOwnBordersAndNames(t *testing.T) {
 		t.Errorf("the header's mini map drew borders but the page never fetched mapborders.js; "+
 			"the bands it drew came from somewhere else than the file they are supposed to "+
 			"come from (fetched: %v)", fetched)
+	}
+}
+
+// TestTheMapNamesAustriasDistricts is the guard on the district names.
+//
+// Austria's districts arrive in one file that carries both halves: the 117 rings and a
+// name for each, anchored at the middle of the district rather than of its outline,
+// because half a dozen of them are named after a city that is cut out of them — Graz
+// inside Graz-Umgebung — and the middle of that outline is the city, which is a
+// different district. The browser test above checks the rings; a name stream that never
+// reached the label layer would leave it green, so it is checked here.
+//
+// The place is Vienna, and that is the whole reason this is a test of its own. The
+// districts are Austria's alone — Statistik Austria is the one open register of them —
+// and the map's labels are anchor points placed against a view box, so a view of
+// Germany has neither a district ring nor a district anchor inside it. Vienna is also
+// the densest case there is: it is a statutory city and a district of its own, and its
+// 23 districts are named "Wien 1., Innere Stadt" and so on, all of them inside a few
+// kilometres. A single place puts the fitted view at its deepest, which is where those
+// names have to fight the city names for room and still come out.
+//
+// Two things are asked of what is drawn, and they are the two the change was about.
+// The names are on the areas: a district is an area, its name belongs on it and not
+// over it, which is why they are drawn last and in the one hue that lets a town name
+// win. And they are **dim** — half transparent, and without the shadow the other names
+// carry — because twenty-three district names over a city must be readable as ground
+// rather than as a second set of places.
+func TestTheMapNamesAustriasDistricts(t *testing.T) {
+	browser := findBrowser(t)
+	base := startServer(t, buildBinary(t))
+	ctx, done := openBrowser(t, browser)
+	defer done()
+	dir := artifactsDir(t)
+
+	firstRun(t, ctx, base, dir)
+	startFromAnEmptyDashboard(t, ctx, dir, "Sensor one")
+
+	if err := withTimeout(ctx, func(tctx context.Context) error {
+		return chromedp.Do(tctx,
+			chromedp.Evaluate[chromedp.Void](`location.hash = '#/settings'`),
+			chromedp.Poll[chromedp.Void](`document.querySelector('#sites-panel') !== null`,
+				chromedp.WithPollingTimeout(15*time.Second)),
+			openSettingsCategory("monitor"),
+		)
+	}); err != nil {
+		capture(t, ctx, dir, "sites-panel-missing")
+		t.Fatalf("the settings screen has no sites panel: %v", err)
+	}
+
+	createSite(t, ctx, dir, siteLocal, "local", 48.2082, 16.3738)
+
+	clickLayout(t, ctx, dir, "map", `.map-canvas`)
+
+	// The label layer arrives from a module fetched after the first draw, so this is a
+	// wait: a district name read before maplabels.js lands is a name that has not been
+	// asked for yet, and every count below would be zero for that reason alone.
+	eventually(t, ctx, `document.querySelectorAll('.map-label.k-district').length > 0`,
+		"the map never named one of Austria's districts although the fitted view is Vienna; "+
+			"the names ride in with the same module as the city names, so a view that has "+
+			"cities on it and no districts is a district stream that never reached the labels",
+		dir, "no-district-names", 30*time.Second)
+
+	names := read[[]string](t, ctx,
+		`[...document.querySelectorAll('.map-label.k-district')].map(l => l.textContent)`,
+		"which districts the map named")
+	if len(names) < 5 {
+		capture(t, ctx, dir, "too-few-districts")
+		t.Errorf("the map named %d district(s) over Vienna, which has 23 of its own: %v",
+			len(names), names)
+	}
+	vienna := 0
+	for _, name := range names {
+		if strings.Contains(name, "Wien") {
+			vienna++
+		}
+	}
+	if vienna == 0 {
+		capture(t, ctx, dir, "districts-not-vienna")
+		t.Errorf("no district named over Vienna is one of Vienna's; the labels drawn are %v, "+
+			"and a district name that stands on the wrong ground is worse than a missing one",
+			names)
+	}
+
+	// The two halves of "dim": half transparent, and without the text shadow the other
+	// names carry. Both are read back from what the browser laid out, because both are
+	// written in a stylesheet rather than on the span — assigning them to the element
+	// here would test this file instead of style.css.
+	dim := read[string](t, ctx, `(() => {
+  const d = document.querySelector('.map-label.k-district');
+  const city = document.querySelector('.map-label.k-city');
+  const s = getComputedStyle(d);
+  return JSON.stringify({
+    opacity: Number(s.opacity),
+    shadow: s.textShadow,
+    cityShadow: city ? getComputedStyle(city).textShadow : null,
+  });
+})()`, "how the district names are drawn")
+	var drawn struct {
+		Opacity    float64 `json:"opacity"`
+		Shadow     string  `json:"shadow"`
+		CityShadow string  `json:"cityShadow"`
+	}
+	if err := json.Unmarshal([]byte(dim), &drawn); err != nil {
+		t.Fatalf("could not read how the district names are drawn (%s): %v", dim, err)
+	}
+	if drawn.Opacity > 0.85 || drawn.Opacity < 0.15 {
+		capture(t, ctx, dir, "districts-not-dim")
+		t.Errorf("the district names are drawn at opacity %g; they are meant to be half "+
+			"transparent, so that twenty-three of them over one city read as the ground "+
+			"rather than as a second set of places", drawn.Opacity)
+	}
+	if drawn.Shadow != "none" {
+		t.Errorf("the district names carry the text shadow %q; that shadow is what lifts a "+
+			"dark word off dark land, and a grey word with one under it stops being grey",
+			drawn.Shadow)
+	}
+	if drawn.CityShadow == "none" || drawn.CityShadow == "" {
+		t.Errorf("the city names carry no text shadow (%q), so the difference this test is "+
+			"about is not there to begin with — either the district rule landed on the "+
+			"cities or the base label rule is gone", drawn.CityShadow)
 	}
 }
 
