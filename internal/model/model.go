@@ -11,9 +11,13 @@ import (
 )
 
 // These three are stamped in at build time with
-// -ldflags "-X github.com/j000k3r/probeglass/internal/model.Version=vX.Y.Z".
+// -ldflags "-X github.com/j000k3r/probeglass/internal/model.Version=X.Y.Z".
 // They are what "probeglass version" and the About panel report, and they
 // exist so a bug report can name the exact revision that produced it.
+//
+// The version carries no leading `v`, because the tag is the only thing that
+// does. A build that stamps nothing — a plain `go build` — reports the string
+// below instead, which is a development build of the 0.1 line and not a release.
 var (
 	Version   = "0.1.0-dev"
 	Commit    = ""

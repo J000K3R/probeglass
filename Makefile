@@ -9,9 +9,14 @@ PKG         := github.com/j000k3r/probeglass
 CMD         := ./cmd/probeglass
 # `--always` is deliberately absent. It falls back to the commit hash when there is no
 # tag to describe, which is the right answer only once this tree *has* tags. Before the
-# first release there is nothing to describe, `git describe` fails, and the version stays
-# the string the project is developed under. With `--always` the day this directory became
-# a repository would have silently renamed the build from 0.1.0-dev to a hash.
+# first release there was nothing to describe, `git describe` failed, and the version
+# stayed the string the project is developed under. With `--always` the day this directory
+# became a repository would have silently renamed the build from 0.1.0-dev to a hash.
+#
+# Now that v0.1.0 exists, `git describe` answers again and a build from a commit past the
+# tag reports `0.1.0-3-ga1b2c3d`: three commits past the release, and which three. The
+# 0.1.0-dev below is what is left for a build that stamps nothing at all — a plain
+# `go build`, or a checkout with no tags.
 #
 # The leading `v` of the tag is stripped by the patsubst, so the tag `v0.1.0` yields the
 # version `0.1.0`. That is what every document, the changelog and the fallback below spell,
