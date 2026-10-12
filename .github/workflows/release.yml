@@ -7,6 +7,14 @@ on:
 permissions:
   contents: write   # to create the release
   packages: write   # to push to ghcr.io
+  # Keyless signing gets its certificate from an OIDC token rather than from a
+  # key somebody has to keep, and this is the permission that lets the job ask
+  # for one. A workflow that names a `permissions` block sets everything it does
+  # not name to none, so without this line the signing step fails with no
+  # certificate and takes the release down with it — which is exactly what the
+  # first v0.1.0 run did. See the action's README: "Your workflow must have
+  # permission to request the OIDC token to authenticate with."
+  id-token: write
 
 env:
   GOTOOLCHAIN: local
