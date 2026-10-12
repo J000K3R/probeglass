@@ -264,6 +264,13 @@ func TestTheLanguageSwitchReachesThePage(t *testing.T) {
 		t.Errorf("the picker shows %q as the chosen language after German was chosen",
 			german.Chosen)
 	}
+	// Not decoration, and not read back from the picker: `lang` on the document is
+	// what a screen reader, a hyphenation dictionary and a translation extension
+	// go by, and all three are wrong on a page that says English and reads German.
+	if german.Lang != "de" {
+		t.Errorf("the page is in German and the document still says it is written in %q",
+			german.Lang)
+	}
 	// Three words from three different ways of drawing one, and each of them is
 	// a separate way for a translation not to arrive.
 	if german.Title == english.Title {
@@ -463,5 +470,9 @@ func TestTheLanguageSwitchReachesThePage(t *testing.T) {
 	}
 	if back.Chosen != "en" {
 		t.Errorf("after switching back the picker shows %q as the chosen language", back.Chosen)
+	}
+	if back.Lang != "en" {
+		t.Errorf("after switching back to English the document still says it is written "+
+			"in %q", back.Lang)
 	}
 }
