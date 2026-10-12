@@ -23,9 +23,7 @@ promises; the ordering is what the design already supports cheaply.
   targets, CI with race tests, lint, and a build for every platform.
 - [x] Test suite across store, config, probe engines, notifications, and the API.
 
-## Done — unreleased
-
-- [x] `probeglass doctor` — one command that reports what is wrong with an
+- [x] **`probeglass doctor`** — one command that reports what is wrong with an
   installation and changes nothing: the configuration, the data directory, the
   database's size, integrity and schema, whether the stored sensors and channels
   still validate, and whether the daemon is answering. Built for the container,

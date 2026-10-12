@@ -7,7 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-12
+
+The first release: a working foundation that monitors, records, and alerts, with
+the structure in place to grow. What follows is the whole of it — the feature set
+it lands with, and every change made on the way to the tag.
+
 ### Added
+
+- **Sensors** — HTTP(S), TCP (with optional TLS handshake and send/expect
+  exchange), ICMP ping, and DNS (A, AAAA, CNAME, MX, TXT, NS, SRV, PTR, with an
+  optional custom resolver). Each type validates its own target and options, in
+  the UI as well as on save.
+- **Dashboard** — live status grid fed by Server-Sent Events, per-sensor
+  response-time charts, uptime bars, sparklines, incident timeline, search,
+  grouping, and tags. Theme (auto/dark/light), accent colour, density, and
+  layout are selectable in Settings.
+- **History** — three resolutions with retention: raw samples for 7 days, hourly
+  rollups for 90 days, daily rollups forever. Exactly one resolution answers any
+  given range, so no probe is counted twice; gaps are reported as gaps.
+- **Incidents** — a state machine per sensor: a configurable number of
+  consecutive failures before an incident opens, repeat alerts while it stays
+  open, and a recovery alert naming how long the sensor was down. State is
+  rebuilt from the database on restart, so a restart neither loses an outage nor
+  re-announces one.
+- **Alerts** — Telegram, Discord, Matrix, ntfy, Slack, and generic webhooks with
+  HMAC-SHA256 request signing. Per-sensor channel assignment, per-sensor reminder
+  intervals, custom title and body templates with a safe fallback when a template
+  is broken, and a test button per channel.
+- **Authentication** — first-run setup screen, bcrypt password hashing,
+  HMAC-signed session cookies, an API key for scripts, cross-site protection for
+  cookie-authenticated writes, and an in-memory login rate limit.
+- **Configuration** — YAML file, `PROBEGLASS_*` environment variables, and
+  command-line flags with a documented precedence order, plus day and week
+  duration suffixes for retention settings.
+- **Declarative sensors and channels** — declare them in the configuration file
+  and they are re-applied on every start.
+- **API** — a documented JSON API for sensors, history, incidents, channels,
+  settings, and an SSE event stream. Sensor updates are partial: a body changes
+  only the fields it sends, and an explicit empty value clears a field.
+- **CLI** — `serve`, `version`, `healthcheck` (used by the image's
+  `HEALTHCHECK`, so no shell is needed), and `seed --demo` for a synthetic week
+  of history.
+- **Packaging** — multi-arch container image (amd64, arm64, armv7) on a
+  distroless, non-root base with the dashboard embedded; static binaries for
+  Linux, macOS, Windows, and FreeBSD; CI running formatting, vetting,
+  `go test -race`, a seven-platform build, and `golangci-lint`.
 
 - **The examples a fresh installation starts with stand at two places.** The four
   invented sensors carried a week of past but nowhere to be, so the map — the one
@@ -939,52 +984,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Non-asset requests are now logged at `info`, so the boot sequence is readable from
   the terminal. `GET /`, `/api/session` and `/api/summary` together tell a rendering
   problem apart from a connectivity one.
-
-## [0.1.0] - 2026-10-08
-
-The first release: a working foundation that monitors, records, and alerts, with
-the structure in place to grow.
-
-### Added
-
-- **Sensors** — HTTP(S), TCP (with optional TLS handshake and send/expect
-  exchange), ICMP ping, and DNS (A, AAAA, CNAME, MX, TXT, NS, SRV, PTR, with an
-  optional custom resolver). Each type validates its own target and options, in
-  the UI as well as on save.
-- **Dashboard** — live status grid fed by Server-Sent Events, per-sensor
-  response-time charts, uptime bars, sparklines, incident timeline, search,
-  grouping, and tags. Theme (auto/dark/light), accent colour, density, and
-  layout are selectable in Settings.
-- **History** — three resolutions with retention: raw samples for 7 days, hourly
-  rollups for 90 days, daily rollups forever. Exactly one resolution answers any
-  given range, so no probe is counted twice; gaps are reported as gaps.
-- **Incidents** — a state machine per sensor: a configurable number of
-  consecutive failures before an incident opens, repeat alerts while it stays
-  open, and a recovery alert naming how long the sensor was down. State is
-  rebuilt from the database on restart, so a restart neither loses an outage nor
-  re-announces one.
-- **Alerts** — Telegram, Discord, Matrix, ntfy, Slack, and generic webhooks with
-  HMAC-SHA256 request signing. Per-sensor channel assignment, per-sensor reminder
-  intervals, custom title and body templates with a safe fallback when a template
-  is broken, and a test button per channel.
-- **Authentication** — first-run setup screen, bcrypt password hashing,
-  HMAC-signed session cookies, an API key for scripts, cross-site protection for
-  cookie-authenticated writes, and an in-memory login rate limit.
-- **Configuration** — YAML file, `PROBEGLASS_*` environment variables, and
-  command-line flags with a documented precedence order, plus day and week
-  duration suffixes for retention settings.
-- **Declarative sensors and channels** — declare them in the configuration file
-  and they are re-applied on every start.
-- **API** — a documented JSON API for sensors, history, incidents, channels,
-  settings, and an SSE event stream. Sensor updates are partial: a body changes
-  only the fields it sends, and an explicit empty value clears a field.
-- **CLI** — `serve`, `version`, `healthcheck` (used by the image's
-  `HEALTHCHECK`, so no shell is needed), and `seed --demo` for a synthetic week
-  of history.
-- **Packaging** — multi-arch container image (amd64, arm64, armv7) on a
-  distroless, non-root base with the dashboard embedded; static binaries for
-  Linux, macOS, Windows, and FreeBSD; CI running formatting, vetting,
-  `go test -race`, a seven-platform build, and `golangci-lint`.
 
 ### Security
 

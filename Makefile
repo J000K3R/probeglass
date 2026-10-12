@@ -12,7 +12,13 @@ CMD         := ./cmd/probeglass
 # first release there is nothing to describe, `git describe` fails, and the version stays
 # the string the project is developed under. With `--always` the day this directory became
 # a repository would have silently renamed the build from 0.1.0-dev to a hash.
-VERSION     ?= $(shell git describe --tags --dirty 2>/dev/null || echo 0.1.0-dev)
+#
+# The leading `v` of the tag is stripped by the patsubst, so the tag `v0.1.0` yields the
+# version `0.1.0`. That is what every document, the changelog and the fallback below spell,
+# and a binary that answered `v0.1.0` to `probeglass version` would disagree with all of
+# them. `patsubst` rather than a sed in a pipeline because the fallback has to survive: a
+# failed `git describe` inside a pipe exits 0, so `|| echo` would never fire.
+VERSION     ?= $(patsubst v%,%,$(shell git describe --tags --dirty 2>/dev/null || echo 0.1.0-dev))
 COMMIT      ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 BUILD_DATE  ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 LDFLAGS     := -s -w \
