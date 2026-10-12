@@ -12,7 +12,7 @@
 // arrives as an option, which is what keeps it testable on its own and keeps the
 // dependency arrows one-way.
 
-import { t, available } from './i18n.js';
+import { t, available, nameOf } from './i18n.js';
 import { esc } from './charts.js';
 import { overlayHost } from './tooltip.js';
 
@@ -70,6 +70,33 @@ export function paint() {
     : t('user.menuAria', { name: t('user.unknown') });
   host.setAttribute('aria-label', aria);
   host.title = aria;
+}
+
+/**
+ * repaint redraws the chip, and the menu with it while one is open.
+ *
+ * The menu is built when it is opened, which is the right answer for a theme
+ * changed in another tab and the wrong one for a word. The language can be
+ * switched from the menu itself: a menu that goes on saying "Theme", "Language"
+ * and "Sign out" in the language the person has just left is a menu that has to
+ * be closed and reopened before it can be read — and the control that is being
+ * used is inside it.
+ *
+ * Rebuilding the markup throws away the focus along with the old nodes, so the
+ * setting that had it gets it back. That is the select the person is in the
+ * middle of using.
+ */
+export function repaint() {
+  if (!current) return;
+  paint();
+  const { menu } = current;
+  if (!menu) return;
+  const focused = document.activeElement;
+  const key = menu.contains(focused) && focused.dataset ? focused.dataset.setting : '';
+  menu.innerHTML = menuMarkup();
+  if (key) menu.querySelector(`[data-setting="${key}"]`)?.focus();
+  // The menu is anchored under the chip, and its height changes with the words.
+  place(menu);
 }
 
 /** The account the chip is describing, or null while the session is unknown. */
@@ -154,7 +181,7 @@ function menuMarkup() {
     </div>
     ${field('theme', ui.theme, ['auto', 'dark', 'light'])}
     ${field('density', ui.density, ['comfortable', 'compact'])}
-    ${available.length > 1 ? field('language', ui.language, available) : ''}
+    ${available.length > 1 ? field('language', ui.language, available, nameOf) : ''}
     <div class="user-menu-sep"></div>
     <button class="user-menu-item" type="button" data-menu="settings" role="menuitem">
       ${esc(t('user.settings'))}
@@ -170,13 +197,18 @@ function menuMarkup() {
  * It is the same `<select data-setting>` the settings page uses, so both go
  * through the one write path in app.js — including its rollback, which is what
  * makes a refused change put the old value back in the control that asked.
+ *
+ * `label` is how an option is written, and it defaults to the message
+ * `settings.<name>.<value>` — the naming the whole settings page uses. The
+ * language switch is the one caller that hands in its own, because a language is
+ * named in its own language and cannot be looked up in the one being left.
  */
-function field(name, value, options) {
-  const label = t(`settings.${name}`);
+function field(name, value, options, label = (o) => t(`settings.${name}.${o}`)) {
+  const label0 = t(`settings.${name}`);
   return `
-    <label class="user-menu-field"><span>${esc(label)}</span>
-      <select data-setting="${name}" aria-label="${esc(label)}">
-        ${options.map((o) => `<option value="${o}"${o === value ? ' selected' : ''}>${esc(t(`settings.${name}.${o}`))}</option>`).join('')}
+    <label class="user-menu-field"><span>${esc(label0)}</span>
+      <select data-setting="${name}" aria-label="${esc(label0)}">
+        ${options.map((o) => `<option value="${o}"${o === value ? ' selected' : ''}>${esc(label(o))}</option>`).join('')}
       </select></label>`;
 }
 

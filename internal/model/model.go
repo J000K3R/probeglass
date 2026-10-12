@@ -548,7 +548,7 @@ const (
 	PrefAccent      = "accent"   // accent colour name
 	PrefDensity     = "density"  // compact | comfortable
 	PrefLayout      = "layout"   // grid | list | tree | wall | map
-	PrefLanguage    = "language" // en (more locales later)
+	PrefLanguage    = "language" // en | de — the catalogues the dashboard ships
 	PrefMode        = "mode"     // simple | advanced
 	PrefLive        = "live"     // on | off
 	PrefTourVersion = "tour_version"
@@ -630,10 +630,14 @@ func ParseWidgets(value string) []string {
 // caller cannot accidentally write into the defaults for everybody.
 func DefaultPrefs() map[string]string {
 	return map[string]string{
-		PrefTheme:    "auto",
-		PrefAccent:   "azure",
-		PrefDensity:  "comfortable",
-		PrefLayout:   "grid",
+		PrefTheme:   "auto",
+		PrefAccent:  "azure",
+		PrefDensity: "comfortable",
+		PrefLayout:  "grid",
+		// English, and deliberately not whatever Accept-Language says. The
+		// dashboard never guesses: the documentation, the installer and the release
+		// notes are in English, so that is where a first-time user starts, and
+		// Settings has the switch for anybody who would rather read something else.
 		PrefLanguage: "en",
 		// Live is on by default. The point of a dashboard is to be right now, and
 		// a number that is a minute old is the thing this setting exists to fix.

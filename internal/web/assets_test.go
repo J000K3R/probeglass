@@ -99,6 +99,45 @@ func TestHiddenTogglesAreAttributeBased(t *testing.T) {
 	}
 }
 
+// TestEverySensorTypeHasAName is TestEveryWidgetHasAName for the sensor types.
+//
+// The dashboard keeps its own list of types — it needs a set of form fields for
+// each one, which the server has no business knowing — and it names each of them
+// from `type.<value>` with the target field's label from `type.<value>.target`.
+// Look either up and miss, and `t()` answers with the key itself, so the type
+// dropdown offers "type.snmp" and the box under it is labelled "type.dns.target".
+// That is a typo nobody can make on purpose and nobody would notice in review,
+// because the code reads perfectly.
+//
+// The list of types comes from the server, which is the copy that decides what may
+// be stored; the two message keys are read out of the catalogue the browser loads.
+func TestEverySensorTypeHasAName(t *testing.T) {
+	catalogue := readAsset(t, Assets(), "i18n.js")
+
+	named := map[string]bool{}
+	entry := regexp.MustCompile(`'type\.([A-Za-z0-9_-]+)':`)
+	for _, m := range entry.FindAllStringSubmatch(catalogue, -1) {
+		named[m[1]] = true
+	}
+	targeted := map[string]bool{}
+	entry = regexp.MustCompile(`'type\.([A-Za-z0-9_-]+)\.target':`)
+	for _, m := range entry.FindAllStringSubmatch(catalogue, -1) {
+		targeted[m[1]] = true
+	}
+
+	for _, sensorType := range model.SensorTypes {
+		id := string(sensorType)
+		if !named[id] {
+			t.Errorf("the sensor type %q has no message `type.%s` in i18n.js, so the type "+
+				"dropdown would offer it as the key itself", id, id)
+		}
+		if !targeted[id] {
+			t.Errorf("the sensor type %q has no message `type.%s.target` in i18n.js, so the "+
+				"label over its target field would be the key itself", id, id)
+		}
+	}
+}
+
 // TestEveryWidgetHasAName keeps the widget registry and the message catalogue
 // spelled the same way.
 //

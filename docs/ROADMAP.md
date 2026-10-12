@@ -122,15 +122,19 @@ promises; the ordering is what the design already supports cheaply.
   its credentials — `@BotFather` for Telegram, the webhook path for Discord, the
   homeserver and access token for Matrix — under the fields, in the dialog where the
   question is actually asked.
+- [x] **A second interface language.** German joins English — since the 0.1.0 tag,
+  so it ships with 0.2.0. The dictionary is a file
+  beside the English one — same keys, same order, same placeholders, held there by a
+  test — and one entry in the two lists that say what the interface offers, so the
+  next language is no code at all. The switch is in Settings and in the account menu,
+  and it covers dates and numbers as well as words. Three surfaces stay English on
+  purpose: the watchdog page, `doctor`, and the channel types and recipes the server
+  sends as its own text.
 
 ## Next — 0.2.x
 
 Ordered by value per unit of work.
 
-- [ ] **More languages.** The UI is built on a message catalogue; the next
-  dictionaries (starting with German) are a translation file and a picker
-  entry. This is the first frontend item because the scaffolding is already
-  there and waiting.
 - [ ] **More sensor types.** SSH banner, SMTP/IMAP greeting, UDP port, an ICMP
   TTL/hop sensor, and an HTTP sensor that follows a redirect chain and reports
   what it found. Each is one file in `internal/sensor`.

@@ -1229,11 +1229,18 @@ func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 
 // allowedUIValues guards the shared UI preferences against junk.
 var allowedUIValues = map[string][]string{
-	model.PrefTheme:    {"auto", "dark", "light"},
-	model.PrefAccent:   {"azure", "violet", "emerald", "amber", "rose", "slate"},
-	model.PrefDensity:  {"compact", "comfortable"},
-	model.PrefLayout:   model.Layouts,
-	model.PrefLanguage: {"en"},
+	model.PrefTheme:   {"auto", "dark", "light"},
+	model.PrefAccent:  {"azure", "violet", "emerald", "amber", "rose", "slate"},
+	model.PrefDensity: {"compact", "comfortable"},
+	model.PrefLayout:  model.Layouts,
+	// The languages the dashboard ships. This list and `available` in i18n.js are
+	// the same list written twice — once here, where it decides what may be
+	// stored, and once in the browser, which is what draws the picker. A language
+	// the server accepts and the dashboard cannot load would be stored and then
+	// silently ignored; one the dashboard offers and the server refuses would come
+	// back as a failed save. TestEveryShippedLanguageIsStorable holds the two
+	// together.
+	model.PrefLanguage: {"en", "de"},
 	// mode is how much of the interface is shown: "simple" hides the fields and
 	// whole areas a first-time user does not need, "advanced" shows everything.
 	// Neither is a default — the setup flow asks — but once chosen it lives here

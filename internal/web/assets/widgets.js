@@ -17,7 +17,7 @@
 // travel together — there is no way to have one without the other, which is
 // exactly right, because they are the same decision.
 
-import { t } from './i18n.js';
+import { t, locale } from './i18n.js';
 import * as C from './charts.js';
 import * as mapUI from './map.js';
 
@@ -219,7 +219,7 @@ const WIDGETS = [
     build: ({ state }) => figure('summary.probes',
       state.summary ? String(state.summary.probes_24h) : '—', {
         sub: state.summary && state.summary.probes_7d
-          ? `${t('summary.weekShort')} ${state.summary.probes_7d.toLocaleString()}` : '',
+          ? `${t('summary.weekShort')} ${state.summary.probes_7d.toLocaleString(locale())}` : '',
       }),
   },
   {
@@ -363,11 +363,11 @@ function ranked(state, measure, keep, ascending = false) {
 }
 
 function clockTime() {
-  return new Date().toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  return new Date().toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit' });
 }
 
 function clockDate() {
-  return new Date().toLocaleDateString(undefined, { weekday: 'short', day: '2-digit', month: 'short' });
+  return new Date().toLocaleDateString(locale(), { weekday: 'short', day: '2-digit', month: 'short' });
 }
 
 // ---------------------------------------------------------------------------

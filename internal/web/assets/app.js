@@ -5,7 +5,7 @@
 // in one object, views are pure functions of it, and everything the user can
 // type is escaped on the way into the DOM.
 
-import { t, applyTranslations, setLanguage, available } from './i18n.js';
+import { t, applyTranslations, setLanguage, available, nameOf, locale } from './i18n.js';
 import * as C from './charts.js';
 import { helpButton, helpButtonText, init as initHelp, overlayHost } from './tooltip.js';
 import { mount as mountPasswordMeter } from './password.js';
@@ -107,7 +107,7 @@ const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 function when(value) {
   if (!value) return '—';
   const at = new Date(value);
-  return Number.isNaN(at.getTime()) ? String(value) : at.toLocaleString();
+  return Number.isNaN(at.getTime()) ? String(value) : at.toLocaleString(locale());
 }
 
 // A request that never comes back is the worst failure mode this dashboard can
@@ -480,14 +480,36 @@ function syncLayoutSwitcher() {
 async function persistUI(key, value, control) {
   const previous = ui[key];
   if (previous === value) return;
+  // Switching language is the one preference that changes text rather than
+  // appearance, and nothing already on screen was drawn for the new one.
+  const changedLanguage = key === 'language' && previous !== value;
   ui[key] = value;
   applyUIPreferences();
+  if (changedLanguage) {
+    // All three halves are needed and none of them is enough. applyTranslations
+    // re-writes the elements that carry a data-i18n attribute — the shell in
+    // index.html, the tab strip, the search box — and renderAll redraws the view,
+    // which is where most of the words are: they are built by JavaScript at render
+    // time and are not attributes anything can go back and rewrite. Skip the first
+    // and the top bar stays English; skip the second and every card, row and panel
+    // does; skip the third and the account menu does, which is the one place the
+    // switch is also offered, so it would be read in the voice it just left.
+    applyTranslations();
+    renderAll();
+    userUI.repaint();
+  }
   if (key === 'layout') renderDashboard();
   try {
     await api('/api/settings', { method: 'PUT', body: { ui: { [key]: value } } });
   } catch (err) {
     ui[key] = previous;
     applyUIPreferences();
+    if (changedLanguage) {
+      // Back the way it came, the same three ways round.
+      applyTranslations();
+      renderAll();
+      userUI.repaint();
+    }
     if (control) control.value = previous;
     if (key === 'layout') renderDashboard();
     toast(err.message, 'error');
@@ -2305,8 +2327,8 @@ async function afterOutageChange() {
 const SENSOR_TYPES = [
   {
     value: 'http',
-    label: 'HTTP(S)',
-    targetLabel: 'URL',
+    labelKey: 'type.http',
+    targetLabelKey: 'type.http.target',
     placeholder: 'https://example.org/health',
     fields: [
       { key: 'expected_status', type: 'text', placeholder: '200-299' },
@@ -2326,8 +2348,8 @@ const SENSOR_TYPES = [
   },
   {
     value: 'tcp',
-    label: 'TCP port',
-    targetLabel: 'Host:port',
+    labelKey: 'type.tcp',
+    targetLabelKey: 'type.tcp.target',
     placeholder: 'db.internal:5432',
     fields: [
       { key: 'tls', type: 'bool' },
@@ -2340,8 +2362,8 @@ const SENSOR_TYPES = [
   },
   {
     value: 'tls',
-    label: 'TLS certificate',
-    targetLabel: 'Host or host:port',
+    labelKey: 'type.tls',
+    targetLabelKey: 'type.tls.target',
     placeholder: 'example.org:443',
     fields: [
       { key: 'server_name', type: 'text', placeholder: 'example.org' },
@@ -2351,8 +2373,8 @@ const SENSOR_TYPES = [
   },
   {
     value: 'docker',
-    label: 'Docker container',
-    targetLabel: 'Container name or id',
+    labelKey: 'type.docker',
+    targetLabelKey: 'type.docker.target',
     placeholder: 'nginx',
     fields: [
       { key: 'socket', type: 'text', placeholder: '/var/run/docker.sock' },
@@ -2365,8 +2387,8 @@ const SENSOR_TYPES = [
   },
   {
     value: 'snmp',
-    label: 'SNMP',
-    targetLabel: 'Host or host:port',
+    labelKey: 'type.snmp',
+    targetLabelKey: 'type.snmp.target',
     placeholder: '192.168.1.2',
     fields: [
       { key: 'oid', type: 'text', placeholder: '1.3.6.1.2.1.1.3.0' },
@@ -2379,15 +2401,15 @@ const SENSOR_TYPES = [
   },
   {
     value: 'ping',
-    label: 'Ping (ICMP)',
-    targetLabel: 'Host',
+    labelKey: 'type.ping',
+    targetLabelKey: 'type.ping.target',
     placeholder: '192.168.1.1',
     fields: [{ key: 'count', type: 'number', placeholder: '3' }],
   },
   {
     value: 'dns',
-    label: 'DNS',
-    targetLabel: 'Name',
+    labelKey: 'type.dns',
+    targetLabelKey: 'type.dns.target',
     placeholder: 'example.org',
     fields: [
       { key: 'record_type', type: 'select', options: ['A', 'AAAA', 'CNAME', 'MX', 'TXT', 'NS', 'SRV', 'PTR'] },
@@ -2537,11 +2559,11 @@ function sensorFormMarkup(sensor) {
         <input name="name" type="text" required value="${esc(sensor?.name || '')}" autocomplete="off"></label>
       <label class="field"><span>${withHelp(t('sensor.type'), 'help.sensor.type')}</span>
         <select name="type" id="sensor-type">
-          ${SENSOR_TYPES.map((c) => `<option value="${c.value}"${c.value === def.value ? ' selected' : ''}>${esc(c.label)}</option>`).join('')}
+          ${SENSOR_TYPES.map((c) => `<option value="${c.value}"${c.value === def.value ? ' selected' : ''}>${esc(t(c.labelKey))}</option>`).join('')}
         </select></label>
     </div>
 
-    <label class="field"><span id="target-label">${withHelp(def.targetLabel, 'help.sensor.target')}</span>
+    <label class="field"><span id="target-label">${withHelp(t(def.targetLabelKey), 'help.sensor.target')}</span>
       <input name="target" type="text" required value="${esc(sensor?.target || '')}" placeholder="${esc(def.placeholder)}" autocomplete="off"></label>
 
     <div class="grid-3">
@@ -2569,7 +2591,7 @@ function sensorFormMarkup(sensor) {
       <input name="reminder_every" type="number" min="0" value="${sensor?.reminder_every || 0}"></label>
 
     <details class="options adv-hide"${isNew ? ' open' : ''}>
-      <summary>${esc(def.label)}</summary>
+      <summary>${esc(t(def.labelKey))}</summary>
       <div id="option-fields" class="grid-2">${def.fields.map((f) => optionField(f, sensor?.options)).join('')}</div>
     </details>
 
@@ -2600,7 +2622,7 @@ async function openSensorEditor(existing = null) {
     const def = typeDef(typeSelect.value);
     const values = readOptions(form, typeDef(form.dataset.lastType || def.value));
     form.dataset.lastType = typeSelect.value;
-    $('#target-label').textContent = def.targetLabel;
+    $('#target-label').textContent = t(def.targetLabelKey);
     const target = form.elements.target;
     target.placeholder = def.placeholder;
     $('#option-fields').innerHTML = def.fields.map((f) => optionField(f, values)).join('');
@@ -3589,7 +3611,7 @@ async function renderSettings() {
         ${choice('layout', ui.layout, ['grid', 'list', 'tree', 'wall', 'map'], 'adv-hide')}
         <label class="field"><span>${esc(t('settings.language'))}</span>
           <select data-setting="language">
-            ${available.map((code) => `<option value="${code}"${code === ui.language ? ' selected' : ''}>${code.toUpperCase()}</option>`).join('')}
+            ${available.map((code) => `<option value="${code}"${code === ui.language ? ' selected' : ''}>${esc(nameOf(code))}</option>`).join('')}
           </select></label>
       </div>
       <p class="muted small">${esc(t('settings.modeHint'))}</p>

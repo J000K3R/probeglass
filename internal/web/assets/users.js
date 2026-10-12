@@ -12,7 +12,7 @@
 // the caller. What is here is the dialogs, because they are only ever opened from
 // the settings panel.
 
-import { t } from './i18n.js';
+import { t, locale } from './i18n.js';
 import { esc } from './charts.js';
 
 // ---------------------------------------------------------------------------
@@ -44,7 +44,7 @@ export function panel({ users, me }) {
         </td>
         <td>${esc(t(`users.role.${u.role}`))}</td>
         <td>${esc(u.totp_enabled ? t('users.twoFactorOn') : t('users.twoFactorOff'))}</td>
-        <td class="muted small">${u.last_login_at ? esc(new Date(u.last_login_at).toLocaleString()) : esc(t('users.never'))}</td>
+        <td class="muted small">${u.last_login_at ? esc(new Date(u.last_login_at).toLocaleString(locale())) : esc(t('users.never'))}</td>
         <td class="row-actions">${actions}</td>
       </tr>`;
   }).join('');

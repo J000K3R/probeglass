@@ -8,6 +8,12 @@
 //
 // Colour comes from CSS classes, never from literals, so switching theme or
 // accent re-colours the charts without re-rendering them.
+//
+// Every date and time goes through Intl with the chosen interface language
+// handed to it rather than with `undefined`, which would mean "whatever the
+// browser is set to". See `locale()`.
+
+import { t, locale } from './i18n.js';
 
 /** Escape text that goes into markup. Values are numbers, but labels are not. */
 export function esc(value) {
@@ -77,7 +83,7 @@ export function fmtClock(iso) {
   if (!iso) return '—';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit' });
 }
 
 /** Date and time, compact. */
@@ -85,7 +91,7 @@ export function fmtDateTime(iso) {
   if (!iso) return '—';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleString(undefined, {
+  return d.toLocaleString(locale(), {
     day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
   });
 }
@@ -96,9 +102,9 @@ function fmtTick(iso, spanMs) {
   if (Number.isNaN(d.getTime())) return '';
   if (spanMs <= 6 * 3_600_000) return fmtClock(iso);
   if (spanMs <= 3 * 86_400_000) {
-    return d.toLocaleString(undefined, { weekday: 'short', hour: '2-digit' });
+    return d.toLocaleString(locale(), { weekday: 'short', hour: '2-digit' });
   }
-  return d.toLocaleDateString(undefined, { day: '2-digit', month: 'short' });
+  return d.toLocaleDateString(locale(), { day: '2-digit', month: 'short' });
 }
 
 /** The uptime class a bar should wear. Thresholds are conventional: a homelab
@@ -226,7 +232,7 @@ export function uptimeStrip(points, { width = 640, height = 34 } = {}) {
     body += `<rect class="bar ${cls}" x="${x}" y="0" width="${barWidth.toFixed(2)}" height="${height}" rx="${barWidth > 3 ? 1.5 : 0}"><title>${label}</title></rect>`;
   });
 
-  return `<div class="strip" data-span="${span}">${svg(width, height, body, 'role="img" aria-label="Uptime history" preserveAspectRatio="none"')}</div>`;
+  return `<div class="strip" data-span="${span}">${svg(width, height, body, `role="img" aria-label="${esc(t('chart.uptimeAria'))}" preserveAspectRatio="none"`)}</div>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -238,7 +244,7 @@ export function uptimeStrip(points, { width = 640, height = 34 } = {}) {
  * fastest and slowest probe in each bucket, which answers "is it slow, or is it
  * erratic?" — a question a single average line cannot answer.
  */
-export function latencyChart(points, { width = 720, height = 190, emptyText = 'No data' } = {}) {
+export function latencyChart(points, { width = 720, height = 190, emptyText = t('chart.noData') } = {}) {
   const padLeft = 52;
   const padRight = 10;
   const padTop = 12;
@@ -314,7 +320,7 @@ export function latencyChart(points, { width = 720, height = 190, emptyText = 'N
     }
   }
 
-  return svg(width, height, body, 'role="img" aria-label="Response time over time"');
+  return svg(width, height, body, `role="img" aria-label="${esc(t('chart.latencyAria'))}"`);
 }
 
 // ---------------------------------------------------------------------------

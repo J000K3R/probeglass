@@ -2,12 +2,21 @@
 //
 // English ships first and is the reference catalogue: every key in every other
 // language must exist here. Adding a language means dropping a new dictionary
-// into `catalogues` and adding its code to `available` — nothing else in the
-// dashboard needs to change, because all text goes through t() or the
-// data-i18n attributes.
+// into `catalogues`, giving it a name in `names` and adding its code to
+// `available` — nothing else in the dashboard needs to change, because all text
+// goes through t() or the data-i18n attributes. `catalogue_test.go` is what holds
+// the other dictionaries to that promise; a partial one is caught by the test
+// rather than by a reader who does not speak the language it fell back to.
+//
+// Each language lives in its own file beside this one, and its keys are in the
+// order they appear here, so that the two can be read against each other line by
+// line — a key missing from a translation then looks like a hole instead of like
+// a stray English sentence.
 //
 // Note for translators: keys are grouped by the view they appear in, and
 // {placeholders} are substituted at call time.
+
+import { de } from './i18n.de.js';
 
 const en = {
   'boot.loading': 'Loading…',
@@ -536,6 +545,29 @@ const en = {
   'examples.badge': 'Example',
   'examples.badgeHint': 'This sensor is example data, not one of yours. Settings can remove it.',
 
+  // Sensor types, and what each one's target field asks for. The two are separate
+  // entries because they are separate jobs: `type.<value>` names the kind of check
+  // — "TCP port" — while `type.<value>.target` is the label over the box and says
+  // what to type into it, which is almost never the same words.
+  //
+  // What follows `type.` is the name the server stores, so the pair is looked up
+  // from a registry rather than written out at each use. TestEverySensorTypeHasAName
+  // is what keeps a new type from shipping without one.
+  'type.http': 'HTTP(S)',
+  'type.http.target': 'URL',
+  'type.tcp': 'TCP port',
+  'type.tcp.target': 'Host:port',
+  'type.tls': 'TLS certificate',
+  'type.tls.target': 'Host or host:port',
+  'type.docker': 'Docker container',
+  'type.docker.target': 'Container name or id',
+  'type.snmp': 'SNMP',
+  'type.snmp.target': 'Host or host:port',
+  'type.ping': 'Ping (ICMP)',
+  'type.ping.target': 'Host',
+  'type.dns': 'DNS',
+  'type.dns.target': 'Name',
+
   // Per-type probe options. An empty label would be a bug, so every option a
   // prober reads has an entry here.
   'opt.expected_status': 'Expected status',
@@ -570,6 +602,13 @@ const en = {
   'opt.version': 'SNMP version',
   'opt.min': 'Minimum value',
   'opt.max': 'Maximum value',
+
+  // The charts. A chart has no words of its own on screen, so what is translated is
+  // its accessible name — read aloud by a screen reader in place of the picture —
+  // and the line an empty one shows.
+  'chart.uptimeAria': 'Uptime history',
+  'chart.latencyAria': 'Response time over time',
+  'chart.noData': 'No data',
 
   // Field help. These no longer sit under the form as paragraphs; they open
   // from the "?" beside each label, with a real value to pattern-match against.
@@ -752,11 +791,26 @@ const en = {
   'common.needsRole': 'This needs the {role} role.',
 };
 
-const catalogues = { en };
+const catalogues = { en, de };
 
 // `available` drives the language picker. Add a code here once its catalogue
-// above is complete.
-export const available = ['en'];
+// above is complete, and give it a name in `names`.
+export const available = ['en', 'de'];
+
+// Every language's name in that language, which is what the picker offers.
+//
+// A reader who cannot read the interface as it stands is exactly the reader who
+// needs to find their own language in that list, and "German" is no help to
+// somebody who only knows "Deutsch". The code is the fallback, because a picker
+// entry with no name at all is worse than an ugly one, and a missing entry here
+// is a bug either way — `available` and `names` are written side by side so they
+// are hard to let drift apart.
+const names = { en: 'English', de: 'Deutsch' };
+
+/** nameOf is what the language picker writes in its options. */
+export function nameOf(code) {
+  return names[code] || code.toUpperCase();
+}
 
 let current = 'en';
 
@@ -766,6 +820,20 @@ export function setLanguage(code) {
 }
 
 export function language() {
+  return current;
+}
+
+/**
+ * locale is the tag the browser's own formatters are given — dates, times and
+ * numbers.
+ *
+ * It exists because they do not follow the document's `lang`: `Intl` reads the
+ * browser's own language, so a dashboard switched to German on an English
+ * machine would translate its sentences and leave every date beside them in
+ * English. Handing the chosen language to every formatter is what makes the
+ * setting mean the whole interface and not just its words.
+ */
+export function locale() {
   return current;
 }
 
