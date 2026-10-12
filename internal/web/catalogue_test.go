@@ -2,6 +2,7 @@ package web
 
 import (
 	"fmt"
+	"io/fs"
 	"regexp"
 	"slices"
 	"sort"
@@ -204,6 +205,141 @@ func spell(in [][]string) string {
 	}
 	sort.Strings(names)
 	return strings.Join(names, ", ")
+}
+
+// markupKeys matches one `data-i18n="key"` and its three siblings, which are the
+// attributes applyTranslations() rewrites.
+//
+// A key may appear more than once and usually does: the top bar carries the wide
+// form of a control and the `⋮` row carries the folded one, and both are in the
+// document at every width — one of them is hidden by a media query. So the count is
+// not checked, only whether each key that is asked for is one the catalogue answers.
+var markupKeys = regexp.MustCompile(`data-i18n(?:-[a-z]+)?="([^"]*)"`)
+
+// TestEveryKeyInTheShellExistsInTheCatalogue is the other half of
+// TestEveryCatalogueCarriesEveryKey, and it guards the direction that has nothing
+// watching it.
+//
+// That test proves the two dictionaries agree with each other. It says nothing
+// about the keys written into index.html, and index.html is where the top bar, the
+// tab strip and the sign-in screen are — the markup that exists before any
+// JavaScript has run. `applyTranslations()` looks each of those keys up and writes
+// `t(key)` over the element's text, and `t()` answers with the key itself when the
+// lookup misses. A one-character slip — `settings.langauge`, `nav.incidnets` —
+// therefore does not fail, does not warn, and does not leave the English that is
+// sitting in the markup as a fallback either. It rewrites a good word into a dotted
+// identifier, in the shell, on every page, for everybody.
+//
+// The English text is read as the reference because it is the one every catalogue
+// is measured against: a key that exists only in the German file would pass here
+// and show the raw key to every reader of English.
+func TestEveryKeyInTheShellExistsInTheCatalogue(t *testing.T) {
+	reference := shippedCatalogue(t, "i18n.js")
+	shell := readAsset(t, Assets(), "index.html")
+
+	found := markupKeys.FindAllStringSubmatch(shell, -1)
+	if len(found) == 0 {
+		t.Fatal("index.html carries no data-i18n attribute at all; the whole shell has " +
+			"gone back to hard-coded English, or the pattern this test reads it with has " +
+			"gone out of step with the markup")
+	}
+
+	seen := map[string]bool{}
+	for _, m := range found {
+		key := m[1]
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		if _, ok := reference[key]; !ok {
+			t.Errorf("index.html carries data-i18n=%q, which is not a key in the English "+
+				"catalogue.\nt() answers with the key itself when a lookup misses, so this "+
+				"element shows the dotted identifier on screen instead of a sentence — on "+
+				"every page, in every language, because the shell is outside the view that "+
+				"gets redrawn.", key)
+		}
+	}
+}
+
+// literalCall matches one t('key') written out in a script.
+//
+// The character before the `t(` is captured and required not to be a word
+// character, a dot or a `$`, because RE2 has no lookbehind and without it two very
+// common expressions read as translations: `closest('div')` and `import('./map.js')`
+// both end in `t('`. The first draft of this test reported 66 missing keys and all
+// 66 of them were element selectors and module paths.
+var literalCall = regexp.MustCompile(`(?:^|[^\w$.])t\('([^']*)'\)`)
+
+// TestEveryKeyTheScriptsCallByNameExists is the same guard as the one above, one
+// file over.
+//
+// Most of the dashboard's sentences are not in index.html and not in an attribute:
+// they are built by JavaScript at render time, which is why applyTranslations() is
+// only a third of how a language switch reaches the page. Those lookups are written
+// out as t('incidents.title') in the source, and a slip in one of them fails the
+// same silent way — t() answers with the key, and the row on screen reads
+// `incidents.titel`.
+//
+// What this cannot see is the keys assembled at call time: t(`range.${r}`),
+// t(`users.role.${role}`), t(`sites.kind.${kind}`). Neither this test nor any other
+// can enumerate those from the source, and they are not left unguarded — every one
+// of them ranges over a list that is fixed somewhere in Go or in a table beside it,
+// and that list is what assets_test.go's TestEveryWidgetHasAName and
+// TestEverySensorTypeHasAName, and the settings-option tests, hold to the
+// catalogue. A new member of one of those lists is the case this leaves to them.
+func TestEveryKeyTheScriptsCallByNameExists(t *testing.T) {
+	reference := shippedCatalogue(t, "i18n.js")
+
+	// The catalogue files are skipped rather than read: i18n.js defines t() and
+	// holds the English dictionary in the same file, so the one place a lookup
+	// legitimately has no key beside it is the file that answers lookups.
+	var scripts []string
+	err := fs.WalkDir(Assets(), ".", func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() || !strings.HasSuffix(path, ".js") || strings.HasPrefix(path, "i18n") {
+			return nil
+		}
+		scripts = append(scripts, path)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("could not list the assets: %v", err)
+	}
+	if len(scripts) < 10 {
+		t.Fatalf("found only %d scripts; the assets are embedded and this test is "+
+			"reading the wrong tree", len(scripts))
+	}
+
+	calls := 0
+	bad := map[string][]string{}
+	for _, path := range scripts {
+		for _, m := range literalCall.FindAllStringSubmatch(readAsset(t, Assets(), path), -1) {
+			calls++
+			if _, ok := reference[m[1]]; !ok {
+				bad[m[1]] = append(bad[m[1]], path)
+			}
+		}
+	}
+	if calls < 100 {
+		t.Fatalf("found only %d literal t('...') calls across %d scripts; either the "+
+			"call sites have been renamed or this test's pattern has gone out of step "+
+			"with how they are written", calls, len(scripts))
+	}
+
+	keys := make([]string, 0, len(bad))
+	for key := range bad {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		t.Errorf("t(%q) is called in %s, and no such key is in the English catalogue.\n"+
+			"The call does not fail, does not warn, and does not fall back to the English "+
+			"that is sitting in the markup: t() answers with the key, so the screen shows "+
+			"the dotted identifier where the sentence should be.",
+			key, strings.Join(slices.Compact(bad[key]), ", "))
+	}
 }
 
 // TestEveryShippedLanguageIsNamed pins the picker's names to the catalogue list.

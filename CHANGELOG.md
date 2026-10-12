@@ -29,7 +29,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   its own text. A dictionary that is missing a key falls back to English rather
   than to a blank, which is the right way round for a reader — and is why the
   catalogues are held to the reference key by key, in order, with the same
-  placeholders, by a test of their own.
+  placeholders, by a test of their own. That fallback is also why the other
+  direction needed watching: `data-i18n` attributes written into `index.html` and
+  `t('…')` calls written into the scripts are compared against the reference too,
+  because a key that is asked for and does not exist is not a blank and not an
+  English sentence — the lookup answers with the key, and the screen shows the
+  dotted identifier in its place.
 
 ## [0.1.0] - 2026-10-12
 
