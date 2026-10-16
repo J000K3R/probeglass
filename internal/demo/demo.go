@@ -123,6 +123,11 @@ type sensor struct {
 	// sensor without a place is one the map does not draw, and the map is half of
 	// what this dataset is for.
 	site string
+	// parent names another of these that this one sits behind. While that one is down
+	// this one is excused: no incident of its own, no alert, and the checks it fails in
+	// the meantime do not count against its uptime. The pair below is the demonstration
+	// of it, and the reason the red pin on the map reports one outage rather than two.
+	parent string
 	// paused is for the entries a fresh installation cannot reach. See above.
 	paused     bool
 	tags       []string
@@ -267,19 +272,53 @@ var sensors = []sensor{
 		},
 	},
 
+	{
+		// The seventh sensor type, and the one entry that is paused for a second reason
+		// as well: a Docker sensor reads the Engine over the unix socket, which is there
+		// inside the container that runs this and nowhere else. Paused, it places a card
+		// and claims nothing, which is the honest thing for a check that would fail on
+		// every machine this dataset is ever loaded onto.
+		name: "NAS: container", sensorType: model.SensorDocker, target: "nextcloud",
+		group: "Homelab", site: "Homelab", paused: true, tags: []string{"docker", "storage"},
+		baseMS: 9, jitterMS: 3, intervalS: 300,
+		successMsg: "running, healthy", failMsg: "container not running",
+		outages: []Outage{
+			{Before: 118 * time.Hour, Length: 6 * time.Minute, Cause: "container not running"},
+		},
+	},
+
+	{
+		// A third entry in this group, paused, and it is here for a reason worth
+		// writing down: a place whose sensors are all switched on is the place the map
+		// draws green, and this one is the place the map draws red. One sensor that
+		// claims nothing is what keeps those two apart — and a ping is the honest one
+		// to leave off, because a hoster's box very often filters ICMP and this dataset
+		// cannot tell a firewall from an outage.
+		name: "Rented server: ping", sensorType: model.SensorPing, target: "vps.example.net",
+		group: "Rented server", site: "Rented server", paused: true, tags: []string{"latency"},
+		baseMS: 31, jitterMS: 9, intervalS: 60,
+		options:    model.Options{"count": 3},
+		successMsg: "3/3 replies, 0% loss", failMsg: "100% packet loss",
+		outages: []Outage{},
+	},
+
 	// A rented box somewhere else, which is the other reason to put sensors on a map.
 	{
 		name: "Rented server: SSH", sensorType: model.SensorTCP, target: "vps.example.net:22",
-		group: "Rented server", site: "Rented server", paused: true, tags: []string{"ssh"},
+		group: "Rented server", site: "Rented server", tags: []string{"ssh"},
 		baseMS: 26, jitterMS: 8, intervalS: 120,
 		successMsg: "connected in 26ms", failMsg: "no such host",
 		outages: []Outage{
 			{Before: 36 * time.Hour, Length: 15 * time.Minute, Cause: "connection timed out"},
+			// And the outage this dataset is arranged around: the box went away half an
+			// hour ago and has not come back. It is the parent of the entry below, so
+			// this is where the incident is opened — and the only place it is.
+			{Before: 30 * time.Minute, Length: 30 * time.Minute, Cause: "no such host"},
 		},
 	},
 	{
 		name: "Rented server: web", sensorType: model.SensorHTTP, target: "https://vps.example.net",
-		group: "Rented server", site: "Rented server", tags: []string{"web"},
+		group: "Rented server", site: "Rented server", parent: "Rented server: SSH", tags: []string{"web"},
 		baseMS: 174, jitterMS: 44, intervalS: 300,
 		options:    model.Options{"expected_status": "200-399", "cert_warn_days": 21},
 		successMsg: "HTTP 200 OK", failMsg: "no such host",
@@ -334,6 +373,7 @@ func (d sensor) model() model.Sensor {
 		Enabled:  !d.paused,
 		Group:    d.group,
 		Site:     d.site,
+		Parent:   d.parent,
 		Tags:     d.tags,
 		Options:  opts,
 		// The same marker the setup screen writes. Anything invented — here or
@@ -342,6 +382,21 @@ func (d sensor) model() model.Sensor {
 		// are both things a person may edit.
 		Origin: model.OriginExample,
 	}
+}
+
+// parentHistoryEndsDown reports whether the dataset says this sensor is out at the end
+// of its invented history — which is the same question the scheduler asks of the live
+// status, asked of the table instead.
+//
+// The dataset is the only thing that knows here: Seed writes history and incidents
+// directly, without a probe loop, so there is no state to look at and no clock to ask.
+func parentHistoryEndsDown(d sensor) bool {
+	h := d.history(7 * 24 * time.Hour)
+	if len(h.Outages) == 0 {
+		return false
+	}
+	last := h.Outages[len(h.Outages)-1]
+	return last.Before <= last.Length
 }
 
 // Seed creates the demo sensors that are missing, gives each new one a synthetic
@@ -382,6 +437,28 @@ func Seed(ctx context.Context, st *store.Store, days int) (Result, error) {
 			return Result{}, err
 		}
 		samples += n
+	}
+
+	// An outage on a sensor that sits behind another one that is also out is not an
+	// outage of its own, and the incident Write just opened for it is a claim the
+	// dataset does not mean to make. It is closed here rather than left to the
+	// scheduler, because the scheduler's own answer to it — close it with a note on the
+	// next probe — would leave the first thing a reader sees be an incident that is
+	// about to vanish.
+	//
+	// Only the still-running ones, which is what an open row means: the outages that
+	// ended inside the window are history, and history keeps its incidents.
+	for _, c := range created {
+		if c.Parent == "" {
+			continue
+		}
+		parent, ok := byName[c.Parent]
+		if !ok || !parentHistoryEndsDown(parent) {
+			continue
+		}
+		if err := st.CloseOpenIncidents(ctx, c.ID, now); err != nil {
+			return Result{}, fmt.Errorf("close the incident behind %q: %w", c.Name, err)
+		}
 	}
 
 	// Fold the new rows into the rollup tables so the longer ranges have data

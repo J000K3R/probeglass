@@ -345,6 +345,32 @@ func (s *Scheduler) Reconcile(ctx context.Context) error {
 		s.wg.Add(1)
 		go s.loop(loopCtx, c)
 	}
+
+	// And once more over everything, now that every state exists: a sensor that is
+	// down behind a parent that is also down has an incident it should not have.
+	//
+	// It is a second pass and not a check inside restoreState because restoreState
+	// works one sensor at a time, in map order, and a child restored before its parent
+	// would find no status to look at and rebuild the incident anyway. Ordering the
+	// restore itself would mean sorting the whole set by the chain it sits in; walking
+	// it again afterwards costs one loop and cannot be got wrong.
+	for id, c := range desired {
+		if !s.parentIsDown(c) {
+			continue
+		}
+		st := s.states[id]
+		if st == nil || st.incidentID == 0 {
+			continue
+		}
+		// Closed with the reason, the same way a maintenance window closes one: an
+		// incident that was reconstructed from the history a moment ago, for an
+		// outage this sensor did not have.
+		if tr := s.closeIncident(ctx, c, st, st.since, time.Now().UTC()); tr != nil {
+			s.log.Info("closed an incident a restart reconstructed for a sensor behind "+
+				"a parent that is down", "sensor", c.Name, "incident", tr.ID)
+		}
+		st.excused = true
+	}
 	return nil
 }
 

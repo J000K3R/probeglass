@@ -537,3 +537,53 @@ func TestAWobblingParentExcusesNothing(t *testing.T) {
 			"behind it", tr.alert)
 	}
 }
+
+// TestARestartDoesNotRebuildAnIncidentBehindADownParent is the bug this found in the
+// demonstration data, and it would have happened to a real installation the same way.
+//
+// restoreState reads a sensor's trailing failures and rebuilds the outage it was in the
+// middle of, so that a restart does not lose one. It knew nothing about parents, so a
+// sensor behind a router that is down — a router whose own history is just as broken —
+// came back from every restart with an incident of its own, until its next probe
+// excused it and closed it again with a note. Live, that is a burst of incidents every
+// time the container is restarted.
+func TestARestartDoesNotRebuildAnIncidentBehindADownParent(t *testing.T) {
+	s, st := newTestScheduler(t)
+	ctx := context.Background()
+	parent, child := chainOf(t, st, 1)
+
+	// Both went down while nothing was watching: a handful of failures each, ending
+	// with the newest probe, which is what restoreState reads.
+	now := time.Now().UTC()
+	for i := 0; i < 4; i++ {
+		at := now.Add(time.Duration(i-6) * time.Minute)
+		for _, c := range []model.Sensor{parent, child} {
+			r := model.Result{SensorID: c.ID, TS: at, Success: false, Message: "no reply"}
+			if err := st.InsertResult(ctx, &r); err != nil {
+				t.Fatalf("insert: %v", err)
+			}
+		}
+	}
+
+	if err := s.Reconcile(ctx); err != nil {
+		t.Fatalf("reconcile: %v", err)
+	}
+
+	open, err := st.OpenIncidentFor(ctx, parent.ID)
+	if err != nil {
+		t.Fatalf("read the parent's incidents: %v", err)
+	}
+	if open == nil {
+		t.Fatalf("the parent came back from the restart with no incident at all; the " +
+			"outage it was in the middle of was lost")
+	}
+	open, err = st.OpenIncidentFor(ctx, child.ID)
+	if err != nil {
+		t.Fatalf("read the child's incidents: %v", err)
+	}
+	if open != nil {
+		t.Errorf("a restart rebuilt an incident for a sensor whose parent is down: %+v.\n"+
+			"A container that is restarted twice a day would produce two of these a day, "+
+			"for an outage it was told to stay quiet about.", open)
+	}
+}
