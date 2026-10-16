@@ -80,14 +80,26 @@ jobs:
       #
       # The checksums and their Sigstore signature went with the archives; there
       # is nothing left to check a download of. The image itself is unsigned.
+      # A tag with a hyphen in it — `v0.3.0-rc.1`, `v0.3.0-beta.2` — is a candidate, and
+      # GitHub is told so rather than left to guess. The image tags already know the
+      # difference: `latest` is only moved by a tag without one, which is what stops a
+      # candidate becoming the thing everybody pulls. Without --prerelease the release
+      # page would still look like any other, and the only clue would be the name.
       - name: Create the release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          flags=""
+          case "${GITHUB_REF_NAME}" in
+            *-*) flags="--prerelease" ;;
+          esac
+          # Unquoted on purpose: it is either one flag or nothing at all, and quoting
+          # it would pass an empty argument that gh reads as a title.
+          # shellcheck disable=SC2086
           gh release create "${GITHUB_REF_NAME}" \
             --title "${GITHUB_REF_NAME}" \
-            --notes-file release-notes.md
+            --notes-file release-notes.md $flags
 
   docker:
     name: Publish the container image

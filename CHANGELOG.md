@@ -18,7 +18,15 @@ here and what the release says are the same document.
 
 ## [Unreleased]
 
-Nothing yet.
+### Changed
+
+- **The `:dev` image says which build it is.** It reports the release it follows and
+  how far past it — `0.2.1-4-g9c1f0ab` — instead of the literal `0.1.0-dev`, which was
+  true when it was written and went on being said by every development build for two
+  minor versions afterwards. The one image somebody pulls to test the newest work was
+  the one image that could not say which work it was.
+- **A tag with a hyphen in it is marked as a pre-release on GitHub.** `v0.3.0-rc.1`
+  already left `latest` alone in the registry; the release page said nothing about it.
 
 ## [0.2.1] - 2026-10-16
 

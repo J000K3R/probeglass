@@ -15,7 +15,7 @@ CMD         := ./cmd/probeglass
 #
 # Now that v0.1.0 exists, `git describe` answers again and a build from a commit past the
 # tag reports `0.1.0-3-ga1b2c3d`: three commits past the release, and which three. The
-# 0.1.0-dev below is what is left for a build that stamps nothing at all — a plain
+# `dev` below is what is left for a build that stamps nothing at all — a plain
 # `go build`, or a checkout with no tags.
 #
 # The leading `v` of the tag is stripped by the patsubst, so the tag `v0.1.0` yields the
@@ -23,7 +23,7 @@ CMD         := ./cmd/probeglass
 # and a binary that answered `v0.1.0` to `probeglass version` would disagree with all of
 # them. `patsubst` rather than a sed in a pipeline because the fallback has to survive: a
 # failed `git describe` inside a pipe exits 0, so `|| echo` would never fire.
-VERSION     ?= $(patsubst v%,%,$(shell git describe --tags --dirty 2>/dev/null || echo 0.1.0-dev))
+VERSION     ?= $(patsubst v%,%,$(shell git describe --tags --dirty 2>/dev/null || echo dev))
 COMMIT      ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 BUILD_DATE  ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 LDFLAGS     := -s -w \

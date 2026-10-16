@@ -15,8 +15,8 @@ name: Test image
 # No secrets are involved: GitHub Actions pushes with the GITHUB_TOKEN it is already
 # given, which is why `permissions` below is the whole of the authorisation.
 #
-# None of this is a release. The version stays 0.1.0-dev and the tag is `dev`; the `v*`
-# tags belong to release.yml, which is what produces the versioned tags.
+# None of this is a release. The tag is `dev`, and the `v*` tags belong to release.yml,
+# which is what produces the versioned ones.
 
 on:
   # A button, for handing the testers a build on purpose.
@@ -48,6 +48,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0   # the tags, so the build can name the release it follows
 
       - uses: docker/setup-qemu-action@v4
       - uses: docker/setup-buildx-action@v4
@@ -62,6 +64,25 @@ jobs:
       # `github.event.head_commit.timestamp` is empty when this runs from the button,
       # and a version string without a date is a version string nobody can place. The
       # clock is read here instead, which is right on both paths.
+      # What `probeglass version` reports, and the same string `make build` produces
+      # in a working tree: the release this build follows and how far past it, as in
+      # `0.2.1-3-g005ab01`.
+      #
+      # Derived rather than written down. It used to be the literal `0.1.0-dev`, which
+      # was true once and then went on being said by every dev image for two minor
+      # versions — so the one build somebody pulls to test the newest work was the one
+      # build that could not say which work it was. A version stamp that has to be
+      # remembered is a version stamp that will be wrong.
+      - name: Work out the version
+        id: version
+        run: |
+          set -euo pipefail
+          # No --always, for the reason the Makefile gives: it falls back to a bare
+          # commit hash, which is a worse answer than the word dev for a tree that has
+          # no tags to describe.
+          described=$(git describe --tags 2>/dev/null | sed 's/^v//' || true)
+          echo "value=${described:-dev}" >> "$GITHUB_OUTPUT"
+
       - name: Note the build time
         id: stamp
         run: echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
@@ -86,7 +107,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            VERSION=0.1.0-dev
+            VERSION=${{ steps.version.outputs.value }}
             COMMIT=${{ github.sha }}
             BUILD_DATE=${{ steps.stamp.outputs.date }}
           cache-from: type=gha
