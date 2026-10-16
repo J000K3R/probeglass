@@ -1853,6 +1853,34 @@ function statusWord(status) {
 }
 
 /**
+ * channelKey, channelWord and channelTone describe where a build came from.
+ *
+ * The channel is stamped into the binary by whichever workflow produced it, because a
+ * container cannot see the tag it was pulled by: an installation following `latest` and
+ * one following `dev` are identical from the inside — the same version, the same commit,
+ * the same date whenever both follow the same push. It is the first thing to look at
+ * when a feature is not where it should be, and on a machine running two containers it
+ * is the only thing that tells them apart.
+ *
+ * An unknown value falls to `local` rather than to a blank. A channel nothing recognises
+ * is a build nobody can place, and that is what `local` means.
+ */
+function channelKey(channel) {
+  return channel === 'release' || channel === 'dev' ? channel : 'local';
+}
+
+function channelWord(channel) {
+  return t('settings.channelName.' + channelKey(channel));
+}
+
+// Green for a release and violet for anything else, which is the same violet the
+// maintenance badge uses for "this is what I said it would be". A local build is not a
+// problem and should not look like one.
+function channelTone(channel) {
+  return channelKey(channel) === 'release' ? 'up' : 'maint';
+}
+
+/**
  * statusPill draws the state of one sensor: what the probe found, and — while a
  * maintenance window is running over it — that the state is expected.
  *
@@ -4229,6 +4257,9 @@ async function renderSettings() {
         <p class="panel-hint">${esc(t('settings.aboutHint'))}</p>
       </div>
       <dl class="kv">
+        <dt>${esc(t('settings.channel'))}</dt>
+        <dd><span class="pill st-${esc(channelTone(runtime.channel))}">${esc(channelWord(runtime.channel))}</span>
+          <span class="muted small">${esc(t('settings.channelAbout.' + channelKey(runtime.channel)))}</span></dd>
         <dt>${esc(t('settings.version'))}</dt><dd>${esc(runtime.version || '—')}</dd>
         <dt>${esc(t('settings.built'))}</dt><dd>${esc(when(runtime.build_date))}</dd>
         <dt>${esc(t('settings.baseUrl'))}</dt><dd>${esc(runtime.base_url || '—')}</dd>

@@ -800,6 +800,21 @@ func capture(ctx context.Context, base, out string) error {
 	if err := shot(ctx, out, "settings-doctor", 1600, 1100); err != nil {
 		return err
 	}
+
+	// The About panel, which is where an installation says which build it is running.
+	// Its first row is the channel — a release, the dev image, or a working tree — and
+	// it is the one fact a container cannot work out for itself, so it is the one that
+	// has to be in a picture.
+	if err := do(ctx, "the About panel",
+		centerOn(`[data-panel="about"]`),
+	); err != nil {
+		return err
+	}
+	if err := shot(ctx, out, "settings-about", 1600, 700,
+		centerOn(`[data-panel="about"]`),
+	); err != nil {
+		return err
+	}
 	return nil
 }
 

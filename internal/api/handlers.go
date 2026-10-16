@@ -47,6 +47,7 @@ func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {
 		"build":      model.BuildInfo(),
 		"commit":     model.Commit,
 		"build_date": model.BuildDate,
+		"channel":    model.BuildChannel,
 	})
 }
 
@@ -1201,11 +1202,16 @@ func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 		},
 		"runtime": map[string]any{
 			"version": model.Version,
-			// The build stamp, because a dev build has no version to tell it
-			// apart: two binaries that both say 0.1.0-dev are told apart by when
-			// they were made, and the first question about a feature that is not
-			// on screen is whether the running binary predates it.
-			"build_date":             model.BuildDate,
+			// The build stamp, because a dev build has no version to tell it apart from
+			// the release it follows: the two are told apart by when they were made, and
+			// the first question about a feature that is not on screen is whether the
+			// running binary predates it.
+			"build_date": model.BuildDate,
+			// And which channel it came from, which is the only thing that tells two
+			// containers on one machine apart. A container cannot see the tag it was
+			// pulled by, so an installation on `latest` and one on `dev` look identical
+			// from the inside — down to the commit, when both follow the same push.
+			"channel":                model.BuildChannel,
 			"base_url":               s.cfg.BaseURL,
 			"listen":                 s.cfg.Listen,
 			"data_dir":               s.cfg.DataDir,

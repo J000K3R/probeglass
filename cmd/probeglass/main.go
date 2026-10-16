@@ -62,6 +62,7 @@ func run(args []string) error {
 		switch args[0] {
 		case "version", "-version", "--version":
 			fmt.Printf("probeglass %s\n", model.BuildInfo())
+			fmt.Printf("channel: %s — %s\n", model.BuildChannel, model.BuildChannelNote())
 			return nil
 		case "healthcheck":
 			return healthcheck(args[1:])

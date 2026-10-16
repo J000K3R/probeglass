@@ -18,6 +18,19 @@ here and what the release says are the same document.
 
 ## [Unreleased]
 
+### Added
+
+- **The settings say which channel the installation is on.** Settings → Help and
+  maintenance → About has a **Channel** row: **release** for a published version, **dev**
+  for a build of the branch under development, **local** for one built from a working
+  tree. `probeglass version` says the same thing below the build stamp.
+
+  This is a fact a container cannot work out for itself. Docker does not tell a
+  container which tag it was pulled by, so two containers on one machine — one following
+  `latest` and one following `dev` — look identical from the inside: the same version,
+  the same commit, the same date whenever both follow the same push. It comes from
+  somebody running both and having no way to tell which was which.
+
 ### Changed
 
 - **The `:dev` image says which build it is.** It reports the release it follows and

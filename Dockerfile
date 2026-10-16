@@ -31,6 +31,7 @@ ARG TARGETARCH
 ARG VERSION=dev
 ARG COMMIT=unknown
 ARG BUILD_DATE=unknown
+ARG CHANNEL=local
 
 # -trimpath keeps the build path out of the binary, which makes builds
 # reproducible and crashes readable. The version is stamped into the model
@@ -41,7 +42,8 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
       -ldflags "-s -w \
         -X github.com/j000k3r/probeglass/internal/model.Version=${VERSION} \
         -X github.com/j000k3r/probeglass/internal/model.Commit=${COMMIT} \
-        -X github.com/j000k3r/probeglass/internal/model.BuildDate=${BUILD_DATE}" \
+        -X github.com/j000k3r/probeglass/internal/model.BuildDate=${BUILD_DATE} \
+        -X github.com/j000k3r/probeglass/internal/model.BuildChannel=${CHANNEL}" \
       -o /out/probeglass ./cmd/probeglass
 
 # The mistake above was silent for as long as it existed because nothing ever looked

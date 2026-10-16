@@ -154,6 +154,7 @@ jobs:
             VERSION=${{ steps.version.outputs.value }}
             COMMIT=${{ github.sha }}
             BUILD_DATE=${{ github.event.head_commit.timestamp }}
+            CHANNEL=release
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

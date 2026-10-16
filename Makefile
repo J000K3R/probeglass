@@ -26,10 +26,14 @@ CMD         := ./cmd/probeglass
 VERSION     ?= $(patsubst v%,%,$(shell git describe --tags --dirty 2>/dev/null || echo dev))
 COMMIT      ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 BUILD_DATE  ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+# Where this build came from, and the one stamp a workflow has to override: a local
+# `make build` is not a release and not the dev channel either.
+CHANNEL     ?= local
 LDFLAGS     := -s -w \
                -X $(PKG)/internal/model.Version=$(VERSION) \
                -X $(PKG)/internal/model.Commit=$(COMMIT) \
-               -X $(PKG)/internal/model.BuildDate=$(BUILD_DATE)
+               -X $(PKG)/internal/model.BuildDate=$(BUILD_DATE) \
+               -X $(PKG)/internal/model.BuildChannel=$(CHANNEL)
 
 IMAGE       ?= ghcr.io/j000k3r/probeglass
 TAG         ?= dev

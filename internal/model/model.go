@@ -11,19 +11,46 @@ import (
 	"time"
 )
 
-// These three are stamped in at build time with
+// These are stamped in at build time with
 // -ldflags "-X github.com/j000k3r/probeglass/internal/model.Version=X.Y.Z".
 // They are what "probeglass version" and the About panel report, and they
 // exist so a bug report can name the exact revision that produced it.
 //
 // The version carries no leading `v`, because the tag is the only thing that
 // does. A build that stamps nothing — a plain `go build` — reports the string
-// below instead, which is a development build of the 0.1 line and not a release.
+// below instead, which is not a release.
 var (
-	Version   = "0.1.0-dev"
+	Version   = "dev"
 	Commit    = ""
 	BuildDate = ""
+
+	// BuildChannel is where this build came from, and is set by whichever workflow made
+	// it. It is not the alert Channel above, which is a place notifications go:
+	//
+	//	release   a `v*` tag was pushed, and this is a published version
+	//	dev       the newest build of main, published as `:dev` and not a release
+	//	local     built from a working tree by `make build`, or by hand
+	//
+	// It exists because a container cannot see the tag it was pulled by. Two containers
+	// on the same machine, one on `latest` and one on `dev`, are indistinguishable from
+	// the inside — same version, same commit, same date — and the first question about
+	// a feature that is not on screen is which of the two is being looked at.
+	BuildChannel = "local"
 )
+
+// BuildChannelNote says in one line what the channel means, for the places that have
+// room for a sentence and no room for a table. The dashboard reads the channel itself
+// and writes its own words from its catalogue; this is for the terminal, which has none.
+func BuildChannelNote() string {
+	switch BuildChannel {
+	case "release":
+		return "a published version"
+	case "dev":
+		return "a build of main, newer than the last release and not a release itself"
+	default:
+		return "built from a working tree, not a release"
+	}
+}
 
 // BuildInfo renders the version and, when the build stamped them in, the commit
 // and build date.
