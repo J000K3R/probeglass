@@ -84,27 +84,29 @@ jobs:
         with:
           inputs: dist/checksums.txt
 
-      # The release body is the changelog, not a paragraph of commit subjects. The
-      # changelog is written for a reader — what changed, in an order somebody chose,
-      # grouped by what kind of change it is — and `--generate-notes` answers a
-      # different question, the one about which commits landed.
+      # The release body is the changelog — the whole of it, so that the tag page
+      # carries the history with it. `--generate-notes` would say which commits landed
+      # instead, which is a different question and one nobody outside this repository
+      # can answer usefully.
       #
-      # The script refuses to print anything for a version CHANGELOG.md has no
-      # section for, so this step is also what stops a release being published with
-      # empty notes. Rename `## [Unreleased]` to `## [x.y.z] - <date>` before tagging;
-      # the failure message says so.
+      # The script refuses to print anything for a version CHANGELOG.md has no section
+      # for, so this step is also what stops a release being published with empty
+      # notes. Rename `## [Unreleased]` to `## [x.y.z] - <date>` before tagging; the
+      # failure message says so.
       - name: Write the release notes out of the changelog
         run: |
           set -euo pipefail
-          scripts/release-notes.sh "${{ steps.version.outputs.value }}" > release-notes.md
           {
+            echo "**Container image:** \`ghcr.io/${IMAGE_NAMESPACE}/${IMAGE_NAME}:${{ steps.version.outputs.value }}\`"
+            echo ""
+            echo "Every change since the first release, in full. This is"
+            echo "[CHANGELOG.md](https://github.com/${GITHUB_REPOSITORY}/blob/main/CHANGELOG.md)"
+            echo "as it stands at this tag."
             echo ""
             echo "---"
             echo ""
-            echo "**Container image:** \`ghcr.io/${IMAGE_NAMESPACE}/${IMAGE_NAME}:${{ steps.version.outputs.value }}\`"
-            echo ""
-            echo "**Full changelog, every version:** [CHANGELOG.md](https://github.com/${GITHUB_REPOSITORY}/blob/main/CHANGELOG.md)"
-          } >> release-notes.md
+            scripts/release-notes.sh "${{ steps.version.outputs.value }}"
+          } > release-notes.md
           wc -l release-notes.md
 
       - name: Create the release
