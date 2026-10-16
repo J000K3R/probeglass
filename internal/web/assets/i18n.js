@@ -597,6 +597,8 @@ const en = {
   'windows.everyDay': 'every day {span}',
   'windows.groupName': 'Group “{group}”',
   'windows.sensorGone': 'sensor #{id} (deleted)',
+  'windows.badge': 'Maintenance',
+  'windows.badgeHint': 'A maintenance window is running over this sensor: it is allowed to be away, no incident is open for it and these checks do not count against its uptime.',
   'windows.enabled': 'Active',
   'windows.enabledHint': 'A window that is off silences nothing and stays in the list.',
   'windows.created': 'Maintenance window added.',

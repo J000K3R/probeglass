@@ -12,12 +12,39 @@ here and what the release says are the same document.
 | Version | Released | In one line |
 | --- | --- | --- |
 | [Unreleased] | — | Nothing yet |
+| [0.2.1] | 2026-10-16 | A sensor under maintenance says so |
 | [0.2.0] | 2026-10-16 | Maintenance windows, a second interface language, and the container as the only thing that ships |
 | [0.1.0] | 2026-10-12 | The first release: sensors, history, incidents, alerts, accounts, and the dashboard |
 
 ## [Unreleased]
 
 Nothing yet.
+
+## [0.2.1] - 2026-10-16
+
+### Added
+
+- **A sensor inside a maintenance window says so.** Its card and its row carry a
+  violet **Maintenance** badge beside the status, the card is ringed in the same
+  colour, and the tree, the wall and the map pick it up too. The status itself does
+  not change: a box that is not answering is still red, because that is true — what
+  the badge adds is the sentence somebody needs in order to decide whether to get up.
+
+  This was a gap rather than a change of mind. 0.2.0's API published the flag from the
+  day the feature landed and the dashboard used it in one place, the "running now" mark
+  in the window list, and nowhere on a sensor — so a window did everything it promised
+  and nothing on screen admitted it. Reported by the first person to use the feature.
+
+### Fixed
+
+- **Switching the language no longer races the settings page.** The page is rebuilt
+  when the language changes, and the redraw was not waited for, so a control could be
+  replaced under whoever was using it. The rebuild is awaited now.
+- **Long sensor names are no longer broken mid-word.** The card's header wraps the
+  badges onto a second line rather than squeezing the name until "Internet gateway"
+  comes out as "Inter net gate way".
+
+[0.2.1]: https://github.com/j000k3r/probeglass/compare/v0.2.0...v0.2.1
 
 ## [0.2.0] - 2026-10-16
 
@@ -1098,6 +1125,6 @@ it lands with, and every change made on the way to the tag.
 - The session cookie is `HttpOnly` and `SameSite=Strict` and deliberately omits
   `Secure`, because homelab installs commonly serve plain HTTP on the LAN.
 
-[Unreleased]: https://github.com/j000k3r/probeglass/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/j000k3r/probeglass/compare/v0.2.1...HEAD
 [0.2.0]: https://github.com/j000k3r/probeglass/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/j000k3r/probeglass/releases/tag/v0.1.0

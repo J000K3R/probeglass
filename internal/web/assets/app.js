@@ -497,14 +497,14 @@ async function persistUI(key, value, control) {
   const changedLanguage = key === 'language' && previous !== value;
   ui[key] = value;
   applyUIPreferences();
-  if (changedLanguage) repaintForLanguage();
+  if (changedLanguage) await repaintForLanguage();
   if (key === 'layout') renderDashboard();
   try {
     await api('/api/settings', { method: 'PUT', body: { ui: { [key]: value } } });
   } catch (err) {
     ui[key] = previous;
     applyUIPreferences();
-    if (changedLanguage) repaintForLanguage();
+    if (changedLanguage) await repaintForLanguage();
     if (control) control.value = previous;
     if (key === 'layout') renderDashboard();
     toast(err.message, 'error');
@@ -547,9 +547,9 @@ async function persistUI(key, value, control) {
  * a mechanism of their own: fmtAgo reads the catalogue like everything else, so
  * renderAll takes them with it.
  */
-function repaintForLanguage() {
+async function repaintForLanguage() {
   applyTranslations();
-  renderAll();
+  await renderAll();
   repaintBuiltControls();
   widgetsUI.repaint();
   applyRoleGating();
@@ -1664,11 +1664,23 @@ window.addEventListener('hashchange', () => {
   if (location.hash !== `#/${state.route}`) applyHash();
 });
 
-function renderAll() {
+/**
+ * renderAll redraws whichever view is on screen.
+ *
+ * It is async because one of the four is: the settings page fetches the accounts, the
+ * example data, the places and the maintenance windows before it can draw a panel, and
+ * it rebuilds #settings-body in one go when that comes back. Callers that do not await
+ * it are fire-and-forget and always were — but repaintForLanguage does await it, and
+ * that is not tidiness. A repaint that returns before the page underneath has been
+ * rebuilt is a repaint that has not happened yet: the next thing the reader does lands
+ * on a control that is about to be replaced, which is how a language switch could lose
+ * the focus somebody had in the settings form.
+ */
+async function renderAll() {
   if (state.route === 'dashboard') renderDashboard();
   if (state.route === 'incidents') renderIncidents();
   if (state.route === 'channels') renderChannels();
-  if (state.route === 'settings') renderSettings();
+  if (state.route === 'settings') await renderSettings();
 }
 
 // ---------------------------------------------------------------------------
@@ -1840,8 +1852,26 @@ function statusWord(status) {
   return t(key);
 }
 
-function statusPill(status) {
-  return `<span class="pill st-${esc(status)}"><i class="dot"></i>${esc(statusWord(status))}</span>`;
+/**
+ * statusPill draws the state of one sensor: what the probe found, and — while a
+ * maintenance window is running over it — that the state is expected.
+ *
+ * Two pills and not one recoloured one. The status stays whatever the probe found,
+ * because a card that went purple while the box was genuinely unreachable would be
+ * lying about the one thing a card is for. What the second pill adds is the sentence
+ * somebody needs in order to decide whether to get up: this one is down, and I
+ * arranged it.
+ *
+ * It takes the sensor rather than the status word, which is what puts the second pill
+ * in every place a state is drawn — the card, the table row, the tree branch, the wall
+ * tile — from one function. A view added later cannot be the only one without it.
+ */
+function statusPill(sensor) {
+  const s = sensor || {};
+  const maint = s.in_maintenance
+    ? `<span class="pill st-maint" title="${esc(t('windows.badgeHint'))}">${esc(t('windows.badge'))}</span>`
+    : '';
+  return `<span class="pill st-${esc(s.status)}"><i class="dot"></i>${esc(statusWord(s.status))}</span>${maint}`;
 }
 
 /**
@@ -1900,9 +1930,9 @@ function renderCard(sensor) {
   const acked = sensor.open_incident?.acked_at;
   const example = sensor.origin === 'example';
   return `
-    <article class="card st-${esc(sensor.status)}${down ? ' is-down' : ''}${acked ? ' is-acked' : ''}${example ? ' is-example' : ''}" data-id="${sensor.id}" data-origin="${esc(sensor.origin || '')}" tabindex="0">
+    <article class="card st-${esc(sensor.status)}${down ? ' is-down' : ''}${sensor.in_maintenance ? ' in-maint' : ''}${acked ? ' is-acked' : ''}${example ? ' is-example' : ''}" data-id="${sensor.id}" data-origin="${esc(sensor.origin || '')}" tabindex="0">
       <header class="card-head">
-        ${statusPill(sensor.status)}
+        ${statusPill(sensor)}
         <h3 class="card-name">${esc(sensor.name)}</h3>
         ${example ? `<span class="pill badge-example" title="${esc(t('examples.badgeHint'))}">${esc(t('examples.badge'))}</span>` : ''}
         ${acked ? `<span class="pill st-acked" title="${esc(t('ack.badge'))}">🔕 ${esc(t('ack.short'))}</span>` : ''}
@@ -1928,8 +1958,8 @@ function renderCard(sensor) {
  */
 function renderListRow(sensor) {
   return `
-    <tr class="row st-${esc(sensor.status)}${sensor.status === 'down' ? ' is-down' : ''}" data-id="${sensor.id}">
-      <td>${statusPill(sensor.status)}</td>
+    <tr class="row st-${esc(sensor.status)}${sensor.status === 'down' ? ' is-down' : ''}${sensor.in_maintenance ? ' in-maint' : ''}" data-id="${sensor.id}">
+      <td>${statusPill(sensor)}</td>
       <td class="cell-name">
         <b>${esc(sensor.name)}</b>
         <span class="muted">${esc(sensor.target)}</span>
@@ -2043,7 +2073,7 @@ async function openDetail(id) {
   const sheet = $('#detail');
   $('#detail-title').textContent = sensor.name;
   detailProbes = 0;
-  syncDetailStatus(sensor.status);
+  syncDetailStatus(sensor);
   hideDetailNotice();
   const open = sensor.open_incident;
   const ackButton = open
@@ -2105,12 +2135,31 @@ async function loadDetailBody(id) {
 // is patched either way — but how much of what is on screen has aged.
 let detailProbes = 0;
 
-/** syncDetailStatus moves the pill in the window's header, and nothing else. */
-function syncDetailStatus(status) {
+/**
+ * syncDetailStatus moves the pill in the window's header, and nothing else.
+ *
+ * It takes the sensor rather than the status word so that a window open across the
+ * start of a maintenance window picks the marker up with the next probe, the same way
+ * it picks up a status change — the one thing in this dialog that is cheap enough to
+ * redraw under somebody who is reading it.
+ */
+function syncDetailStatus(sensor) {
   const el = $('#detail-status');
   if (!el) return;
-  el.className = `pill st-${status}`;
-  el.innerHTML = `<i class="dot"></i>${esc(statusWord(status))}`;
+  const c = sensor || {};
+  el.className = `pill st-${esc(c.status)}`;
+  el.innerHTML = `<i class="dot"></i>${esc(statusWord(c.status))}`;
+  const heading = $('#detail-title');
+  if (!heading || !heading.parentElement) return;
+  // The maintenance pill lives beside the status pill in the header, built the same
+  // way the cards build it, so the two cannot drift apart.
+  const existing = heading.parentElement.querySelector('.pill.st-maint');
+  if (c.in_maintenance && !existing) {
+    heading.insertAdjacentHTML('afterend',
+      `<span class="pill st-maint" title="${esc(t('windows.badgeHint'))}">${esc(t('windows.badge'))}</span>`);
+  } else if (!c.in_maintenance && existing) {
+    existing.remove();
+  }
 }
 
 /**
@@ -2125,7 +2174,7 @@ function syncDetailStatus(status) {
  */
 function noteDetailProbe(sensor) {
   detailProbes += 1;
-  syncDetailStatus(sensor.status);
+  syncDetailStatus(sensor);
   const notice = $('#detail-notice');
   if (!notice) return;
   notice.hidden = false;

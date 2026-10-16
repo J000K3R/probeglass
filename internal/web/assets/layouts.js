@@ -186,8 +186,8 @@ export function renderTree(sensors, sites, ctx) {
  */
 export function treeRow(sensor, ctx) {
   return `
-    <div class="tree-row st-${esc(sensor.status)}" data-id="${sensor.id}" tabindex="0">
-      ${ctx.statusPill(sensor.status)}
+    <div class="tree-row st-${esc(sensor.status)}${sensor.in_maintenance ? ' in-maint' : ''}" data-id="${sensor.id}" tabindex="0">
+      ${ctx.statusPill(sensor)}
       <span class="row-name">${esc(sensor.name)}
         <span class="row-target">${esc(sensor.target)}</span></span>
       <span class="row-spark">${ctx.sparkline(sensor.sparkline || [], { width: 120, height: 24 })}</span>
@@ -227,9 +227,9 @@ export function tile(sensor, ctx) {
   const beats = sensor.heartbeat || [];
   const down = sensor.status === 'down';
   return `
-    <article class="tile st-${esc(sensor.status)}${down ? ' is-down' : ''}" data-id="${sensor.id}" tabindex="0">
+    <article class="tile st-${esc(sensor.status)}${down ? ' is-down' : ''}${sensor.in_maintenance ? ' in-maint' : ''}" data-id="${sensor.id}" tabindex="0">
       <header class="tile-head">
-        ${ctx.statusPill(sensor.status)}
+        ${ctx.statusPill(sensor)}
         <span class="tile-name" title="${esc(sensor.target)}">${esc(sensor.name)}</span>
       </header>
       ${heartbeat(beats, {

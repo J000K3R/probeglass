@@ -594,6 +594,8 @@ export const de = {
   'windows.everyDay': 'täglich {span}',
   'windows.groupName': 'Gruppe „{group}“',
   'windows.sensorGone': 'Sensor #{id} (gelöscht)',
+  'windows.badge': 'Wartung',
+  'windows.badgeHint': 'Über diesem Sensor läuft ein Wartungsfenster: Er darf weg sein, es ist kein Vorfall dafür offen, und diese Prüfungen zählen nicht gegen seine Verfügbarkeit.',
   'windows.enabled': 'Aktiv',
   'windows.enabledHint': 'Ein ausgeschaltetes Fenster schaltet nichts stumm und bleibt in der Liste.',
   'windows.created': 'Wartungsfenster angelegt.',

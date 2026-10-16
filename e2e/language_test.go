@@ -151,9 +151,22 @@ func caughtUp(code, was string) string {
 // changes it: the value set and the change event let out. app.js listens for
 // exactly that on #settings-body and in the account menu, and both go through the
 // one write path.
+//
+// One expression that does both, rather than chromedp.SetValue. SetValue resolves the
+// element to a node handle and then acts on that handle, and a language switch rebuilds
+// #settings-body — so the handle can be stale by the time it is used, and the failure is
+// a CDP error about a node that is not there rather than anything about languages. This
+// looked the element up, set it and fired the event in one turn of the page's own
+// loop, where nothing can replace it in between. The search field's helper next door
+// does the same thing for the same reason.
 func choosing(where, code string) chromedp.Action[chromedp.Void] {
 	return chromedp.Steps(
-		chromedp.SetValue(where, code),
+		chromedp.Evaluate[chromedp.Void](`(() => {
+		  const el = document.querySelector(`+jsQuote(where)+`);
+		  if (!el) throw new Error('no such control: ' + `+jsQuote(where)+`);
+		  el.value = `+jsQuote(code)+`;
+		  el.dispatchEvent(new Event('change', { bubbles: true }));
+		})()`),
 		chromedp.Poll[chromedp.Void](`document.documentElement.lang === `+jsQuote(code),
 			chromedp.WithPollingTimeout(10*time.Second)),
 	)

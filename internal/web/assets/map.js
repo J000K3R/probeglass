@@ -359,8 +359,13 @@ export function mount(host, opts = {}) {
       if (px < -60 || px > w + 60 || py < -60 || py > h + 60) continue;
       const list = sensorsBySite.get(site.name) || [];
       const status = list.length ? worstStatus(list) : 'unknown';
+      // A site whose sensors are all inside maintenance windows is marked as such,
+      // so that a pin which is red for a reason somebody arranged does not send
+      // anybody to look at the map. Every one of them, not any: one sensor excused
+      // among nine that are fine is not what the pin is about.
+      const allExpected = list.length > 0 && list.every((c) => c.in_maintenance);
       const kind = site.kind === 'external' ? 'k-external' : 'k-local';
-      markerHTML += `<button type="button" class="site-marker ${kind} st-${esc(status)}"` +
+      markerHTML += `<button type="button" class="site-marker ${kind} st-${esc(status)}${allExpected ? ' in-maint' : ''}"` +
         ` data-site="${esc(site.name)}" style="left:${px.toFixed(1)}px;top:${py.toFixed(1)}px"` +
         ` title="${esc(site.name)}">` +
         `<span class="site-marker-label">${esc(site.name)}</span></button>`;

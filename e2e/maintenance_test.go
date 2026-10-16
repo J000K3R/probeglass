@@ -13,6 +13,7 @@ package e2e
 
 import (
 	"context"
+	"strconv"
 	"testing"
 	"time"
 
@@ -154,4 +155,121 @@ func windowError(ctx context.Context) string {
 		return "(could not read it)"
 	}
 	return value
+}
+
+// TestASensorUnderAWindowSaysSoOnItsCard is the answer to a report from somebody who
+// used the feature: they made a maintenance window and everything stayed green.
+//
+// It was true, and it was a gap rather than a bug in the arithmetic. The API published
+// in_maintenance on every status view from the moment the feature landed, and the
+// dashboard used it in exactly one place — the "running now" mark in the windows list —
+// and nowhere on a sensor. So a window did what it said it did and nothing on the
+// screen admitted it: the one thing a person needs in order to decide whether to get up
+// was the one thing not drawn.
+//
+// The status stays what the probe found, so this is about the second pill and the ring
+// around the card rather than about a repainted status. A card that went purple while
+// the box was genuinely unreachable would be lying about the one thing a card is for.
+func TestASensorUnderAWindowSaysSoOnItsCard(t *testing.T) {
+	browser := findBrowser(t)
+	base := startServer(t, buildBinary(t))
+	ctx, done := openBrowser(t, browser)
+	defer done()
+	dir := artifactsDir(t)
+
+	firstRun(t, ctx, base, dir)
+
+	const sensorName = "Zonk Switch"
+	createSensorThroughTheAPI(t, ctx, dir, sensorName, "http", "http://127.0.0.1:1/")
+	eventually(t, ctx, cardExists(sensorName),
+		"the sensor was created but never reached the dashboard",
+		dir, "maint-card-missing", 20*time.Second)
+
+	// Before the window: no marker, which is the half that keeps this test from
+	// passing on a page that draws the pill for every sensor.
+	before := read[cardMark](t, ctx, readCardMark(sensorName), "the card before the window")
+	if before.InMaint {
+		t.Fatalf("the card is marked as in maintenance before any window exists")
+	}
+
+	// A window over the present, created through the API: the dialog is the other
+	// test's subject, and this one is about what the card then shows.
+	now := time.Now().UTC()
+	err := withTimeout(ctx, func(tctx context.Context) error {
+		return chromedp.Do(tctx, chromedp.Evaluate[chromedp.Void](`
+			fetch('/api/maintenance', {
+			  method: 'POST',
+			  headers: { 'Content-Type': 'application/json' },
+			  body: JSON.stringify({
+			    sensor_id: `+strconv.FormatInt(before.ID, 10)+`,
+			    kind: 'once',
+			    starts_at: `+jsQuote(now.Add(-time.Hour).Format(time.RFC3339))+`,
+			    ends_at: `+jsQuote(now.Add(time.Hour).Format(time.RFC3339))+`,
+			    timezone: 'UTC',
+			    note: 'disk swap',
+			    enabled: true,
+			  }),
+			}).then(r => { if (!r.ok) throw new Error('POST /api/maintenance: ' + r.status); })`,
+			chromedp.EvalAwaitPromise))
+	})
+	if err != nil {
+		capture(t, ctx, dir, "maint-card-create")
+		t.Fatalf("could not create the window: %v", err)
+	}
+
+	// The reload is how this test gets a fresh summary, and the alternative was to
+	// sit still for the dashboard's own poll — a minute between sweeps, with the event
+	// stream as the fast path. A window made through the API raises no event, which is
+	// not how a person makes one: the dialog in Settings refreshes the cards on its own
+	// way out, and that path is TestTheMaintenancePanelCreatesAWindow's subject. This
+	// one is about what the card then shows.
+	if err := withTimeout(ctx, func(tctx context.Context) error {
+		return chromedp.Do(tctx,
+			chromedp.Reload(),
+			chromedp.WaitVisible(`.card`),
+		)
+	}); err != nil {
+		capture(t, ctx, dir, "maint-card-reload")
+		t.Fatalf("could not reload the dashboard: %v", err)
+	}
+
+	eventually(t, ctx, `(() => {
+	  const card = [...document.querySelectorAll('.card')]
+	    .find((c) => c.querySelector('.card-name')?.textContent.trim() === `+jsQuote(sensorName)+`);
+	  return !!card && card.classList.contains('in-maint');
+	})()`,
+		"the sensor is inside a maintenance window and its card is not marked as such",
+		dir, "maint-card-unmarked", 20*time.Second)
+
+	after := read[cardMark](t, ctx, readCardMark(sensorName), "the card inside the window")
+	if after.Pill == "" {
+		t.Errorf("the card carries the marker class but no word for it; a ring with " +
+			"nothing to read says something is different without saying what")
+	}
+	if after.Status == "" {
+		t.Errorf("the card lost its status pill")
+	}
+}
+
+// cardMark is what a card says about a sensor: its status word, whether the
+// maintenance pill is on it, and whether the card carries the marker class.
+type cardMark struct {
+	ID      int64  `json:"id"`
+	Status  string `json:"status"`
+	Pill    string `json:"pill"`
+	InMaint bool   `json:"inMaint"`
+}
+
+func readCardMark(name string) string {
+	return `(() => {
+	  const card = [...document.querySelectorAll('.card')]
+	    .find((c) => c.querySelector('.card-name')?.textContent.trim() === ` + jsQuote(name) + `);
+	  if (!card) return null;
+	  return {
+	    id: Number(card.dataset.id),
+	    status: card.querySelector('.pill:not(.st-maint)')?.textContent.trim() || '',
+	    pill: card.querySelector('.pill.st-maint')?.textContent.trim() || '',
+	    inMaint: card.classList.contains('in-maint'),
+	  };
+	})()`
 }
