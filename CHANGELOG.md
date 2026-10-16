@@ -11,7 +11,7 @@ here and what the release says are the same document.
 
 | Version | Released | In one line |
 | --- | --- | --- |
-| [Unreleased] | — | A second interface language, German, and the switch for it — and the binary releases are gone, leaving the container |
+| [Unreleased] | — | Maintenance windows, a second interface language, and the container as the only thing that ships |
 | [0.1.0] | 2026-10-12 | The first release: sensors, history, incidents, alerts, accounts, and the dashboard |
 
 ## [Unreleased]
@@ -78,6 +78,33 @@ Three surfaces are deliberately still English, and are meant to stay that way:
 
 The probe messages the server writes into the history — `HTTP 200 OK`, `no such
 host` — are data rather than interface and read the same in every language.
+
+- **Maintenance windows.** Tell the installation in advance that a box is allowed
+  to be away — the nightly snapshot, the Saturday the disk gets swapped — and the
+  checks that fail in that period open no incident, send no alert, and are left out
+  of the uptime figure.
+
+  - A window covers **one sensor or a whole group**, repeats **weekly on chosen
+    days** or covers **one stretch of time**, and is created in Settings →
+    Monitoring → Maintenance windows. A weekly window is read in the zone the
+    person making it is in; the form fills that in from the browser, because a
+    container has no idea where its operator lives.
+  - **The probe keeps running.** A window is not a pause: the result is still
+    recorded, so a box that comes back early shows up in its chart as having come
+    back. What is suppressed is the claim that somebody needs to do something.
+  - **The arithmetic follows the marker into the rollups.** A sample left out of
+    today's figure has to stay left out of next month's too, and the raw rows are
+    gone by then — so the count is carried into the hourly and daily tables by the
+    rollup itself, in two columns rather than one, because a window is a period and
+    not a promise and the box may come back early.
+  - An outage that was **already open** when a window begins is closed with a note
+    saying why, and nothing is sent — the message that opened it already went out.
+    If the box stays away, a new outage opens once it has failed its way past the
+    retries again, dated from after the window. A recovery inside a window is
+    silent, because no "down" was ever sent.
+  - A window applies **from the moment it is saved**. The checks already recorded
+    are not rewritten, which is stated in the documentation rather than left to be
+    discovered.
 
 ## [0.1.0] - 2026-10-12
 
