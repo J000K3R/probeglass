@@ -510,6 +510,71 @@ ALTER TABLE sites ADD COLUMN origin TEXT NOT NULL DEFAULT '';
 			return retireDefaultTileURL(ctx, tx)
 		},
 	},
+	{
+		version: 6,
+		name:    "maintenance",
+		sql: `
+-- A period during which downtime is expected: the nightly snapshot, the Sunday
+-- backup, the afternoon the disk gets swapped.
+--
+-- Exactly one of sensor_id and grp is set. A group is a string on the sensors
+-- rather than a table of its own, so this column is a name and not a foreign key
+-- — which is also why there is no ON DELETE here to worry about: a window whose
+-- group no sensor carries matches nothing, and a window whose sensor is deleted
+-- goes with it.
+CREATE TABLE IF NOT EXISTS maintenance_windows (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    sensor_id  INTEGER REFERENCES sensors(id) ON DELETE CASCADE,
+    grp        TEXT    NOT NULL DEFAULT '',
+    kind       TEXT    NOT NULL CHECK (kind IN ('once','weekly')),
+
+    -- 'once': two instants. 'weekly': a time of day as minutes past midnight, in
+    -- the zone named below. Both shapes are stored as text and integer rather
+    -- than as one shape with the other's columns empty, because a reader of this
+    -- table should be able to see which kind a row is without decoding anything.
+    starts_at  TEXT,
+    ends_at    TEXT,
+    weekdays   TEXT    NOT NULL DEFAULT '',
+    start_min  INTEGER NOT NULL DEFAULT 0,
+    end_min    INTEGER NOT NULL DEFAULT 0,
+    tz         TEXT    NOT NULL DEFAULT 'UTC',
+
+    note       TEXT    NOT NULL DEFAULT '',
+    enabled    INTEGER NOT NULL DEFAULT 1,
+    managed    INTEGER NOT NULL DEFAULT 0,
+    origin     TEXT    NOT NULL DEFAULT '',
+    created_at TEXT    NOT NULL,
+    updated_at TEXT    NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_windows_sensor ON maintenance_windows(sensor_id);
+CREATE INDEX IF NOT EXISTS idx_windows_group  ON maintenance_windows(grp);
+
+-- A probe that landed inside a window, and therefore does not count towards
+-- uptime. Recorded rather than not made at all: the chart should still show that
+-- the box was away, and "expected" is a fact about the outage, not about the
+-- measurement. The scheduler sets it at the moment the result is written, which
+-- is the only moment that knows both the sensor and the clock.
+ALTER TABLE results ADD COLUMN maint INTEGER NOT NULL DEFAULT 0;
+
+-- And the same counts in every rollup table. This pair of columns is the whole
+-- reason the feature needed a migration rather than a query: raw rows are pruned
+-- after retention.raw, and everything older than that is answered from a rollup
+-- row that was written once and can never be revisited. A maintenance sample that
+-- is not carried into the rollup is a maintenance sample that stops being excluded
+-- the day the raw rows fall off — which is to say, on the seventh day, silently,
+-- and in the direction that makes a homelab look less reliable than it is.
+--
+-- Two columns and not one, because a window is a period and not a promise: the box
+-- may come back early. Subtracting only the total would leave those samples counted
+-- as successes that are no longer in the denominator, and an uptime of 103% is what
+-- that looks like from the dashboard.
+ALTER TABLE results_hourly ADD COLUMN maint_samples INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE results_hourly ADD COLUMN maint_ok      INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE results_daily  ADD COLUMN maint_samples INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE results_daily  ADD COLUMN maint_ok      INTEGER NOT NULL DEFAULT 0;
+`,
+	},
 }
 
 // rowExecer is the part of *sql.DB and *sql.Tx that the settings sweeps below use.

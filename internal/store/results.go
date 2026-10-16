@@ -10,15 +10,6 @@ import (
 	"github.com/j000k3r/probeglass/internal/model"
 )
 
-// UptimeStats summarises a window for one or more sensors.
-type UptimeStats struct {
-	Total   int     `json:"total"`   // probes observed
-	OK      int     `json:"ok"`      // successful probes
-	Down    int     `json:"down"`    // failed probes
-	Percent float64 `json:"percent"` // OK / Total * 100, 100 when Total is 0
-	Latency float64 `json:"latency_ms"`
-}
-
 // granularity selects which table answers a query.
 type granularity int
 
@@ -76,9 +67,10 @@ func (s *Store) InsertResult(ctx context.Context, r *model.Result) error {
 // insertResult is the shared implementation behind InsertResult and Tx.
 func insertResult(ctx context.Context, ex execer, r *model.Result) error {
 	res, err := ex.ExecContext(ctx, `
-		INSERT INTO results (sensor_id, ts, ok, latency_ms, status_code, message)
-		VALUES (?,?,?,?,?,?)`,
-		r.SensorID, fmtTime(r.TS), boolInt(r.Success), r.LatencyMS, r.StatusCode, r.Message)
+		INSERT INTO results (sensor_id, ts, ok, latency_ms, status_code, message, maint)
+		VALUES (?,?,?,?,?,?,?)`,
+		r.SensorID, fmtTime(r.TS), boolInt(r.Success), r.LatencyMS, r.StatusCode, r.Message,
+		boolInt(r.Maint))
 	if err != nil {
 		return err
 	}
@@ -86,21 +78,23 @@ func insertResult(ctx context.Context, ex execer, r *model.Result) error {
 	return nil
 }
 
-const resultColumns = `id, sensor_id, ts, ok, latency_ms, status_code, message`
+const resultColumns = `id, sensor_id, ts, ok, latency_ms, status_code, message, maint`
 
 func scanResult(sc rowScanner) (model.Result, error) {
 	var (
-		r    model.Result
-		ts   string
-		ok   int
-		code int
+		r     model.Result
+		ts    string
+		ok    int
+		code  int
+		maint int
 	)
-	if err := sc.Scan(&r.ID, &r.SensorID, &ts, &ok, &r.LatencyMS, &code, &r.Message); err != nil {
+	if err := sc.Scan(&r.ID, &r.SensorID, &ts, &ok, &r.LatencyMS, &code, &r.Message, &maint); err != nil {
 		return r, err
 	}
 	r.TS = parseTime(ts)
 	r.Success = ok != 0
 	r.StatusCode = code
+	r.Maint = maint != 0
 	return r, nil
 }
 
@@ -218,10 +212,53 @@ func (s *Store) TrailingFailures(ctx context.Context, sensorID int64, limit int)
 // aggregation
 // ---------------------------------------------------------------------------
 
-func buildStats(total, ok int, latencySum float64) UptimeStats {
-	st := UptimeStats{Total: total, OK: ok, Down: total - ok}
+// UptimeStats is one sensor's or one installation's record over a window.
+type UptimeStats struct {
+	Total int `json:"total"` // probes observed, maintenance excluded
+	OK    int `json:"ok"`    // successful probes, maintenance excluded
+	Down  int `json:"down"`  // failed probes, maintenance excluded
+	// Maint is how many probes were left out of the three above because they
+	// landed inside a maintenance window. It is reported rather than merely
+	// subtracted so the dashboard can say so: a figure that quietly ignores a
+	// third of the probes is a figure that looks wrong to anybody who was there.
+	Maint   int     `json:"maint"`
+	Percent float64 `json:"percent"` // OK / Total * 100, 100 when Total is 0
+	Latency float64 `json:"latency_ms"`
+}
+
+// buildStats turns the five counts a query returns into a figure.
+//
+// The subtraction of the maintenance samples is the whole of the feature, and it
+// subtracts from both sides. A sample inside a window is a sample nobody asked
+// about: it leaves the denominator, and if it happened to succeed — the box came
+// back early — it leaves the numerator too. Taking it out of the denominator alone
+// would leave those successes counted and nothing to count them against, which
+// reads as an uptime above 100%.
+//
+// Latency is deliberately left alone. It is computed over the successful probes in
+// the numerator, and a window says nothing about how fast the ones outside it were.
+func buildStats(total, ok, maint, maintOK int, latencySum float64) UptimeStats {
+	total -= maint
+	ok -= maintOK
+	if total < 0 {
+		// Only reachable if a window was declared over samples that were written
+		// before it existed and before the rollup ran, in a database whose rows
+		// disagree with its own counters. Clamped rather than reported, because the
+		// alternative is a percentage below zero on a card, and the repair is the
+		// next rollup either way.
+		total = 0
+	}
+	if ok < 0 {
+		ok = 0
+	}
+	st := UptimeStats{Total: total, OK: ok, Down: total - ok, Maint: maint}
 	if total > 0 {
 		st.Percent = float64(ok) / float64(total) * 100
+	} else if maint > 0 {
+		// Every probe in the window was inside a maintenance window. There is no
+		// measurement to report and saying 100% would be a claim; the dashboard
+		// draws these as "maintenance" rather than as a figure.
+		st.Percent = 100
 	} else {
 		st.Percent = 100
 	}
@@ -235,27 +272,31 @@ func buildStats(total, ok int, latencySum float64) UptimeStats {
 func (s *Store) Uptime(ctx context.Context, sensorID int64, from, to time.Time) (UptimeStats, error) {
 	g := s.granularityFor(to.Sub(from))
 	table, timeCol := g.table()
-	q := `SELECT COUNT(*), COALESCE(SUM(ok),0), COALESCE(SUM(latency_ms),0)
+	q := `SELECT COUNT(*), COALESCE(SUM(ok),0), COALESCE(SUM(latency_ms),0),
+	             COALESCE(SUM(maint),0), COALESCE(SUM(maint * ok),0)
 	      FROM ` + table + ` WHERE sensor_id = ? AND ` + timeCol + ` >= ? AND ` + timeCol + ` < ?`
 	if g != granRaw {
-		q = `SELECT COALESCE(SUM(samples),0), COALESCE(SUM(ok),0), COALESCE(SUM(latency_sum),0)
+		q = `SELECT COALESCE(SUM(samples),0), COALESCE(SUM(ok),0), COALESCE(SUM(latency_sum),0),
+		             COALESCE(SUM(maint_samples),0), COALESCE(SUM(maint_ok),0)
 		     FROM ` + table + ` WHERE sensor_id = ? AND ` + timeCol + ` >= ? AND ` + timeCol + ` < ?`
 	}
-	var total, ok int
+	var total, ok, maint, maintOK int
 	var latSum float64
 	if err := s.db.QueryRowContext(ctx, q, sensorID, fmtTime(from), fmtTime(to)).
-		Scan(&total, &ok, &latSum); err != nil {
+		Scan(&total, &ok, &latSum, &maint, &maintOK); err != nil {
 		return UptimeStats{}, err
 	}
-	return buildStats(total, ok, latSum), nil
+	return buildStats(total, ok, maint, maintOK, latSum), nil
 }
 
 // UptimeBySensor aggregates every sensor over [from, to) in a single query.
 func (s *Store) UptimeBySensor(ctx context.Context, from, to time.Time) (map[int64]UptimeStats, error) {
 	table, timeCol := s.granularityFor(to.Sub(from)).table()
-	sel := `COUNT(*), COALESCE(SUM(ok),0), COALESCE(SUM(latency_ms),0)`
+	sel := `COUNT(*), COALESCE(SUM(ok),0), COALESCE(SUM(latency_ms),0),
+	        COALESCE(SUM(maint),0), COALESCE(SUM(maint * ok),0)`
 	if s.granularityFor(to.Sub(from)) != granRaw {
-		sel = `COALESCE(SUM(samples),0), COALESCE(SUM(ok),0), COALESCE(SUM(latency_sum),0)`
+		sel = `COALESCE(SUM(samples),0), COALESCE(SUM(ok),0), COALESCE(SUM(latency_sum),0),
+		       COALESCE(SUM(maint_samples),0), COALESCE(SUM(maint_ok),0)`
 	}
 	q := `SELECT sensor_id, ` + sel + ` FROM ` + table + `
 	      WHERE ` + timeCol + ` >= ? GROUP BY sensor_id`
@@ -269,15 +310,15 @@ func (s *Store) UptimeBySensor(ctx context.Context, from, to time.Time) (map[int
 	out := map[int64]UptimeStats{}
 	for rows.Next() {
 		var (
-			id     int64
-			total  int
-			ok     int
-			latSum float64
+			id             int64
+			total, ok      int
+			maint, maintOK int
+			latSum         float64
 		)
-		if err := rows.Scan(&id, &total, &ok, &latSum); err != nil {
+		if err := rows.Scan(&id, &total, &ok, &latSum, &maint, &maintOK); err != nil {
 			return nil, err
 		}
-		out[id] = buildStats(total, ok, latSum)
+		out[id] = buildStats(total, ok, maint, maintOK, latSum)
 	}
 	return out, rows.Err()
 }
@@ -297,7 +338,8 @@ func (s *Store) UptimeBySensor(ctx context.Context, from, to time.Time) (map[int
 // reading; the number is the reading.
 func (s *Store) SummarySeries(ctx context.Context, from, to time.Time) ([]model.SummaryPoint, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT bucket, COALESCE(SUM(samples),0), COALESCE(SUM(ok),0), COALESCE(SUM(latency_sum),0)
+		SELECT bucket, COALESCE(SUM(samples),0), COALESCE(SUM(ok),0), COALESCE(SUM(latency_sum),0),
+		       COALESCE(SUM(maint_samples),0), COALESCE(SUM(maint_ok),0)
 		FROM results_hourly
 		WHERE bucket >= ? AND bucket < ? GROUP BY bucket ORDER BY bucket`,
 		fmtTime(from), fmtTime(to))
@@ -309,17 +351,21 @@ func (s *Store) SummarySeries(ctx context.Context, from, to time.Time) ([]model.
 	out := []model.SummaryPoint{}
 	for rows.Next() {
 		var (
-			bucket string
-			total  int
-			ok     int
-			latSum float64
+			bucket         string
+			total, ok      int
+			maint, maintOK int
+			latSum         float64
 		)
-		if err := rows.Scan(&bucket, &total, &ok, &latSum); err != nil {
+		if err := rows.Scan(&bucket, &total, &ok, &latSum, &maint, &maintOK); err != nil {
 			return nil, err
 		}
-		point := model.SummaryPoint{TS: parseBucket(bucket), Probes: total}
-		if total > 0 {
-			point.Uptime = float64(ok) / float64(total) * 100
+		// The point carries the counted probes and the maintenance count; the
+		// percentage is worked out the same way buildStats does it, because a
+		// curve whose points disagree with the figure beside it is worse than no
+		// curve at all.
+		point := model.SummaryPoint{TS: parseBucket(bucket), Probes: total - maint, Maint: maint}
+		if counted := total - maint; counted > 0 {
+			point.Uptime = float64(ok-maintOK) / float64(counted) * 100
 		}
 		if ok > 0 {
 			point.Latency = latSum / float64(ok)
@@ -344,7 +390,7 @@ func (s *Store) Samples(ctx context.Context, sensorID int64, from, to time.Time)
 
 func (s *Store) rawSamples(ctx context.Context, sensorID int64, from, to time.Time) ([]model.Sample, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT ts, ok, latency_ms FROM results
+		SELECT ts, ok, latency_ms, maint FROM results
 		WHERE sensor_id = ? AND ts >= ? AND ts < ? ORDER BY ts`, sensorID, fmtTime(from), fmtTime(to))
 	if err != nil {
 		return nil, err
@@ -354,11 +400,12 @@ func (s *Store) rawSamples(ctx context.Context, sensorID int64, from, to time.Ti
 	out := []model.Sample{}
 	for rows.Next() {
 		var (
-			ts  string
-			ok  int
-			lat float64
+			ts    string
+			ok    int
+			lat   float64
+			maint int
 		)
-		if err := rows.Scan(&ts, &ok, &lat); err != nil {
+		if err := rows.Scan(&ts, &ok, &lat, &maint); err != nil {
 			return nil, err
 		}
 		out = append(out, model.Sample{
@@ -368,6 +415,10 @@ func (s *Store) rawSamples(ctx context.Context, sensorID int64, from, to time.Ti
 			LatencyS: lat * float64(ok),
 			LatMin:   lat,
 			LatMax:   lat,
+			// One raw row is one probe, so both counters are 0 or 1, and a
+			// maintenance probe that succeeded counts in both.
+			Maint:   maint,
+			MaintOK: maint * ok,
 		})
 	}
 	return out, rows.Err()
@@ -375,7 +426,7 @@ func (s *Store) rawSamples(ctx context.Context, sensorID int64, from, to time.Ti
 
 func (s *Store) bucketSamples(ctx context.Context, table string, sensorID int64, from, to time.Time) ([]model.Sample, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT bucket, samples, ok, latency_sum, latency_min, latency_max FROM `+table+`
+		SELECT bucket, samples, ok, latency_sum, latency_min, latency_max, maint_samples, maint_ok FROM `+table+`
 		WHERE sensor_id = ? AND bucket >= ? AND bucket < ? ORDER BY bucket`,
 		sensorID, fmtTime(from), fmtTime(to))
 	if err != nil {
@@ -389,7 +440,8 @@ func (s *Store) bucketSamples(ctx context.Context, table string, sensorID int64,
 			bucket string
 			sm     model.Sample
 		)
-		if err := rows.Scan(&bucket, &sm.Total, &sm.OK, &sm.LatencyS, &sm.LatMin, &sm.LatMax); err != nil {
+		if err := rows.Scan(&bucket, &sm.Total, &sm.OK, &sm.LatencyS, &sm.LatMin, &sm.LatMax,
+			&sm.Maint, &sm.MaintOK); err != nil {
 			return nil, err
 		}
 		sm.TS = parseBucket(bucket)
@@ -429,10 +481,11 @@ func (s *Store) Series(ctx context.Context, sensorID int64, from, to time.Time, 
 	}
 
 	type acc struct {
-		ok, total int
-		latSum    float64
-		min, max  float64
-		hasData   bool
+		ok, total  int
+		maint, mOK int
+		latSum     float64
+		min, max   float64
+		hasData    bool
 	}
 	slots := make([]acc, n)
 	width := span / time.Duration(n)
@@ -447,8 +500,14 @@ func (s *Store) Series(ctx context.Context, sensorID int64, from, to time.Time, 
 		}
 		a := &slots[idx]
 		a.hasData = true
+		// The maintenance probes are tallied separately rather than dropped here:
+		// the slot has to know both what was counted and what was left out, because
+		// a bar that is entirely inside a window is not the same as a bar with
+		// nothing in it, and only one of the two should be drawn as a gap.
 		a.ok += sm.OK
 		a.total += sm.Total
+		a.maint += sm.Maint
+		a.mOK += sm.MaintOK
 		a.latSum += sm.LatencyS
 		if sm.LatMin > 0 && (a.min == 0 || sm.LatMin < a.min) {
 			a.min = sm.LatMin
@@ -460,13 +519,19 @@ func (s *Store) Series(ctx context.Context, sensorID int64, from, to time.Time, 
 
 	out := make([]model.SeriesPoint, n)
 	for i, a := range slots {
-		p := model.SeriesPoint{TS: from.Add(time.Duration(i) * width), Total: a.total, OK: a.ok}
+		counted := a.total - a.maint
+		p := model.SeriesPoint{
+			TS:    from.Add(time.Duration(i) * width),
+			Total: counted,
+			OK:    a.ok - a.mOK,
+			Maint: a.maint,
+		}
 		if a.hasData {
 			p.AvgMS = a.latSum / float64(maxInt(a.total, 1))
 			p.MinMS = a.min
 			p.MaxMS = a.max
-			if a.total > 0 {
-				p.UptimePC = float64(a.ok) / float64(a.total) * 100
+			if counted > 0 {
+				p.UptimePC = float64(a.ok-a.mOK) / float64(counted) * 100
 			} else {
 				p.UptimePC = 100
 			}
@@ -526,18 +591,27 @@ func (s *Store) rollup(ctx context.Context, table, bucketExpr string, cutoff tim
 	// substr('2026-10-08T19:50:01.000000000Z',1,13) => '2026-10-08T19'.
 	// Only rows from *complete* buckets pass the cutoff, and the upsert replaces
 	// the aggregate rather than accumulating, which keeps this idempotent.
+	//
+	// The two maint columns are aggregated here and nowhere else. This is the only
+	// moment at which both the raw rows and the bucket they belong to are in hand,
+	// and once the raw rows are pruned it can never be recomputed — so a rollup
+	// that forgot them would leave every window older than retention.raw excluded
+	// from nothing at all, and would do it silently.
 	q := `
-	INSERT INTO ` + table + ` (sensor_id, bucket, samples, ok, latency_sum, latency_min, latency_max)
+	INSERT INTO ` + table + ` (sensor_id, bucket, samples, ok, latency_sum, latency_min, latency_max, maint_samples, maint_ok)
 	SELECT sensor_id, ` + bucketExpr + `, COUNT(*), COALESCE(SUM(ok),0),
-	       COALESCE(SUM(latency_ms),0), COALESCE(MIN(latency_ms),0), COALESCE(MAX(latency_ms),0)
+	       COALESCE(SUM(latency_ms),0), COALESCE(MIN(latency_ms),0), COALESCE(MAX(latency_ms),0),
+	       COALESCE(SUM(maint),0), COALESCE(SUM(maint * ok),0)
 	FROM results WHERE ts < ?
 	GROUP BY sensor_id, ` + bucketExpr + `
 	ON CONFLICT(sensor_id, bucket) DO UPDATE SET
-	    samples     = excluded.samples,
-	    ok          = excluded.ok,
-	    latency_sum = excluded.latency_sum,
-	    latency_min = excluded.latency_min,
-	    latency_max = excluded.latency_max`
+	    samples       = excluded.samples,
+	    ok            = excluded.ok,
+	    latency_sum   = excluded.latency_sum,
+	    latency_min   = excluded.latency_min,
+	    latency_max   = excluded.latency_max,
+	    maint_samples = excluded.maint_samples,
+	    maint_ok      = excluded.maint_ok`
 	_, err := s.db.ExecContext(ctx, q, fmtTime(cutoff))
 	return err
 }

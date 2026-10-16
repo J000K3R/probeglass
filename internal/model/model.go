@@ -6,6 +6,7 @@
 package model
 
 import (
+	"slices"
 	"strings"
 	"time"
 )
@@ -190,6 +191,153 @@ type Site struct {
 // Placed reports whether the site has coordinates and can be drawn on the map.
 func (s Site) Placed() bool { return s.Lat != nil && s.Lon != nil }
 
+// WindowKind is how a maintenance window repeats — or that it does not.
+type WindowKind string
+
+const (
+	// WindowOnce is one stretch of wall-clock time with a beginning and an end.
+	// It is what "I am swapping the disk on Saturday" needs.
+	WindowOnce WindowKind = "once"
+	// WindowWeekly is a time of day on chosen weekdays, repeating until it is
+	// deleted. It is what the nightly snapshot and the Sunday backup need.
+	WindowWeekly WindowKind = "weekly"
+)
+
+// WindowKinds lists every kind, in the order the form should offer them.
+var WindowKinds = []WindowKind{WindowOnce, WindowWeekly}
+
+// Valid reports whether k is a known window kind.
+func (k WindowKind) Valid() bool {
+	for _, c := range WindowKinds {
+		if c == k {
+			return true
+		}
+	}
+	return false
+}
+
+// MaintenanceWindow is a period during which a sensor is expected to be down.
+//
+// What it is for is what does not happen. A probe that fails inside the window
+// opens no incident and sends no alert, and the samples it records in there are
+// counted out of the uptime figure — so a nightly backup stops being a nightly
+// outage on the dashboard. The probe itself keeps running: a window is not a
+// pause, and knowing whether the box came back early is worth the requests.
+//
+// It applies to one sensor or to a whole group, and exactly one of the two is set.
+// A group is a string on the sensors rather than a table of its own, so a window
+// naming a group no sensor carries matches nothing at all. That is the right answer
+// to a typo: it silences nothing rather than silencing the wrong thing.
+type MaintenanceWindow struct {
+	ID int64 `json:"id"`
+
+	// SensorID names one sensor. Zero means the window is for the whole of Group.
+	SensorID int64  `json:"sensor_id,omitempty"`
+	Group    string `json:"group,omitempty"`
+
+	Kind WindowKind `json:"kind"`
+
+	// StartsAt and EndsAt bound a Kind == WindowOnce window, and are nil on a
+	// weekly one.
+	//
+	// Pointers rather than plain times for the reason Site.Lat is a pointer: a
+	// zero time.Time is a real instant in the year 1, and once it is in a column
+	// there is no telling it from "unset".
+	StartsAt *time.Time `json:"starts_at,omitempty"`
+	EndsAt   *time.Time `json:"ends_at,omitempty"`
+
+	// Weekdays, StartMin and EndMin describe a Kind == WindowWeekly window: which
+	// days, and the time of day as minutes past midnight.
+	//
+	// Minutes rather than a time.Time, because this is a time on a clock and not
+	// an instant — storing today's date beside "03:00" would make the window
+	// expire. EndMin may be at or below StartMin, which is a window that runs past
+	// midnight; see Covers.
+	Weekdays []int `json:"weekdays,omitempty"`
+	StartMin int   `json:"start_min,omitempty"`
+	EndMin   int   `json:"end_min,omitempty"`
+
+	// Timezone is the IANA name that the weekly boundaries are read in. It exists
+	// because everything else in this program is UTC and a person is not: "Sunday
+	// at three" means three on their wall, twice a year and all.
+	//
+	// It is the only place in ProbeGlass that a zone other than UTC appears, which
+	// is why it is stored per window rather than as a setting of the installation:
+	// the server has no opinion about where its operator lives, and the dashboard
+	// fills this in from the browser when a window is created.
+	Timezone string `json:"timezone"`
+
+	Note      string    `json:"note,omitempty"`
+	Enabled   bool      `json:"enabled"`
+	Managed   bool      `json:"managed"` // declared in the config file, read-only in the UI
+	Origin    string    `json:"origin,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// Covers reports whether this window is in force for a sensor at an instant.
+//
+// This is the one question anything asks a window, and it is asked from two places
+// that must not be able to disagree: the scheduler, deciding whether to keep quiet
+// about a failure, and the store, marking the sample that failure produced. Both
+// come through here, so "the alert was suppressed" and "the sample was counted out"
+// are the same answer to the same question rather than two answers that can drift.
+//
+// The sensor rather than its id, because a group window has to compare the group,
+// and passing an id would leave the caller to look the sensor up and get it right.
+func (w MaintenanceWindow) Covers(s Sensor, at time.Time) bool {
+	if !w.Enabled {
+		return false
+	}
+	if w.SensorID != 0 {
+		if w.SensorID != s.ID {
+			return false
+		}
+	} else if w.Group == "" || w.Group != s.Group {
+		return false
+	}
+
+	switch w.Kind {
+	case WindowOnce:
+		if w.StartsAt == nil || w.EndsAt == nil {
+			return false
+		}
+		return !at.Before(*w.StartsAt) && at.Before(*w.EndsAt)
+
+	case WindowWeekly:
+		loc, err := time.LoadLocation(w.Timezone)
+		if err != nil {
+			// A zone the embedded tzdata does not know, which after validation
+			// should not happen. Refusing the window is the safe direction: the
+			// other one is a window that covers the whole installation forever,
+			// and an installation that has silently stopped alerting is worse
+			// than one whose Sunday backup still reports itself.
+			return false
+		}
+		local := at.In(loc)
+		minutes := local.Hour()*60 + local.Minute()
+
+		if w.EndMin > w.StartMin {
+			return slices.Contains(w.Weekdays, int(local.Weekday())) &&
+				minutes >= w.StartMin && minutes < w.EndMin
+		}
+
+		// The window runs past midnight. Its evening half belongs to a day that
+		// was named; its morning half belongs to the day before, which is the one
+		// that was named — "Sunday 23:00 to 01:00" means most of Sunday night, and
+		// Monday morning is the tail of it.
+		if minutes >= w.StartMin {
+			return slices.Contains(w.Weekdays, int(local.Weekday()))
+		}
+		if minutes < w.EndMin {
+			previous := (int(local.Weekday()) + 6) % 7
+			return slices.Contains(w.Weekdays, previous)
+		}
+		return false
+	}
+	return false
+}
+
 // Options carries sensor-type specific settings. It is stored as a JSON object
 // and validated by the individual prober implementations.
 type Options map[string]any
@@ -264,6 +412,12 @@ type Result struct {
 	LatencyMS  float64   `json:"latency_ms"`
 	StatusCode int       `json:"status_code,omitempty"`
 	Message    string    `json:"message,omitempty"`
+
+	// Maint marks a probe that landed inside a maintenance window, and is what
+	// keeps it out of the uptime figure. It is recorded rather than the probe
+	// being skipped, so the chart still shows that the box really was away —
+	// "expected" is a fact about the outage, not about the measurement.
+	Maint bool `json:"maint,omitempty"`
 }
 
 // Incident is one continuous period during which a sensor was down.
@@ -327,6 +481,28 @@ type Sample struct {
 	LatencyS float64   `json:"-"`
 	LatMin   float64   `json:"-"`
 	LatMax   float64   `json:"-"`
+
+	// Maint and MaintOK are the probes in this sample's bucket that landed inside
+	// a maintenance window, and how many of those succeeded. OK and Total are
+	// carried as they were recorded; the exclusion happens where the figure is
+	// computed, so that a caller which wants to see the raw truth still can —
+	// RecentResults and the tooltip on a bucket both do.
+	Maint   int `json:"maint,omitempty"`
+	MaintOK int `json:"maint_ok,omitempty"`
+}
+
+// Counted returns the sample with the maintenance probes taken out of both sides,
+// which is what a figure is computed from.
+func (s Sample) Counted() Sample {
+	s.Total -= s.Maint
+	s.OK -= s.MaintOK
+	if s.Total < 0 {
+		s.Total = 0
+	}
+	if s.OK < 0 {
+		s.OK = 0
+	}
+	return s
 }
 
 // LatencyAvg returns the mean latency of the bucket in milliseconds.
@@ -338,6 +514,10 @@ func (s Sample) LatencyAvg() float64 {
 }
 
 // SeriesPoint is a bucketed data point as returned by the API.
+// SeriesPoint is one bar of a sensor's chart. Total and OK are the probes that
+// were counted; Maint is how many were left out because they fell inside a
+// maintenance window, so that a bar which is entirely maintenance can be drawn as
+// maintenance rather than as a gap.
 type SeriesPoint struct {
 	TS       time.Time `json:"ts"`
 	AvgMS    float64   `json:"avg_ms"`
@@ -345,6 +525,7 @@ type SeriesPoint struct {
 	MaxMS    float64   `json:"max_ms"`
 	OK       int       `json:"ok"`
 	Total    int       `json:"total"`
+	Maint    int       `json:"maint,omitempty"`
 	UptimePC float64   `json:"uptime_pct"`
 }
 
@@ -447,12 +628,17 @@ type Summary struct {
 	Series []SummaryPoint `json:"series"`
 }
 
-// SummaryPoint is one hour of every sensor taken together.
+// SummaryPoint is one hour of every sensor taken together — what the whole
+// installation did in one bucket of the header's curve.
 type SummaryPoint struct {
 	TS      time.Time `json:"ts"`
 	Uptime  float64   `json:"uptime"`
 	Latency float64   `json:"latency_ms"`
-	Probes  int       `json:"probes"`
+	// Probes counts the checks that were counted — maintenance excluded. Maint is
+	// how many were left out, so that a bucket drawn as entirely green can still
+	// say whether anything happened in it at all.
+	Probes int `json:"probes"`
+	Maint  int `json:"maint,omitempty"`
 }
 
 // Role is what a user is allowed to do. The three are ordered, and every
