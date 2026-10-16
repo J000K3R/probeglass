@@ -529,10 +529,15 @@ liable for anything it does. It is a hobby project, not a product.
 
 ---
 
-<p align="center">
-  <a href="https://github.com/j000k3r/probeglass/stargazers">
-    <img src="https://img.shields.io/github/stars/j000k3r/probeglass?style=flat-square&label=stars" alt="Stars on GitHub" height="20">
-  </a>
+## Star History
+
+<a href="https://www.star-history.com/?repos=j000k3r%2Fprobeglass&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=j000k3r/probeglass&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=j000k3r/probeglass&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=j000k3r/probeglass&type=date&legend=top-left" />
+ </picture>
+</a>
   <br>
   <sub>Nothing here is for sale and nothing is asked for. A star is the only
   measurement this project has of whether it was worth writing.</sub>
