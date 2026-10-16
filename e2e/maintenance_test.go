@@ -236,7 +236,8 @@ func TestASensorUnderAWindowSaysSoOnItsCard(t *testing.T) {
 	eventually(t, ctx, `(() => {
 	  const card = [...document.querySelectorAll('.card')]
 	    .find((c) => c.querySelector('.card-name')?.textContent.trim() === `+jsQuote(sensorName)+`);
-	  return !!card && card.classList.contains('in-maint');
+	  return !!card && card.classList.contains('in-excused') &&
+	    card.classList.contains('in-maintenance');
 	})()`,
 		"the sensor is inside a maintenance window and its card is not marked as such",
 		dir, "maint-card-unmarked", 20*time.Second)
@@ -269,7 +270,7 @@ func readCardMark(name string) string {
 	    id: Number(card.dataset.id),
 	    status: card.querySelector('.pill:not(.st-maint)')?.textContent.trim() || '',
 	    pill: card.querySelector('.pill.st-maint')?.textContent.trim() || '',
-	    inMaint: card.classList.contains('in-maint'),
+	    inMaint: card.classList.contains('in-excused'),
 	  };
 	})()`
 }
