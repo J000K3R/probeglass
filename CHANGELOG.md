@@ -11,7 +11,7 @@ here and what the release says are the same document.
 
 | Version | Released | In one line |
 | --- | --- | --- |
-| [Unreleased] | — | A second interface language, German, and the switch for it |
+| [Unreleased] | — | A second interface language, German, and the switch for it — and the binary releases are gone, leaving the container |
 | [0.1.0] | 2026-10-12 | The first release: sensors, history, incidents, alerts, accounts, and the dashboard |
 
 ## [Unreleased]
@@ -49,6 +49,22 @@ here and what the release says are the same document.
 - **A stored language follows the account**, like the theme, the accent, the
   density and the layout, rather than the installation. An installation that has
   never chosen one behaves exactly as before and reads English.
+
+### Removed
+
+- **The binary releases for darwin, windows, freebsd and linux.** 0.1.0 shipped
+  seven zip files; a release now ships the container image and nothing else. The
+  archives promised a second way to run ProbeGlass that no document described,
+  and two things would not have survived it: the `docker` sensor talks to the
+  Docker Engine over a unix socket, which Windows does not have, and `doctor`
+  tells you to run it with `docker exec`. What is gone is the publishing of other
+  platforms, not the ability to compile — `make build` still builds for whatever
+  machine you are on.
+
+  The `checksums.txt` file and its Sigstore signature went with the archives,
+  because there was nothing left to check a download of. The release workflow no
+  longer requests an OIDC token at all. The image itself is not signed; if that
+  is wanted it would be a small addition of its own.
 
 ### Notes
 

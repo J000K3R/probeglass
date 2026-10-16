@@ -7,14 +7,10 @@ on:
 permissions:
   contents: write   # to create the release
   packages: write   # to push to ghcr.io
-  # Keyless signing gets its certificate from an OIDC token rather than from a
-  # key somebody has to keep, and this is the permission that lets the job ask
-  # for one. A workflow that names a `permissions` block sets everything it does
-  # not name to none, so without this line the signing step fails with no
-  # certificate and takes the release down with it — which is exactly what the
-  # first v0.1.0 run did. See the action's README: "Your workflow must have
-  # permission to request the OIDC token to authenticate with."
-  id-token: write
+  # `id-token: write` was here, for the keyless Sigstore signature on the
+  # checksums of the release archives. Both are gone with the archives, and a
+  # permission that nothing asks for is a permission worth not granting — the
+  # workflow no longer requests an OIDC token at all.
 
 env:
   GOTOOLCHAIN: local
@@ -27,8 +23,8 @@ env:
   IMAGE_NAMESPACE: j000k3r
 
 jobs:
-  goreleaser:
-    name: Binaries and release notes
+  release:
+    name: Release notes
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -40,7 +36,7 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      # The tag is `v0.1.0`; the version the binaries report is `0.1.0`. Nothing but the
+      # The tag is `v0.1.0`; the version the image reports is `0.1.0`. Nothing but the
       # tag carries the `v`, so it is stripped once here rather than at each use.
       - name: Work out the version
         id: version
@@ -49,40 +45,6 @@ jobs:
       # The test suite decides whether the tag becomes a release.
       - name: Test
         run: go test ./... -count=1 -race
-
-      - name: Build release archives
-        env:
-          VERSION: ${{ steps.version.outputs.value }}
-          COMMIT: ${{ github.sha }}
-          BUILD_DATE: ${{ github.event.head_commit.timestamp }}
-        run: |
-          set -euo pipefail
-          mkdir -p dist
-          ldflags="-s -w \
-            -X github.com/j000k3r/probeglass/internal/model.Version=${VERSION} \
-            -X github.com/j000k3r/probeglass/internal/model.Commit=${COMMIT} \
-            -X github.com/j000k3r/probeglass/internal/model.BuildDate=${BUILD_DATE}"
-          for target in linux/amd64 linux/arm64 linux/armv7 darwin/amd64 darwin/arm64 windows/amd64 freebsd/amd64; do
-            os=${target%/*}
-            arch=${target#*/}
-            goarch=${arch%v7}
-            goarm=""
-            [ "${arch}" = "armv7" ] && goarm="GOARM=7"
-            name="probeglass_${VERSION}_${os}_${arch}"
-            out="dist/${name}"
-            mkdir -p "${out}"
-            env CGO_ENABLED=0 GOOS="${os}" GOARCH="${goarch}" ${goarm} \
-              go build -trimpath -ldflags "${ldflags}" -o "${out}/probeglass" ./cmd/probeglass
-            cp README.md LICENSE "${out}/"
-            (cd dist && zip -qr "${name}.zip" "${name}" && rm -rf "${name}")
-          done
-          (cd dist && sha256sum *.zip > checksums.txt)
-          ls -lh dist
-
-      - name: Sign the checksums
-        uses: sigstore/gh-action-sigstore-python@v3.5.0
-        with:
-          inputs: dist/checksums.txt
 
       # The release body is the changelog — the whole of it, so that the tag page
       # carries the history with it. `--generate-notes` would say which commits landed
@@ -109,6 +71,15 @@ jobs:
           } > release-notes.md
           wc -l release-notes.md
 
+      # No assets. Seven zip files used to be attached here — linux, darwin,
+      # windows, freebsd — and they promised a way to run this that nothing
+      # documented and that two things would not have survived: the docker sensor
+      # speaks to the Engine over a unix socket, and `doctor` tells you to run it
+      # with `docker exec`. The product is the container, and the container is
+      # published by the `docker` job below.
+      #
+      # The checksums and their Sigstore signature went with the archives; there
+      # is nothing left to check a download of. The image itself is unsigned.
       - name: Create the release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -116,8 +87,7 @@ jobs:
           set -euo pipefail
           gh release create "${GITHUB_REF_NAME}" \
             --title "${GITHUB_REF_NAME}" \
-            --notes-file release-notes.md \
-            dist/*.zip dist/checksums.txt dist/checksums.txt.sigstore.json
+            --notes-file release-notes.md
 
   docker:
     name: Publish the container image

@@ -113,7 +113,6 @@ the opposite bet:
 | Runtime deps | none (static binary) | Node.js, or a JVM, or a full stack |
 | Frontend build | none — plain ES modules, embedded in the binary | npm, a bundler, a CDN |
 | Dependencies | pure Go, including SQLite (no CGO) | native modules |
-| Cross-compiles to | linux/amd64, arm64, armv7, darwin, windows, freebsd | usually amd64 only |
 | Data | one SQLite file you can copy | a database server or a volume full of JSON |
 
 The whole program is a Go binary with the dashboard baked in via `embed.FS`.
@@ -496,8 +495,9 @@ internal/web         embedded dashboard (HTML, CSS, plain ES modules)
 `make dev`, `make test`, `make test-race`, `make cover`, `make lint`,
 `make docker`, and `make rename MODULE=github.com/you/probeglass`.
 
-CI runs `gofmt`, `go vet`, `go test -race`, a build for seven platforms, and
-`golangci-lint`. There is no frontend build step.
+CI runs `gofmt`, `go vet`, `go test -race`, a build for each of the three
+architectures the image ships, and `golangci-lint`. There is no frontend build
+step.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the pieces fit
 together, [CONTRIBUTING.md](CONTRIBUTING.md) for how to send a patch, and

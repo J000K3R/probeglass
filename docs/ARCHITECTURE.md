@@ -32,8 +32,8 @@ closes the database.
 ## Storage
 
 Everything is in one SQLite file, opened with `modernc.org/sqlite` — a pure-Go
-translation of SQLite, so `CGO_ENABLED=0` holds and the binary cross-compiles to
-a Pi without a toolchain. The connection pool is pinned to a single connection
+translation of SQLite, so `CGO_ENABLED=0` holds and the image needs no C
+toolchain to build for a Pi. The connection pool is pinned to a single connection
 (`SetMaxOpenConns(1)`): the writes are tiny, correctness and lock-freedom are
 worth more than concurrency on a homelab workload. WAL, `busy_timeout=5000`,
 `foreign_keys=ON`, and `synchronous=NORMAL` are set on open.
