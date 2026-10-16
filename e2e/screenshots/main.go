@@ -720,6 +720,71 @@ func capture(ctx context.Context, base, out string) error {
 
 	// --- the diagnostics -----------------------------------------------------
 
+	// Maintenance: a window over the present, for two of the invented sensors — one
+	// that answers and one that does not — so the picture shows both halves at once:
+	// what the badge looks like on a healthy card, and what it is for on a card that
+	// is red.
+	//
+	// Made here rather than seeded into the demo data on purpose. The demo is what
+	// somebody installs, and a maintenance window that arrived with a fresh
+	// installation would be a feature nobody asked for. The picture is evidence; the
+	// demo is a product.
+	//
+	// The reload afterwards is not tidiness either. The page was loaded before these
+	// windows existed and holds the list it was given; a same-document navigation to
+	// the same page returns that list rather than asking for it again, so without this
+	// the panel below photographs an installation that is empty while the server says
+	// otherwise — which is exactly what it did, and why this shot took three attempts
+	// to get right.
+	if err := do(ctx, "a maintenance window over the present",
+		chromedp.Evaluate[chromedp.Void](`
+	  (async () => {
+	    const now = Date.now();
+	    const summary = await (await fetch('/api/summary')).json();
+	    for (const c of summary.sensors.filter((s) => s.origin === 'example').slice(0, 2)) {
+	      const r = await fetch('/api/maintenance', {
+	        method: 'POST',
+	        headers: { 'Content-Type': 'application/json' },
+	        body: JSON.stringify({
+	          sensor_id: c.id,
+	          kind: 'once',
+	          starts_at: new Date(now - 3600e3).toISOString(),
+	          ends_at: new Date(now + 3 * 3600e3).toISOString(),
+	          timezone: 'UTC',
+	          note: 'Firmware update',
+	          enabled: true,
+	        }),
+	      });
+	      if (!r.ok) throw new Error('POST /api/maintenance: ' + r.status);
+	    }
+	  })()`, chromedp.EvalAwaitPromise),
+		chromedp.Reload(),
+		// The reload lands back on whatever route the walk-through was last on, which
+		// is the settings page — so the dashboard is a click away rather than a URL.
+		chromedp.Click(`[data-route="dashboard"]`),
+		chromedp.WaitVisible(`.card`),
+	); err != nil {
+		return err
+	}
+	// The cards first, while the dashboard is what is on screen.
+	if err := shot(ctx, out, "maintenance-cards", 1600, 620); err != nil {
+		return err
+	}
+	// The monitor category and not just the settings route: the page opens on whatever
+	// category was last chosen, and a panel that is in another one is hidden — which
+	// WaitVisible reads as absent.
+	if err := do(ctx, "the maintenance panel",
+		chromedp.Click(`[data-route="settings"]`),
+		category("monitor"),
+		chromedp.WaitVisible(`#windows-panel`),
+	); err != nil {
+		return err
+	}
+	if err := shot(ctx, out, "maintenance-panel", 1600, 560,
+		centerOn(`#windows-panel`),
+	); err != nil {
+		return err
+	}
 	if err := do(ctx, "running the doctor",
 		category("help"),
 		// Same reason as the example panel above: it is below the fold, and it
@@ -805,7 +870,20 @@ func category(key string) chromedp.Action[chromedp.Void] {
 			chromedp.WithPollingTimeout(15*time.Second))); err != nil {
 			return chromedp.Void{}, fmt.Errorf("the %s category never appeared on the settings page: %w", key, err)
 		}
-		if err := chromedp.Do(ctx, chromedp.Click(selector)); err != nil {
+		// Clicked from one expression rather than with chromedp.Click, which resolves
+		// the tab to a node handle and then acts on it. The settings page draws twice —
+		// once when the route changes, with whatever it already had, and again when the
+		// accounts, the places and the windows come back — so a handle taken during the
+		// first can be stale by the second, and the failure is a CDP error about a node
+		// that is not there rather than anything about categories. Looking the tab up,
+		// clicking it and letting go, in one turn of the page's own loop, leaves nothing
+		// to go stale.
+		press := fmt.Sprintf(`(() => {
+		  const tab = document.querySelector(%q);
+		  if (!tab) throw new Error('no such category tab');
+		  tab.click();
+		})()`, selector)
+		if err := chromedp.Do(ctx, chromedp.Evaluate[chromedp.Void](press)); err != nil {
 			return chromedp.Void{}, fmt.Errorf("could not choose the %s category: %w", key, err)
 		}
 		if err := chromedp.Do(ctx, chromedp.Poll[chromedp.Void](chosen,
