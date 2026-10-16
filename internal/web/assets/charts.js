@@ -65,17 +65,32 @@ export function fmtBytes(bytes) {
   return `${value.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`;
 }
 
-/** Relative time such as "just now" or "12 min ago". */
+/**
+ * Relative time such as "just now" or "12 min ago".
+ *
+ * Through the catalogue, like every other piece of text on the page. This one is
+ * easy to forget and hard to notice: it is built here rather than in the markup,
+ * it has no data-i18n attribute for applyTranslations to find, and it is drawn on
+ * every sensor card and in two of the header widgets — so a page that has been
+ * switched to German keeps saying "5 min ago" under a German heading, and the
+ * only person who would report that is the one reading the German.
+ *
+ * The thresholds are chosen so that the shortest sensible unit is used: seconds
+ * below ninety of them, because "1 min ago" for eighty seconds is worse than
+ * "80s ago"; minutes below the hour; hours below the day; days beyond it. The
+ * unit is part of each message rather than appended here, because it is not an
+ * abbreviation of the same word in both languages.
+ */
 export function fmtAgo(iso, now = Date.now()) {
   if (!iso) return '—';
   const then = new Date(iso).getTime();
   if (Number.isNaN(then)) return '—';
   const diff = Math.max(0, now - then);
-  if (diff < 5000) return 'just now';
-  if (diff < 90_000) return `${Math.round(diff / 1000)}s ago`;
-  if (diff < 3_600_000) return `${Math.round(diff / 60_000)} min ago`;
-  if (diff < 86_400_000) return `${Math.round(diff / 3_600_000)} h ago`;
-  return `${Math.round(diff / 86_400_000)} d ago`;
+  if (diff < 5000) return t('time.justNow');
+  if (diff < 90_000) return t('time.secondsAgo', { n: Math.round(diff / 1000) });
+  if (diff < 3_600_000) return t('time.minutesAgo', { n: Math.round(diff / 60_000) });
+  if (diff < 86_400_000) return t('time.hoursAgo', { n: Math.round(diff / 3_600_000) });
+  return t('time.daysAgo', { n: Math.round(diff / 86_400_000) });
 }
 
 /** Clock time in the browser's own timezone. */

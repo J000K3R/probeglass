@@ -593,6 +593,27 @@ export function closePicker() {
   if (dialog?.open) dialog.close();
 }
 
+/**
+ * repaint redraws the two pieces of markup this module owns: the Customise
+ * control in the top bar and the rows of the picker.
+ *
+ * Both are filled from the catalogue and both are filled once — the tools when the
+ * strip is mounted, the picker when it is first opened and again on every opening.
+ * The picker gets away with it, since opening it redraws it; the Customise button
+ * does not, and it is in the top bar on every screen, so a switched language left
+ * it saying "Customise" over a German dashboard. redrawTools is cheap: one button,
+ * and its own listener is on the container rather than on the button.
+ *
+ * drawPicker is called whether or not the window has ever been opened, because the
+ * rows are in the document either way and a window that is opened after the switch
+ * is filled by openPicker() anyway. Doing it here costs nothing and means the
+ * labels in it are never the old language's, even for the instant before it opens.
+ */
+export function repaint() {
+  drawTools();
+  drawPicker();
+}
+
 function body(widget) {
   try {
     return widget.build(context());

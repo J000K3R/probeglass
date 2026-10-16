@@ -84,13 +84,37 @@ jobs:
         with:
           inputs: dist/checksums.txt
 
+      # The release body is the changelog, not a paragraph of commit subjects. The
+      # changelog is written for a reader — what changed, in an order somebody chose,
+      # grouped by what kind of change it is — and `--generate-notes` answers a
+      # different question, the one about which commits landed.
+      #
+      # The script refuses to print anything for a version CHANGELOG.md has no
+      # section for, so this step is also what stops a release being published with
+      # empty notes. Rename `## [Unreleased]` to `## [x.y.z] - <date>` before tagging;
+      # the failure message says so.
+      - name: Write the release notes out of the changelog
+        run: |
+          set -euo pipefail
+          scripts/release-notes.sh "${{ steps.version.outputs.value }}" > release-notes.md
+          {
+            echo ""
+            echo "---"
+            echo ""
+            echo "**Container image:** \`ghcr.io/${IMAGE_NAMESPACE}/${IMAGE_NAME}:${{ steps.version.outputs.value }}\`"
+            echo ""
+            echo "**Full changelog, every version:** [CHANGELOG.md](https://github.com/${GITHUB_REPOSITORY}/blob/main/CHANGELOG.md)"
+          } >> release-notes.md
+          wc -l release-notes.md
+
       - name: Create the release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           gh release create "${GITHUB_REF_NAME}" \
             --title "${GITHUB_REF_NAME}" \
-            --generate-notes \
+            --notes-file release-notes.md \
             dist/*.zip dist/checksums.txt dist/checksums.txt.sigstore.json
 
   docker:

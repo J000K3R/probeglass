@@ -5,36 +5,63 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+What each release holds, one line each. Every version below is written out in
+full; the release page for a tag carries its own section of this file, so what is
+here and what the release says are the same document.
+
+| Version | Released | In one line |
+| --- | --- | --- |
+| [Unreleased] | — | A second interface language, German, and the switch for it |
+| [0.1.0] | 2026-10-12 | The first release: sensors, history, incidents, alerts, accounts, and the dashboard |
+
 ## [Unreleased]
 
 ### Added
 
 - **A second interface language, and the switch for it.** German joins English.
-  Every word the dashboard draws now comes out of a message catalogue rather than
-  out of the markup, so the next language is one file and one entry in a list, and
-  no code at all: `internal/web/assets/i18n.<code>.js` beside the English
-  reference, plus the code in the two lists that already say what the interface
-  offers — the Go whitelist and the `available` list in the browser. The switch
-  sits in Settings and in the account menu, and each language is named in its own
-  language ("Deutsch", not "German"), because the reader who needs that entry is
-  the one who cannot read the rest of the list. The choice is stored with the
-  account and applies to the whole interface, number and date formats included —
-  `Intl` reads the browser's language rather than the document's, so every
-  formatter is now handed the chosen one explicitly.
 
-  Three surfaces are deliberately still English, and are meant to stay that way:
-  the watchdog's own page, which has to be readable in exactly the situation where
-  the dashboard's scripts did not load; the `doctor` findings, which are the CLI's
-  output; and the channel types and their setup recipes, which the server sends as
-  its own text. A dictionary that is missing a key falls back to English rather
-  than to a blank, which is the right way round for a reader — and is why the
-  catalogues are held to the reference key by key, in order, with the same
-  placeholders, by a test of their own. That fallback is also why the other
-  direction needed watching: `data-i18n` attributes written into `index.html` and
-  `t('…')` calls written into the scripts are compared against the reference too,
-  because a key that is asked for and does not exist is not a blank and not an
-  English sentence — the lookup answers with the key, and the screen shows the
-  dotted identifier in its place.
+  Every word the dashboard draws now comes out of a message catalogue rather than
+  out of the markup, so the next language is **one file and one entry in a list**,
+  and no code at all:
+
+  - `internal/web/assets/i18n.<code>.js` beside the English reference in
+    `i18n.js`, holding the same keys in the same order with the same placeholders.
+    A test compares the two key by key, in order, and compares both against the
+    keys the interface actually asks for — in `index.html` and in every `t('…')`
+    call in the scripts — so a missing word and a mistyped one both fail the build
+    rather than reaching the screen.
+  - The code in the two lists that already say what the interface offers: the Go
+    whitelist that validates a stored preference, and the `available` list the
+    picker is drawn from.
+
+- **The switch**, in Settings and in the account menu, taking effect on the view
+  you are already looking at rather than on the next page load. Each language is
+  named in its own language — "Deutsch", not "German" — because the reader who
+  needs that entry is the one who cannot read the rest of the list.
+
+- **Dates, numbers and relative times follow it too.** `Intl` reads the browser's
+  language rather than the document's, so every formatter is now handed the chosen
+  one explicitly, and "5 min ago" under a card is a catalogue message like any
+  other word.
+
+### Changed
+
+- **A stored language follows the account**, like the theme, the accent, the
+  density and the layout, rather than the installation. An installation that has
+  never chosen one behaves exactly as before and reads English.
+
+### Notes
+
+Three surfaces are deliberately still English, and are meant to stay that way:
+
+- the **watchdog's own page**, which has to be readable in exactly the situation
+  where the dashboard's scripts did not load;
+- the **`doctor` findings**, which are the CLI's output;
+- the **channel types and their setup recipes**, which the server sends as its own
+  text.
+
+The probe messages the server writes into the history — `HTTP 200 OK`, `no such
+host` — are data rather than interface and read the same in every language.
 
 ## [0.1.0] - 2026-10-12
 

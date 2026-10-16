@@ -23,6 +23,11 @@ package e2e
 
 import (
 	"context"
+	"fmt"
+	"io"
+	"net/http"
+	"regexp"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -475,4 +480,203 @@ func TestTheLanguageSwitchReachesThePage(t *testing.T) {
 		t.Errorf("after switching back to English the document still says it is written "+
 			"in %q", back.Lang)
 	}
+}
+
+// ---------------------------------------------------------------------------
+// the whole page, rather than a sample of it
+// ---------------------------------------------------------------------------
+
+// catalogueEntry matches one `'key': 'text',` line in a shipped catalogue. The
+// indentation is part of the pattern for the reason it is in internal/web: both
+// files write every entry at two spaces, and the prose comments above them quote
+// keys while explaining them.
+var catalogueEntry = regexp.MustCompile(`(?m)^  '([^']+)': '(.*)',$`)
+
+// fetchCatalogue reads a shipped dictionary back out of the running server.
+//
+// Off the server rather than off the disk, because the question is what the browser
+// was given: a file that is in the working tree but not in the embedded set would be
+// a dictionary nobody loads, and reading it here would hide exactly that.
+func fetchCatalogue(t *testing.T, base, path string) map[string]string {
+	t.Helper()
+	resp, err := http.Get(base + path)
+	if err != nil {
+		t.Fatalf("could not read %s: %v", path, err)
+	}
+	defer resp.Body.Close() //nolint:errcheck // a read-only body on a test connection
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("%s answered %d; the dictionaries are meant to be servable without a session", path, resp.StatusCode)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("could not read %s: %v", path, err)
+	}
+	out := map[string]string{}
+	for _, m := range catalogueEntry.FindAllStringSubmatch(string(body), -1) {
+		out[m[1]] = m[2]
+	}
+	if len(out) == 0 {
+		t.Fatalf("%s held no message at all; the pattern this test reads it with has "+
+			"gone out of step with the file's shape", path)
+	}
+	return out
+}
+
+// everyWordInTheDocument is every text node under <body>, hidden or not, plus the
+// three attributes applyTranslations writes into — each tagged with the chain of
+// ids it sits under.
+//
+// Hidden elements are included on purpose, and that is the whole point of doing it
+// this way. Half of what this test found sat behind something: the sign-in screen
+// behind the dashboard, the picker's rows behind a dialog nobody had opened, the
+// close button on a dialog that was closed. Each of them is a word the next person
+// to open that thing reads, and a test that only looked at what was on screen would
+// have called the page translated while four English words waited to be found.
+const everyWordInTheDocument = `(() => {
+  const SEP = '\u0001';
+  const where = (el) => {
+    const parts = [];
+    for (let n = el; n && n !== document.body; n = n.parentElement) {
+      if (n.id) parts.unshift('#' + n.id);
+      else if (typeof n.className === 'string' && n.className.trim())
+        parts.unshift('.' + n.className.trim().split(/\s+/)[0]);
+    }
+    return parts.slice(-5).join(' > ');
+  };
+  const out = [];
+  const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  let node;
+  while ((node = walk.nextNode())) {
+    const t = (node.textContent || '').trim().replace(/\s+/g, ' ');
+    if (t) out.push(t + SEP + where(node.parentElement));
+  }
+  for (const [name, label] of [['placeholder','placeholder'],['title','title'],['aria-label','aria-label']]) {
+    for (const el of document.querySelectorAll('[' + name + ']')) {
+      out.push(el.getAttribute(name) + SEP + where(el) + ' [' + label + ']');
+    }
+  }
+  return out;
+})()`
+
+// TestNoEnglishSurvivesTheSwitch is the guard the other one cannot be.
+//
+// TestTheLanguageSwitchReachesThePage above holds four landmarks, one per way the
+// page draws a word. That is enough to prove the wiring works and not nearly enough
+// to prove the page is translated: every word it does not name is a word that can
+// stay English forever without failing anything, and six of them did. They were the
+// relative timestamps on every card, the three abbreviations in a card's footer, the
+// layout switcher, the period chips on the incidents screen, the Customise button,
+// the widget picker, four close buttons, two role-gated buttons and the sign-in
+// screen — none of which any test was looking at.
+//
+// So this one does not look at chosen places. It takes the English catalogue and the
+// German one, keeps every message the two spell differently, and then asserts that
+// not one of those English strings appears anywhere in the document — hidden
+// elements included — once the interface is set to German. It has no opinion about
+// which words exist or where they should be, so it cannot be satisfied by adding a
+// landmark for each one.
+//
+// What it cannot see is text that is not in a catalogue at all: sensor and group
+// names, targets, and the probe messages the server writes into the history. Those
+// are data rather than interface, they are the same in every language, and they are
+// why this test compares against the catalogue instead of looking for English-looking
+// words.
+func TestNoEnglishSurvivesTheSwitch(t *testing.T) {
+	browser := findBrowser(t)
+	base := startServer(t, buildBinary(t))
+	ctx, done := openBrowser(t, browser)
+	defer done()
+	dir := artifactsDir(t)
+
+	english := fetchCatalogue(t, base, "/assets/i18n.js")
+	german := fetchCatalogue(t, base, "/assets/i18n.de.js")
+
+	// One entry per English sentence, not per key: two keys may hold the same
+	// English and different German, and either of them on screen is the same
+	// finding. The German is kept only to say in the failure what it should have
+	// read.
+	expected := map[string]string{}
+	for key, en := range english {
+		de, ok := german[key]
+		if !ok || de == en || en == "" {
+			continue
+		}
+		if _, taken := expected[en]; !taken {
+			expected[en] = de
+		}
+	}
+	if len(expected) < 100 {
+		t.Fatalf("only %d of the English messages differ from the German; with a gap "+
+			"that small this test would pass on any page at all", len(expected))
+	}
+
+	firstRun(t, ctx, base, dir)
+
+	if err := withTimeout(ctx, func(tctx context.Context) error {
+		return chromedp.Do(tctx,
+			goTo("#/settings", `!!document.querySelector('#settings-body .settings-tabs [data-category]')`),
+			openSettingsCategory("look"),
+			chromedp.Poll[chromedp.Void](
+				`!!document.querySelector('#settings-body [data-panel="appearance"] select[data-setting="language"]')`,
+				chromedp.WithPollingTimeout(15*time.Second)),
+			choosing(`#settings-body [data-panel="appearance"] select[data-setting="language"]`, "de"),
+			chromedp.Poll[chromedp.Void](`document.documentElement.lang === 'de'`,
+				chromedp.WithPollingTimeout(15*time.Second)),
+		)
+	}); err != nil {
+		capture(t, ctx, dir, "leftovers-switch")
+		t.Fatalf("could not switch to German: %v", err)
+	}
+
+	// Every view, at a width where the top bar is not folded, and with the folded
+	// menu open afterwards so that the controls it holds are in the document too.
+	for _, route := range []string{"dashboard", "incidents", "channels", "settings"} {
+		if err := withTimeout(ctx, func(tctx context.Context) error {
+			return chromedp.Do(tctx,
+				chromedp.EmulateViewport(1500, 900),
+				goTo("#/"+route, `!!document.querySelector('#view-`+route+`')`))
+		}); err != nil {
+			t.Fatalf("could not reach #/%s: %v", route, err)
+		}
+		noEnglish(t, ctx, dir, route, expected)
+	}
+
+	if err := withTimeout(ctx, func(tctx context.Context) error {
+		return chromedp.Do(tctx, chromedp.Evaluate[chromedp.Void](`(() => {
+		  const more = document.querySelector('#topbar-more');
+		  if (more && !more.hidden) more.click();
+		})()`))
+	}); err != nil {
+		t.Fatalf("could not open the folded menu: %v", err)
+	}
+	noEnglish(t, ctx, dir, "the folded menu", expected)
+}
+
+// noEnglish reports every English message still in the document, with the element
+// it is in, so that a failure says where to look rather than only that something is
+// wrong.
+func noEnglish(t *testing.T, ctx context.Context, dir, where string, expected map[string]string) {
+	t.Helper()
+	words := read[[]string](t, ctx, everyWordInTheDocument, "every word in the document")
+	seen := map[string]bool{}
+	var found []string
+	for _, raw := range words {
+		text, path, _ := strings.Cut(raw, "\u0001")
+		german, isMessage := expected[text]
+		if !isMessage || seen[text+path] {
+			continue
+		}
+		seen[text+path] = true
+		found = append(found, fmt.Sprintf("%q in %s — it should read %q", text, path, german))
+	}
+	if len(found) == 0 {
+		return
+	}
+	sort.Strings(found)
+	capture(t, ctx, dir, "leftovers")
+	t.Errorf("on %s the interface is set to German and %d message(s) are still English:\n  %s\n"+
+		"t() falls through to English for a key a dictionary is missing, so an English "+
+		"message on a German page is what a missing translation looks like — but it is "+
+		"also what a word that was never put through the catalogue looks like, which is "+
+		"what these were.", where, len(found), strings.Join(found, "\n  "))
 }

@@ -435,26 +435,34 @@ const LAYOUT_ICONS = {
 };
 
 /**
- * buildLayoutSwitcher fills the control once.
+ * buildLayoutSwitcher fills the control, and rewires it only the first time.
  *
  * The listeners are on the container and delegated, so nothing has to be
  * rewired when a button's pressed state changes — and there is exactly one
  * handler however many times the view is redrawn.
+ *
+ * The markup, though, is rebuilt on every call. It carries a `title` and an
+ * `aria-label` and a visible name per layout, all three from the catalogue, so a
+ * control that is filled once and then left alone is a control that goes on
+ * naming the layouts in the language the page was loaded in. It is called again
+ * on a language switch for exactly that reason. See repaintBuiltControls().
  */
 function buildLayoutSwitcher() {
   const host = $('#layout-switcher');
-  if (!host || host.dataset.built) return;
-  host.dataset.built = '1';
+  if (!host) return;
+  if (!host.dataset.wired) {
+    host.dataset.wired = '1';
+    host.addEventListener('click', (event) => {
+      const button = event.target.closest('[data-layout]');
+      if (button) void persistUI('layout', button.dataset.layout);
+    });
+  }
   host.innerHTML = LAYOUTS.map((value) => `
     <button class="seg-btn" type="button" data-layout="${value}"
             title="${esc(t(`settings.layout.${value}`))}"
             aria-label="${esc(t(`settings.layout.${value}`))}">
       ${LAYOUT_ICONS[value]}<span>${esc(t(`settings.layout.${value}`))}</span>
     </button>`).join('');
-  host.addEventListener('click', (event) => {
-    const button = event.target.closest('[data-layout]');
-    if (button) void persistUI('layout', button.dataset.layout);
-  });
   syncLayoutSwitcher();
 }
 
@@ -485,35 +493,99 @@ async function persistUI(key, value, control) {
   const changedLanguage = key === 'language' && previous !== value;
   ui[key] = value;
   applyUIPreferences();
-  if (changedLanguage) {
-    // All three halves are needed and none of them is enough. applyTranslations
-    // re-writes the elements that carry a data-i18n attribute — the shell in
-    // index.html, the tab strip, the search box — and renderAll redraws the view,
-    // which is where most of the words are: they are built by JavaScript at render
-    // time and are not attributes anything can go back and rewrite. Skip the first
-    // and the top bar stays English; skip the second and every card, row and panel
-    // does; skip the third and the account menu does, which is the one place the
-    // switch is also offered, so it would be read in the voice it just left.
-    applyTranslations();
-    renderAll();
-    userUI.repaint();
-  }
+  if (changedLanguage) repaintForLanguage();
   if (key === 'layout') renderDashboard();
   try {
     await api('/api/settings', { method: 'PUT', body: { ui: { [key]: value } } });
   } catch (err) {
     ui[key] = previous;
     applyUIPreferences();
-    if (changedLanguage) {
-      // Back the way it came, the same three ways round.
-      applyTranslations();
-      renderAll();
-      userUI.repaint();
-    }
+    if (changedLanguage) repaintForLanguage();
     if (control) control.value = previous;
     if (key === 'layout') renderDashboard();
     toast(err.message, 'error');
   }
+}
+
+/**
+ * repaintForLanguage puts the whole page into the language that was just chosen.
+ *
+ * Six halves, and none of them is enough on its own. Each one exists because
+ * something was found still reading the old language after a switch, and the list
+ * is the answer to "where does a word live":
+ *
+ *  - applyTranslations rewrites the elements that carry a data-i18n attribute:
+ *    the shell in index.html, the tab strip, the search box, and the close button
+ *    on each of the four dialogs. Skip it and the top bar stays English.
+ *  - renderAll redraws the view, which is where most of the words are — they are
+ *    built by JavaScript at render time and are not attributes anything can go
+ *    back and rewrite. Skip it and every card, row and panel does.
+ *  - repaintBuiltControls rebuilds the controls that are poured into a container
+ *    once and then left alone: the layout switcher and the incident chips. Those
+ *    carry no attribute to rewrite and belong to no view, so neither of the first
+ *    two reaches them.
+ *  - widgetsUI.repaint does the same for the two controls in the header's own
+ *    module — the Customise button, which is in the top bar whatever view is on
+ *    screen, and the widget picker's rows.
+ *  - applyRoleGating writes a title and an aria-label on the three role-gated
+ *    buttons, and it runs when the session is loaded. Those are attributes, not
+ *    text, so applyTranslations does not know about them.
+ *  - repaintAuth re-words the sign-in screen: its hint, and the strength meter
+ *    under the password field, which is mounted once and only ever redrawn when
+ *    somebody types. Both are in the document while somebody is signed in, and
+ *    both are what the next person to sign out reads.
+ *
+ * userUI.repaint is the seventh surface and the one place the switch is also
+ * offered, so a menu that kept the old language would be read in the voice it has
+ * just left.
+ *
+ * The relative timestamps on the cards are not on this list because they are not
+ * a mechanism of their own: fmtAgo reads the catalogue like everything else, so
+ * renderAll takes them with it.
+ */
+function repaintForLanguage() {
+  applyTranslations();
+  renderAll();
+  repaintBuiltControls();
+  widgetsUI.repaint();
+  applyRoleGating();
+  repaintAuth();
+  userUI.repaint();
+}
+
+/**
+ * repaintAuth re-words the sign-in screen.
+ *
+ * It is behind the dashboard rather than on it, which is why it was missed: after
+ * a language switch everything in front of you is German, and the English only
+ * appears the next time the sign-in screen does — as a stale hint under a correct
+ * heading, and as a strength meter still reading "strong / Good to go." from
+ * whatever was last typed into it. The meter is mounted once and driven only by
+ * the field's own input event, so nothing else has ever redrawn it.
+ *
+ * The mode is read back off the form rather than passed in: this is called from the
+ * preference write, which knows nothing about the sign-in screen. A form that has
+ * never been shown has no mode and nothing to re-word.
+ */
+function repaintAuth() {
+  const form = $('#auth-form');
+  if (!form || !form.dataset.mode) return;
+  $('#auth-hint').textContent = form.dataset.mode === 'setup'
+    ? t('auth.setupTitle')
+    : t('auth.loginHint');
+  authMeter?.();
+}
+
+/**
+ * repaintBuiltControls rebuilds the controls that are filled once and forgotten.
+ *
+ * Both are wired to their container rather than to their buttons, so calling them
+ * again is safe and leaves exactly one handler in place. See buildLayoutSwitcher
+ * and buildIncidentFilter, which is where the reason is written down.
+ */
+function repaintBuiltControls() {
+  buildLayoutSwitcher();
+  buildIncidentFilter();
 }
 
 // ---------------------------------------------------------------------------
@@ -1797,9 +1869,9 @@ function cardActions(sensor) {
 function cardStats(sensor) {
   return `
     <div class="card-stats">
-      <span title="${esc(t('summary.uptime'))}">24h <b>${esc(C.fmtPct(sensor.uptime_24h))}</b></span>
-      <span>7d <b>${esc(C.fmtPct(sensor.uptime_7d))}</b></span>
-      <span>30d <b>${esc(C.fmtPct(sensor.uptime_30d))}</b></span>
+      <span title="${esc(t('summary.uptime'))}">${esc(t('summary.dayShort'))} <b>${esc(C.fmtPct(sensor.uptime_24h))}</b></span>
+      <span>${esc(t('summary.weekShort'))} <b>${esc(C.fmtPct(sensor.uptime_7d))}</b></span>
+      <span>${esc(t('summary.monthShort'))} <b>${esc(C.fmtPct(sensor.uptime_30d))}</b></span>
       <span class="muted">${esc(t('detail.averageShort'))} ${esc(C.fmtLatency(sensor.avg_latency_ms))}</span>
     </div>`;
 }
@@ -2105,43 +2177,55 @@ function body() {
 const INCIDENT_RANGES = ['24h', '7d', '30d', '90d', 'all'];
 
 /**
- * buildIncidentFilter fills the chip row and wires the whole filter line once.
+ * buildIncidentFilter fills the chip row and wires the whole filter line.
  *
  * The listeners are delegated on the containers, as everywhere else in this file,
  * so the controls can be marked up as often as the state wants without anyone
- * having to think about rewiring them.
+ * having to think about rewiring them — and wiring them is a separate step from
+ * filling them for one further reason.
+ *
+ * The chips carry a translated word each, and this used to be guarded so that the
+ * whole function ran once per page. That guard was invisible until the interface
+ * was translated: the row was built in English on the first draw and the guard
+ * then refused to build it again, so switching the language left five English
+ * chips sitting under a German heading, on a page where every other word had
+ * changed. The catalogue had the German for all five the whole time. Rebuilding
+ * the markup costs five buttons and leaves the listeners where they are.
  */
 function buildIncidentFilter() {
   const chips = $('#incident-range');
-  if (!chips || chips.dataset.built) return;
-  chips.dataset.built = '1';
+  if (!chips) return;
+
+  if (!chips.dataset.wired) {
+    chips.dataset.wired = '1';
+    chips.addEventListener('click', (event) => {
+      const chip = event.target.closest('[data-range]');
+      if (chip) void setIncidentFilter({ range: chip.dataset.range });
+    });
+
+    $('#incident-status').addEventListener('click', (event) => {
+      const button = event.target.closest('[data-state]');
+      if (button) void setIncidentFilter({ status: button.dataset.state });
+    });
+
+    $('#incident-sensor').addEventListener('change', (event) => {
+      void setIncidentFilter({ sensor: Number(event.target.value) || 0 });
+    });
+
+    // Typing is debounced. Without it the filter runs a query per keystroke, and a
+    // half-typed word is not a filter anybody meant.
+    let timer = 0;
+    $('#incident-query').addEventListener('input', (event) => {
+      const value = event.target.value.trim();
+      clearTimeout(timer);
+      timer = setTimeout(() => void setIncidentFilter({ query: value }), 250);
+    });
+
+    $('#incident-reset').addEventListener('click', () => void resetIncidentFilter());
+  }
+
   chips.innerHTML = INCIDENT_RANGES.map((r) => `
     <button class="chip" type="button" data-range="${r}">${esc(t(`range.${r}`))}</button>`).join('');
-
-  chips.addEventListener('click', (event) => {
-    const chip = event.target.closest('[data-range]');
-    if (chip) void setIncidentFilter({ range: chip.dataset.range });
-  });
-
-  $('#incident-status').addEventListener('click', (event) => {
-    const button = event.target.closest('[data-state]');
-    if (button) void setIncidentFilter({ status: button.dataset.state });
-  });
-
-  $('#incident-sensor').addEventListener('change', (event) => {
-    void setIncidentFilter({ sensor: Number(event.target.value) || 0 });
-  });
-
-  // Typing is debounced. Without it the filter runs a query per keystroke, and a
-  // half-typed word is not a filter anybody meant.
-  let timer = 0;
-  $('#incident-query').addEventListener('input', (event) => {
-    const value = event.target.value.trim();
-    clearTimeout(timer);
-    timer = setTimeout(() => void setIncidentFilter({ query: value }), 250);
-  });
-
-  $('#incident-reset').addEventListener('click', () => void resetIncidentFilter());
 
   syncIncidentFilter();
 }

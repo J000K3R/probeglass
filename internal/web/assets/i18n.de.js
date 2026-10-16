@@ -107,9 +107,18 @@ export const de = {
   'summary.probes': 'Prüfungen 24 h',
   'summary.monitoringSince': 'Überwacht seit',
   // Die Vergleichszeile unter einer Zahl im Kopf: dieselbe Größe über eine
-  // Woche, damit „94 ms“ etwas hat, woran man es liest. Kurz, weil sie in einer
-  // Kachel in einer Zeile steht, und passend zu den „7 T“, die die Sensorkarten
-  // schon immer benutzen.
+  // Die drei Vergleichszahlen unter einer Sensorkarte: dieselbe Verfügbarkeit über
+  // einen Tag, eine Woche und einen Monat, damit ein Prozentwert etwas hat, woran
+  // man ihn liest.
+  //
+  // Sie sind Schlüssel und keine feste Zeichenkette im Markup der Karte, weil „7d“
+  // in keiner Sprache ein Wort ist, sondern eine Abkürzung — und Deutsch schreibt
+  // sie „7 T“. Die Karte trug die feste Zeichenkette, bis die Oberfläche übersetzt
+  // wurde; so kam ein deutsches Dashboard dazu, in der einen Zeile, in der drei
+  // Abkürzungen nebeneinander stehen, „7d“ zu sagen. Die Vergleichszeile im Kopf
+  // borgt sich weekShort, damit beide gleich lesen.
+  'summary.dayShort': '24 Std.',
+  'summary.monthShort': '30 T',
   'summary.weekShort': '7 T',
 
   // Der Kopf ist ein Streifen aus Widgets, die man selbst anordnet, also braucht
@@ -199,6 +208,18 @@ export const de = {
   // „1 neue Prüfungen“ klingt, als rede ein Programm mit sich selbst.
   'detail.newProbe': '1 neue Prüfung — anzeigen',
   'detail.newProbes': '{count} neue Prüfungen — anzeigen',
+
+  // Wie lange die letzte Prüfung her ist — auf jeder Karte und in zwei Widgets.
+  // Die kürzesten Zeichenketten der Datei und die, die ein Leser am häufigsten
+  // sieht. Hier ändert eine Sprache nicht nur die Wörter, sondern den Bau des
+  // Satzes: Englisch stellt die Zahl voran und die Einheit dahinter, Deutsch
+  // dreht das Ganze um. Die Zahl kommt als {n} an und wird nicht im Code
+  // angeklebt, damit beides ein Satz ist, den eine Übersetzung schreiben kann.
+  'time.justNow': 'gerade eben',
+  'time.secondsAgo': 'vor {n}s',
+  'time.minutesAgo': 'vor {n} Min.',
+  'time.hoursAgo': 'vor {n} Std.',
+  'time.daysAgo': 'vor {n} T.',
 
   'range.1h': '1 Stunde',
   'range.24h': '24 Stunden',
