@@ -531,6 +531,7 @@ liable for anything it does. It is a hobby project, not a product.
 
 ## Star History
 
+<p align="center">
 <a href="https://www.star-history.com/?repos=j000k3r%2Fprobeglass&type=date&legend=top-left">
  <picture>
    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=j000k3r/probeglass&type=date&theme=dark&legend=top-left" />
