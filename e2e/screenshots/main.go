@@ -279,6 +279,20 @@ func capture(ctx context.Context, base, out string) error {
 		return err
 	}
 
+	// The dependency pair, taken here and not later: it is a picture of what a fresh
+	// installation looks like, and the maintenance windows this program creates further
+	// down would put badges on unrelated cards that the dataset does not have.
+	//
+	// Framed by making the window tall enough for the whole board rather than by scrolling
+	// to the group. Scrolling was tried six ways — by the heading's text, by its position,
+	// twice with a wait between — and put the wrong group in the frame every time: the
+	// board is redrawn as the cards fill in, and a position asked for while that is
+	// happening is not the position a moment later. A window with room for everything
+	// needs no position at all.
+	if err := shot(ctx, out, "dependencies-cards", 1600, 2400); err != nil {
+		return err
+	}
+
 	// --- the header of widgets -----------------------------------------------
 	//
 	// The header is a list that can be arranged. Three pictures are worth having:
@@ -798,6 +812,14 @@ func capture(ctx context.Context, base, out string) error {
 		return err
 	}
 	if err := shot(ctx, out, "settings-doctor", 1600, 1100); err != nil {
+		return err
+	}
+
+	// Back to the settings page, which the shots below are about.
+	if err := do(ctx, "the settings page again",
+		chromedp.Click(`[data-route="settings"]`),
+		category("help"),
+	); err != nil {
 		return err
 	}
 

@@ -415,3 +415,66 @@ func TestAWindowIsReadInItsOwnZone(t *testing.T) {
 			"UTC, so the zone is not being used at all")
 	}
 }
+
+// TestDeletingTheExampleDataLetsARealSensorGo is the promise the documentation makes
+// about the one-click removal, and the reason the parent column says ON DELETE SET NULL
+// rather than RESTRICT.
+//
+// Two things have to be true at once, and they pull in opposite directions. Example
+// sensors that depend on each other must both go — they are one invented story, and
+// leaving half of it behind would be a dashboard with a check hanging off nothing. A
+// sensor the operator made and pointed at an example one must not go: it is theirs, it
+// is watching something real, and the only thing that has changed about it is that
+// whatever it sat behind is no longer there to excuse it.
+//
+// RESTRICT would make the bulk delete fail; CASCADE would take the operator's sensor
+// with it. SET NULL is the only one of the three that does what the button promises.
+func TestDeletingTheExampleDataLetsARealSensorGo(t *testing.T) {
+	ctx := context.Background()
+	st := newTestStore(t)
+
+	// The invented pair, marked the way the setup marks what it creates.
+	parent := mustSensor(t, st, model.Sensor{
+		Name: "Rented server: SSH", Type: model.SensorTCP, Target: "vps.example.net:22",
+		Enabled: true, Origin: model.OriginExample,
+	})
+	child := mustSensor(t, st, model.Sensor{
+		Name: "Rented server: web", Type: model.SensorHTTP, Target: "https://vps.example.net",
+		Enabled: true, Origin: model.OriginExample, Parent: parent.Name,
+	})
+
+	// And one of the operator's own, sitting behind an invented sensor.
+	mine := mustSensor(t, st, model.Sensor{
+		Name: "My NAS", Type: model.SensorHTTP, Target: "http://nas.lan",
+		Enabled: true, Parent: parent.Name,
+	})
+
+	deleted, err := st.DeleteExampleData(ctx)
+	if err != nil {
+		t.Fatalf("delete the example data: %v", err)
+	}
+	if deleted.Sensors != 2 {
+		t.Errorf("removed %d example sensor(s), want 2", deleted.Sensors)
+	}
+
+	// Both halves of the invented story are gone.
+	for _, name := range []string{parent.Name, child.Name} {
+		if _, err := st.GetSensorByName(ctx, name); err == nil {
+			t.Errorf("%q is still there after the example data was removed", name)
+		}
+	}
+
+	// And the operator's sensor is not, and is no longer pointing at something that
+	// does not exist — which would be a foreign key violation the next write would
+	// trip over, or a parent that silently excuses it forever.
+	got, err := st.GetSensorByName(ctx, mine.Name)
+	if err != nil {
+		t.Fatalf("the sensor made by hand was removed with the example data: %v", err)
+	}
+	if got.Parent != "" {
+		t.Errorf("it still names %q as its parent, and that sensor is gone", got.Parent)
+	}
+	if !got.Enabled {
+		t.Errorf("it came out disabled")
+	}
+}
