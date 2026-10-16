@@ -186,7 +186,7 @@ export function renderTree(sensors, sites, ctx) {
  */
 export function treeRow(sensor, ctx) {
   return `
-    <div class="tree-row st-${esc(sensor.status)}${sensor.in_maintenance ? ' in-maint' : ''}" data-id="${sensor.id}" tabindex="0">
+    <div class="tree-row st-${esc(sensor.status)}${sensor.excuse ? ' in-excused in-' + esc(sensor.excuse) : ''}" data-id="${sensor.id}" tabindex="0">
       ${ctx.statusPill(sensor)}
       <span class="row-name">${esc(sensor.name)}
         <span class="row-target">${esc(sensor.target)}</span></span>
@@ -227,7 +227,7 @@ export function tile(sensor, ctx) {
   const beats = sensor.heartbeat || [];
   const down = sensor.status === 'down';
   return `
-    <article class="tile st-${esc(sensor.status)}${down ? ' is-down' : ''}${sensor.in_maintenance ? ' in-maint' : ''}" data-id="${sensor.id}" tabindex="0">
+    <article class="tile st-${esc(sensor.status)}${down ? ' is-down' : ''}${sensor.excuse ? ' in-excused in-' + esc(sensor.excuse) : ''}" data-id="${sensor.id}" tabindex="0">
       <header class="tile-head">
         ${ctx.statusPill(sensor)}
         <span class="tile-name" title="${esc(sensor.target)}">${esc(sensor.name)}</span>

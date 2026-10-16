@@ -575,6 +575,69 @@ ALTER TABLE results_daily  ADD COLUMN maint_samples INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE results_daily  ADD COLUMN maint_ok      INTEGER NOT NULL DEFAULT 0;
 `,
 	},
+
+	{
+		version: 7,
+		name:    "excused",
+		// The maintenance marker becomes the general one, because a second reason for
+		// it arrived: a sensor whose parent is down is not at fault either.
+		//
+		// A rename and not a new pair of columns. The concept is one — this sample was
+		// excused — and the arithmetic that has to know is one: SUM(ok)/SUM(samples),
+		// answered from whichever of three tables the window's length selects. Two
+		// parallel pairs would mean every one of those seven places asking twice, and
+		// a second chance to get the same thing wrong.
+		//
+		// RENAME COLUMN is safe here in the way a plain ALTER never is: it moves the
+		// values with the name, inside the same transaction as everything else in this
+		// migration. A database that was at version 6 comes out of this with every
+		// count it had, under a better name.
+		sql: `
+ALTER TABLE results RENAME COLUMN maint TO excused;
+ALTER TABLE results_hourly RENAME COLUMN maint_samples TO excused_samples;
+ALTER TABLE results_hourly RENAME COLUMN maint_ok      TO excused_ok;
+ALTER TABLE results_daily  RENAME COLUMN maint_samples TO excused_samples;
+ALTER TABLE results_daily  RENAME COLUMN maint_ok      TO excused_ok;
+
+-- Why it was excused, on the raw row only.
+--
+-- The rollup counts only need to know *that* a sample was excused; the seven
+-- arithmetic sites subtract it either way. What needs the reason is a person looking
+-- at one probe: "this gap was the backup window" and "this gap was because the router
+-- was away" are different stories about the same hole in a chart.
+--
+-- It is written on the row rather than derived at read time because the reason may be
+-- gone by then — a maintenance window can be deleted, and its explanation with it. A
+-- sample that keeps its reason can still be read after the window that caused it has
+-- been forgotten.
+ALTER TABLE results ADD COLUMN excused_reason TEXT NOT NULL DEFAULT '';
+`,
+	},
+	{
+		version: 8,
+		name:    "sensor-parent",
+		sql: `
+-- Which sensor this one sits behind, by name.
+--
+-- A name and not an id, for the reason sensors.site is a name: a configuration file
+-- can name a sensor but can never know the ids in somebody's database, and one
+-- conversion has to serve both the file and the API.
+--
+-- ON UPDATE CASCADE carries a rename, exactly as it does for a site. ON DELETE SET
+-- NULL is the part that matters and is not a shrug: two paths delete sensors in bulk
+-- — "remove the example data" and restoring a backup, which deletes row by row — and a
+-- RESTRICT would make both fail the day an example sensor happened to be somebody's
+-- parent. A child whose parent is gone is a child that reports for itself again, which
+-- is the right answer and is not worth refusing a delete over.
+--
+-- The SQLite rule from migration 3 applies unchanged: ADD COLUMN with a REFERENCES
+-- clause is accepted only while the default is NULL.
+ALTER TABLE sensors ADD COLUMN parent TEXT
+    REFERENCES sensors(name) ON UPDATE CASCADE ON DELETE SET NULL;
+
+CREATE INDEX IF NOT EXISTS idx_sensors_parent ON sensors(parent);
+`,
+	},
 }
 
 // rowExecer is the part of *sql.DB and *sql.Tx that the settings sweeps below use.

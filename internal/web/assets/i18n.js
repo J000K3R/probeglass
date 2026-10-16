@@ -161,6 +161,13 @@ const en = {
   'sensor.interval': 'Interval (s)',
   'sensor.timeout': 'Timeout (s)',
   'sensor.retries': 'Retries before down',
+  // A sensor that sits behind another one. While the parent is down this one is
+  // excused: no incident of its own, no alert, and the checks it fails in there do not
+  // count against its uptime. A power cut is one outage and not thirty.
+  'sensor.parent': 'Depends on',
+  'sensor.parentNone': 'Nothing — this one stands on its own',
+  'dependent.badge': 'Dependent',
+  'dependent.badgeHint': 'Something this sensor sits behind is down, so this is a consequence rather than an outage of its own. It is still being checked and the result is still recorded.',
   'sensor.group': 'Group',
   'sensor.site': 'Site',
   'sensor.tags': 'Tags',
@@ -702,6 +709,7 @@ const en = {
   'help.sensor.group': 'Optional. Sensors sharing a group are drawn under one heading on the dashboard.',
   'help.sensor.site': 'Optional. The place this sensor is: a rack, a room, a server at a hoster. It groups the tree and the wall by place, and with coordinates it is drawn on the map. The list is managed under Sites in Settings.',
   'help.sensor.groupExample': 'Network',
+  'help.sensor.parent': 'While this sensor is down, the one here is excused: it opens no incident of its own, sends no alert, and the checks it fails in that time do not count against its uptime. The check itself keeps running, so a machine that comes back before its parent still shows it.',
   'help.sensor.tags': 'Comma-separated words you can search for, and that alert templates can use.',
   'help.sensor.tagsExample': 'lan, critical',
   'help.sensor.reminder': 'Seconds between repeat alerts while the sensor stays down. 0 turns reminders off, so only the first alert and the recovery message arrive.',

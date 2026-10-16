@@ -14,6 +14,7 @@ import (
 	"github.com/j000k3r/probeglass/internal/event"
 	"github.com/j000k3r/probeglass/internal/model"
 	"github.com/j000k3r/probeglass/internal/notify"
+	"github.com/j000k3r/probeglass/internal/scheduler"
 	"github.com/j000k3r/probeglass/internal/sensor"
 	"github.com/j000k3r/probeglass/internal/store"
 )
@@ -263,6 +264,27 @@ func headerFigures(per map[int64]store.UptimeStats) (uptime, latency float64, pr
 	return uptime, latency, probes
 }
 
+// parentDown reports whether anything this sensor sits behind is down.
+//
+// The same question the scheduler asks, from the same two facts and in the same order
+// — down and not warn, because a blip on the router must not excuse the thirty things
+// behind it — so that a card and a probe loop cannot come to different conclusions
+// about the same sensor.
+func parentDown(byName map[string]model.Sensor, snaps map[int64]scheduler.Snapshot, c model.Sensor) bool {
+	name := c.Parent
+	for depth := 0; name != "" && depth < model.MaxParentDepth; depth++ {
+		parent, ok := byName[name]
+		if !ok {
+			return false
+		}
+		if st, ok := snaps[parent.ID]; ok && st.Status == model.StatusDown {
+			return true
+		}
+		name = parent.Parent
+	}
+	return false
+}
+
 // statusViews joins stored sensors with runtime state and uptime windows.
 func (s *Server) statusViews(ctx context.Context, sensors []model.Sensor) ([]model.StatusView, error) {
 	now := time.Now().UTC()
@@ -294,6 +316,10 @@ func (s *Server) statusViews(ctx context.Context, sensors []model.Sensor) ([]mod
 	windows, err := s.store.ListWindows(ctx)
 	if err != nil {
 		return nil, err
+	}
+	byName := make(map[string]model.Sensor, len(sensors))
+	for _, c := range sensors {
+		byName[c.Name] = c
 	}
 
 	// newest incident per sensor, for the card footer
@@ -336,7 +362,14 @@ func (s *Server) statusViews(ctx context.Context, sensors []model.Sensor) ([]mod
 		if !c.Enabled {
 			v.Status = model.StatusPaused
 		}
-		v.InMaintenance = store.ActiveWindows(windows, c, now)
+		// The same two questions the scheduler asks, in the same order, for the same
+		// answer: a card that said "expected" while the scheduler was opening an
+		// incident would be the two halves of this disagreeing in public.
+		if parentDown(byName, snaps, c) {
+			v.Excuse = model.ExcuseDependency
+		} else if store.ActiveWindows(windows, c, now) {
+			v.Excuse = model.ExcuseMaintenance
+		}
 		if st, ok := u24[c.ID]; ok {
 			v.Uptime24h = st.Percent
 			v.AvgLatencyMS = st.Latency
@@ -405,15 +438,19 @@ func sparkline(results []model.Result) []float64 {
 // target and nothing else. With plain fields that body would blank the name,
 // clear the group and reset the interval to its default.
 type sensorInput struct {
-	Name          *string       `json:"name"`
-	Type          *string       `json:"type"`
-	Target        *string       `json:"target"`
-	Interval      *int          `json:"interval"`
-	Timeout       *int          `json:"timeout"`
-	Retries       *int          `json:"retries"`
-	Enabled       *bool         `json:"enabled"`
-	Group         *string       `json:"group"`
-	Site          *string       `json:"site"`
+	Name     *string `json:"name"`
+	Type     *string `json:"type"`
+	Target   *string `json:"target"`
+	Interval *int    `json:"interval"`
+	Timeout  *int    `json:"timeout"`
+	Retries  *int    `json:"retries"`
+	Enabled  *bool   `json:"enabled"`
+	Group    *string `json:"group"`
+	Site     *string `json:"site"`
+
+	// Parent names another sensor this one sits behind. An explicit empty string
+	// clears it, exactly as it clears the site.
+	Parent        *string       `json:"parent"`
 	Tags          *[]string     `json:"tags"`
 	Options       model.Options `json:"options"`
 	ChannelIDs    *[]int64      `json:"channel_ids"`
@@ -455,6 +492,11 @@ func (in sensorInput) toSensor(base model.Sensor) model.Sensor {
 	// a reference to a site that can never exist.
 	if in.Site != nil {
 		c.Site = strings.TrimSpace(*in.Site)
+	}
+	// The same shape as the site above, and for the same reason: the column is a
+	// reference, and "" would be a reference to a sensor that can never exist.
+	if in.Parent != nil {
+		c.Parent = strings.TrimSpace(*in.Parent)
 	}
 	if in.Tags != nil {
 		c.Tags = *in.Tags
@@ -511,6 +553,10 @@ func (s *Server) handleCreateSensor(w http.ResponseWriter, r *http.Request) {
 	// the same omission keeps the stored state, because the base carries it.
 	c := in.toSensor(model.Sensor{Enabled: true})
 	store.NormaliseSensor(&c)
+	if err := s.store.ValidateSensor(r.Context(), c); err != nil {
+		writeError(w, http.StatusBadRequest, "%s", err.Error())
+		return
+	}
 	if err := sensor.Validate(c); err != nil {
 		writeError(w, http.StatusBadRequest, "%s", err.Error())
 		return
@@ -559,6 +605,10 @@ func (s *Server) handleUpdateSensor(w http.ResponseWriter, r *http.Request) {
 	}
 	updated := unmaskSensor(in.toSensor(existing), existing)
 	store.NormaliseSensor(&updated)
+	if err := s.store.ValidateSensor(r.Context(), updated); err != nil {
+		writeError(w, http.StatusBadRequest, "%s", err.Error())
+		return
+	}
 	if err := sensor.Validate(updated); err != nil {
 		writeError(w, http.StatusBadRequest, "%s", err.Error())
 		return

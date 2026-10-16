@@ -61,12 +61,13 @@ type state struct {
 	lastNotify time.Time
 	lastResult *model.Result
 
-	// maint records that the sensor is currently down inside a maintenance window,
-	// which is the one kind of down that is not an outage. It is what lets the
-	// failure branch tell "this has been failing since before the window and is
-	// still failing after it" from "this began failing", and it is why a window that
-	// ends while the box is still away produces a new incident rather than silence.
-	maint bool
+	// excused records that the sensor is currently down for a reason that is not its
+	// own: a maintenance window is running over it, or something it sits behind is
+	// down. It is what lets the failure branch tell "this has been failing for a
+	// while and is still failing" from "this began failing", and it is why a spell of
+	// being excused that ends while the box is still away produces a new incident
+	// rather than silence.
+	excused bool
 }
 
 // Snapshot is a read-only copy of a sensor's runtime state.
@@ -97,6 +98,10 @@ type Scheduler struct {
 	mu      sync.Mutex
 	runners map[int64]*runner
 	states  map[int64]*state
+	// sensors is every sensor, read whole, for the same reason windows is: the
+	// question "is this one's parent down" is asked once per probe, and answering it
+	// by name needs the list. Kept in step by Reconcile, which already reads it.
+	sensors []model.Sensor
 	// windows is every maintenance window, read whole. It is held rather than
 	// queried because the question "is this sensor inside a window right now" is
 	// asked once per probe per sensor, and an installation has a handful of
@@ -118,6 +123,83 @@ func New(st *store.Store, dispatcher *notify.Dispatcher, broker *event.Broker, l
 		runners:    map[int64]*runner{},
 		states:     map[int64]*state{},
 	}
+}
+
+// excuseResult decides whether a probe is excused and records why.
+//
+// Split out of execute so that step can be driven without a probe. execute is the only
+// caller that has a real result in hand before the row is written, and step is the
+// only caller that acts on the answer — a test that drove step directly would be
+// asserting on a flag nobody had set, which is how these tests passed while the
+// feature did nothing.
+func (s *Scheduler) excuseResult(c model.Sensor, res *model.Result) {
+	res.Excused, res.Excuse = s.excuseOf(c, res.TS)
+}
+
+// excuseOf says whether a probe should be excused, and for what reason.
+//
+// Two reasons, one mechanism. A maintenance window is something a person said in
+// advance; a parent that is down is something that happened to the sensor rather than
+// by it. Both mean the same thing for the arithmetic — this sample is not evidence
+// about the sensor — and a second mechanism would have needed a second copy of the
+// boundary handling in step, which is where the subtle bugs live.
+//
+// The caller must hold s.mu, and this is the whole reason: step() holds it for its
+// entire body, and every public reader — Snapshot, Snapshots, InWindow — takes the
+// same non-reentrant lock, so calling one from in there deadlocks the probe loop. The
+// parent chain is read straight out of s.states instead, where the lock is already in
+// hand.
+//
+// A dependency wins over a window when both apply. Both are true, and only one badge
+// fits: a parent that went down is the newer fact, and the one somebody reading the
+// dashboard does not already know.
+func (s *Scheduler) excuseOf(c model.Sensor, at time.Time) (bool, string) {
+	if s.parentIsDown(c) {
+		return true, model.ExcuseDependency
+	}
+	if store.ActiveWindows(s.windows, c, at) {
+		return true, model.ExcuseMaintenance
+	}
+	return false, ""
+}
+
+// parentIsDown walks up the chain this sensor sits behind and reports whether any of
+// them is down. The caller must hold s.mu.
+//
+// Down and not warn, on purpose: a blip on the router must not mark the thirty things
+// behind it as excused, or one lost ping would quietly stop the whole installation
+// from alerting. Only a status that has been confirmed by the retries counts, which is
+// exactly what StatusDown means.
+//
+// The walk is bounded. A cycle cannot get in through the API or the configuration file
+// — both are checked — but a database edited by hand is not the API, and a probe loop
+// that never returns is worse than one that stops early and judges the sensor on its
+// own evidence.
+func (s *Scheduler) parentIsDown(c model.Sensor) bool {
+	for depth, name := 0, c.Parent; name != "" && depth < model.MaxParentDepth; depth++ {
+		parent, ok := s.sensorByName(name)
+		if !ok {
+			// A parent that is not there is not a reason to excuse anything: the
+			// sensor is on its own, and its own probes are the evidence.
+			return false
+		}
+		if st := s.states[parent.ID]; st != nil && st.status == model.StatusDown {
+			return true
+		}
+		name = parent.Parent
+	}
+	return false
+}
+
+// sensorByName finds a sensor in the list the scheduler was last given. The caller
+// must hold s.mu.
+func (s *Scheduler) sensorByName(name string) (model.Sensor, bool) {
+	for _, c := range s.sensors {
+		if c.Name == name {
+			return c, true
+		}
+	}
+	return model.Sensor{}, false
 }
 
 // InWindow reports whether a sensor is inside a maintenance window at an instant.
@@ -216,6 +298,7 @@ func (s *Scheduler) Reconcile(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.windows = windows
+	s.sensors = sensors
 
 	// Stop loops that are gone or newly disabled.
 	for id, r := range s.runners {
@@ -401,7 +484,7 @@ func (s *Scheduler) execute(ctx context.Context, c model.Sensor) {
 	// fact about the outage, not about the measurement, and the chart should show
 	// that the box really was away. A check somebody asked for by hand is marked the
 	// same way, because it is the same probe.
-	res.Maint = s.InWindow(c, res.TS)
+	s.excuseResult(c, &res)
 
 	if err := s.store.InsertResult(ctx, &res); err != nil {
 		s.log.Error("store probe result", "sensor", c.Name, "error", err)
@@ -489,7 +572,7 @@ func (s *Scheduler) step(ctx context.Context, c model.Sensor, res model.Result) 
 		st.failStreak = 0
 		st.firstFail = time.Time{}
 		st.lastNotify = time.Time{}
-		st.maint = false
+		st.excused = false
 
 		// Read the outage start before the status timestamp is rewritten below:
 		// st.since is about to become the recovery time, and the recovery alert
@@ -509,7 +592,7 @@ func (s *Scheduler) step(ctx context.Context, c model.Sensor, res model.Result) 
 			// never told about. If the outage predates the window, the window
 			// closed it with a note, and the recovery is reported when the window
 			// ends and the sensor is checked outside it again.
-			if !res.Maint {
+			if !res.Excused {
 				tr.alert = notify.EventUp
 				st.lastNotify = res.TS
 			}
@@ -518,8 +601,8 @@ func (s *Scheduler) step(ctx context.Context, c model.Sensor, res model.Result) 
 		// The window boundaries are noticed here, on the first failure either side of
 		// one, because a probe is the only thing that comes with a clock reading.
 		switch {
-		case res.Maint && !st.maint:
-			st.maint = true
+		case res.Excused && !st.excused:
+			st.excused = true
 			// An outage that was already running. It was opened when the downtime
 			// was not expected and it is expected now, so it ends — with a note,
 			// because a closed incident that does not say why is worse than one
@@ -529,7 +612,7 @@ func (s *Scheduler) step(ctx context.Context, c model.Sensor, res model.Result) 
 			if st.incidentID != 0 {
 				tr.incident = s.closeIncident(ctx, c, st, st.since, res.TS)
 			}
-		case !res.Maint && st.maint:
+		case !res.Excused && st.excused:
 			// The window has ended and the sensor is still away. What failed in
 			// between was expected, so none of it is evidence about now: the streak
 			// starts again from this probe, and the sensor has to fail its way to
@@ -537,7 +620,7 @@ func (s *Scheduler) step(ctx context.Context, c model.Sensor, res model.Result) 
 			// follows the streak, so a box that has been away for an hour goes back
 			// to "flaky" for the retries — which is the honest word for "we know it
 			// was away and we are finding out whether it still is".
-			st.maint = false
+			st.excused = false
 			st.failStreak = 0
 			st.firstFail = time.Time{}
 			if st.status == model.StatusDown {
@@ -575,17 +658,18 @@ func (s *Scheduler) step(ctx context.Context, c model.Sensor, res model.Result) 
 			// outage would be lying about the one thing it is for. What a window
 			// suppresses is the incident and the message, which are claims that
 			// somebody needs to do something.
-			if res.Maint {
+			if res.Excused {
 				break
 			}
 			tr.incident = s.openIncident(ctx, c, st, start, res.Message)
 			tr.alert = notify.EventDown
 			st.lastNotify = res.TS
 
-		case st.status == model.StatusDown && st.incidentID == 0 && st.failStreak >= threshold && !st.maint:
-			// Down, with no incident against it, and no window to blame. This is the
-			// sensor that a window closed the book on and that never came back: the
-			// streak has climbed to the threshold again on its own, so this is an
+		case st.status == model.StatusDown && st.incidentID == 0 && st.failStreak >= threshold && !st.excused:
+			// Down, with no incident against it, and nothing to blame. This is the
+			// sensor that a window — or a parent — closed the book on and that never
+			// came back: the streak has climbed to the threshold again on its own, so
+			// this is an
 			// outage like any other, with its start at the first failure after the
 			// window rather than at the one before it.
 			start := st.firstFail
@@ -597,7 +681,7 @@ func (s *Scheduler) step(ctx context.Context, c model.Sensor, res model.Result) 
 			tr.alert = notify.EventDown
 			st.lastNotify = res.TS
 
-		case st.status == model.StatusDown && c.ReminderEvery > 0 && !res.Maint:
+		case st.status == model.StatusDown && c.ReminderEvery > 0 && !res.Excused:
 			if res.TS.Sub(st.lastNotify) >= time.Duration(c.ReminderEvery)*time.Second {
 				open, err := s.store.OpenIncidentFor(ctx, c.ID)
 				if err != nil {
@@ -686,7 +770,7 @@ func (s *Scheduler) ProbeNow(ctx context.Context, sensorID int64) (model.Result,
 	// fact about the outage, not about the measurement, and the chart should show
 	// that the box really was away. A check somebody asked for by hand is marked the
 	// same way, because it is the same probe.
-	res.Maint = s.InWindow(c, res.TS)
+	s.excuseResult(c, &res)
 
 	if err := s.store.InsertResult(ctx, &res); err != nil {
 		return res, err

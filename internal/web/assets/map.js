@@ -363,9 +363,9 @@ export function mount(host, opts = {}) {
       // so that a pin which is red for a reason somebody arranged does not send
       // anybody to look at the map. Every one of them, not any: one sensor excused
       // among nine that are fine is not what the pin is about.
-      const allExpected = list.length > 0 && list.every((c) => c.in_maintenance);
+      const allExpected = list.length > 0 && list.every((c) => c.excuse);
       const kind = site.kind === 'external' ? 'k-external' : 'k-local';
-      markerHTML += `<button type="button" class="site-marker ${kind} st-${esc(status)}${allExpected ? ' in-maint' : ''}"` +
+      markerHTML += `<button type="button" class="site-marker ${kind} st-${esc(status)}${allExpected ? ' in-excused in-maintenance' : ''}"` +
         ` data-site="${esc(site.name)}" style="left:${px.toFixed(1)}px;top:${py.toFixed(1)}px"` +
         ` title="${esc(site.name)}">` +
         `<span class="site-marker-label">${esc(site.name)}</span></button>`;

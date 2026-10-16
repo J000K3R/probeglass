@@ -13,7 +13,7 @@ import (
 )
 
 const sensorColumns = `id, name, type, target, interval_s, timeout_s, retries, enabled,
-	grp, site, tags, options, reminder_every_s, sort_order, managed, origin, created_at, updated_at`
+	grp, site, parent, tags, options, reminder_every_s, sort_order, managed, origin, created_at, updated_at`
 
 type rowScanner interface {
 	Scan(dest ...any) error
@@ -24,6 +24,7 @@ func scanSensor(sc rowScanner) (model.Sensor, error) {
 		c         model.Sensor
 		typ       string
 		site      sql.NullString
+		parent    sql.NullString
 		tags      string
 		options   string
 		enabled   int
@@ -32,8 +33,8 @@ func scanSensor(sc rowScanner) (model.Sensor, error) {
 		updatedAt string
 	)
 	err := sc.Scan(&c.ID, &c.Name, &typ, &c.Target, &c.Interval, &c.Timeout, &c.Retries,
-		&enabled, &c.Group, &site, &tags, &options, &c.ReminderEvery, &c.SortOrder, &managed,
-		&c.Origin, &createdAt, &updatedAt)
+		&enabled, &c.Group, &site, &parent, &tags, &options, &c.ReminderEvery, &c.SortOrder,
+		&managed, &c.Origin, &createdAt, &updatedAt)
 	if err != nil {
 		return c, err
 	}
@@ -41,6 +42,8 @@ func scanSensor(sc rowScanner) (model.Sensor, error) {
 	// The column is nullable, and its NULL is the ordinary state "no site" — so it
 	// becomes the empty string here and never travels further as a Null.
 	c.Site = site.String
+	// The same for the parent: NULL is "no parent" and becomes the empty string.
+	c.Parent = parent.String
 	c.Enabled = enabled != 0
 	c.Managed = managed != 0
 	c.Tags = model.SplitTags(tags)
@@ -55,10 +58,69 @@ func scanSensor(sc rowScanner) (model.Sensor, error) {
 	return c, nil
 }
 
+// ValidateSensor rejects a parent that is not there, and a chain that comes back to
+// where it started.
+//
+// It needs the store, which is why it is here and not in NormaliseSensor: neither the
+// normaliser nor sensor.Validate can see another row, and both of the things that can
+// go wrong with a parent are about other rows. A sensor whose parent does not exist
+// would never be excused by anything — the walk stops, the sensor is judged on its own
+// probes — so this is not a safety check. It is the difference between a typo being
+// reported and a typo being a sensor that silently does not do what it was told.
+//
+// A cycle is the other way round and is a safety check, in the sense that matters:
+// nothing breaks, but the chain has no top, and "is anything up there down" has no
+// answer. The walk is bounded as well, so a database that acquired a cycle by hand
+// stops rather than spins.
+func (s *Store) ValidateSensor(ctx context.Context, c model.Sensor) error {
+	if c.Parent == "" {
+		return nil
+	}
+	if c.Parent == c.Name {
+		return fmt.Errorf("sensor %q cannot depend on itself", c.Name)
+	}
+
+	// Seen by name, so that a chain that reuses a name is caught even when the sensor
+	// itself is being renamed and its id has not moved.
+	seen := map[string]bool{c.Name: true}
+	name := c.Parent
+	for depth := 0; name != ""; depth++ {
+		if depth >= model.MaxParentDepth {
+			return fmt.Errorf("the chain of parents starting at %q is more than %d deep",
+				c.Parent, model.MaxParentDepth)
+		}
+		if seen[name] {
+			return fmt.Errorf("sensor %q would end up in a circle of parents: %q "+
+				"already appears in the chain above it", c.Name, name)
+		}
+		seen[name] = true
+
+		parent, err := s.GetSensorByName(ctx, name)
+		if errors.Is(err, ErrNotFound) {
+			return fmt.Errorf("parent sensor %q does not exist", name)
+		}
+		if err != nil {
+			return err
+		}
+		// The id catches a rename: the sensor's row is still there under its old
+		// name, and the walk would otherwise not recognise it as the one being saved.
+		if (c.ID != 0 && parent.ID == c.ID) || parent.Name == c.Name {
+			return fmt.Errorf("sensor %q cannot depend on %q, which already depends on it",
+				c.Name, name)
+		}
+		name = parent.Parent
+	}
+	return nil
+}
+
 // NormaliseSensor fills in defaults and removes invalid values so that anything
 // reaching the database is coherent.
 func NormaliseSensor(c *model.Sensor) {
 	c.Name = strings.TrimSpace(c.Name)
+	// A sensor never sits behind itself, whatever the caller sent. The check that
+	// matters is ValidateSensor's, which can see the whole chain; this is the one
+	// that costs nothing and makes the field's empty string mean what it says.
+	c.Parent = strings.TrimSpace(c.Parent)
 	c.Target = strings.TrimSpace(c.Target)
 	c.Group = strings.TrimSpace(c.Group)
 	c.Site = strings.TrimSpace(c.Site)
@@ -196,11 +258,11 @@ func insertSensor(ctx context.Context, tx *sql.Tx, c *model.Sensor) error {
 
 	res, err := tx.ExecContext(ctx, `
 		INSERT INTO sensors (name, type, target, interval_s, timeout_s, retries, enabled,
-			grp, site, tags, options, reminder_every_s, sort_order, managed, origin, created_at, updated_at)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			grp, site, parent, tags, options, reminder_every_s, sort_order, managed, origin, created_at, updated_at)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		c.Name, string(c.Type), c.Target, c.Interval, c.Timeout, c.Retries, boolInt(c.Enabled),
-		c.Group, nullIfEmpty(c.Site), model.JoinTags(c.Tags), string(options), c.ReminderEvery,
-		c.SortOrder, boolInt(c.Managed), c.Origin, fmtTime(now), fmtTime(now))
+		c.Group, nullIfEmpty(c.Site), nullIfEmpty(c.Parent), model.JoinTags(c.Tags), string(options),
+		c.ReminderEvery, c.SortOrder, boolInt(c.Managed), c.Origin, fmtTime(now), fmtTime(now))
 	if err != nil {
 		return wrapSensorErr(err, c)
 	}
@@ -262,12 +324,12 @@ func (s *Store) updateSensor(ctx context.Context, c *model.Sensor, managed *bool
 		c.Managed = *managed
 		res, err := tx.ExecContext(ctx, `
 			UPDATE sensors SET name=?, type=?, target=?, interval_s=?, timeout_s=?, retries=?,
-				enabled=?, grp=?, site=?, tags=?, options=?, reminder_every_s=?, sort_order=?,
+				enabled=?, grp=?, site=?, parent=?, tags=?, options=?, reminder_every_s=?, sort_order=?,
 				managed=?, updated_at=?
 			WHERE id = ?`,
 			c.Name, string(c.Type), c.Target, c.Interval, c.Timeout, c.Retries,
-			boolInt(c.Enabled), c.Group, nullIfEmpty(c.Site), model.JoinTags(c.Tags),
-			string(options), c.ReminderEvery, c.SortOrder, boolInt(*managed),
+			boolInt(c.Enabled), c.Group, nullIfEmpty(c.Site), nullIfEmpty(c.Parent),
+			model.JoinTags(c.Tags), string(options), c.ReminderEvery, c.SortOrder, boolInt(*managed),
 			fmtTime(now), c.ID)
 		if err != nil {
 			return wrapSensorErr(err, c)

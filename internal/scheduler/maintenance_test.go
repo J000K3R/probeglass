@@ -23,7 +23,7 @@ import (
 // inWindow marks a result as having landed inside a maintenance window, which is
 // what execute() does before the row is written.
 func inWindow(r model.Result) model.Result {
-	r.Maint = true
+	r.Excused = true
 	return r
 }
 
@@ -241,7 +241,7 @@ func TestAProbeInsideAWindowIsMarkedAndCountedOut(t *testing.T) {
 	if err != nil {
 		t.Fatalf("probe: %v", err)
 	}
-	if !res.Maint {
+	if !res.Excused {
 		t.Fatalf("a probe taken inside a maintenance window came back unmarked, so it " +
 			"counts against the uptime figure of a period somebody said in advance to " +
 			"expect nothing from")
@@ -253,7 +253,7 @@ func TestAProbeInsideAWindowIsMarkedAndCountedOut(t *testing.T) {
 	if err != nil || len(stored) != 1 {
 		t.Fatalf("read the stored result: %v, %v", stored, err)
 	}
-	if !stored[0].Maint {
+	if !stored[0].Excused {
 		t.Errorf("the result was returned marked but stored unmarked")
 	}
 }
@@ -322,5 +322,218 @@ func TestAManagedWindowIsRefusedHere(t *testing.T) {
 			"store")
 	} else if !strings.Contains(err.Error(), "configuration file") {
 		t.Errorf("the refusal does not say why: %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// dependencies between sensors
+// ---------------------------------------------------------------------------
+
+// probe is one sensor's outcome, with the excuse decided the way execute decides it.
+//
+// The call matters: the flag is not carried in by the caller, it is worked out from the
+// chain and the clock, which is the whole thing these tests are about. Driving step
+// with a hand-set flag would assert on a value the caller chose.
+func probe(s *Scheduler, c model.Sensor, res model.Result) model.Result {
+	s.excuseResult(c, &res)
+	return res
+}
+
+// takeDown fails a sensor as many times as it takes for the status to be a confirmed
+// outage, which is the number of retries it carries. One failure is a blip: a parent
+// has to actually be down before anything behind it is excused, and a test that stops
+// at the first failure is testing a blip.
+func takeDown(s *Scheduler, c model.Sensor, at time.Time) {
+	for i := 0; i <= c.Retries; i++ {
+		s.step(context.Background(), c,
+			probe(s, c, result(c.ID, at.Add(time.Duration(i)*time.Minute), false, "no reply")))
+	}
+}
+
+// chainOf builds a parent and a child, with the child excused while the parent is
+// down. The chain is what a homelab looks like: the router first, then the things it
+// carries.
+func chainOf(t *testing.T, st *store.Store, retries int) (parent, child model.Sensor) {
+	t.Helper()
+	ctx := context.Background()
+	parent = model.Sensor{
+		Name: "Router", Type: model.SensorPing, Target: "192.168.1.1",
+		Interval: 60, Timeout: 5, Retries: retries, Enabled: true,
+	}
+	store.NormaliseSensor(&parent)
+	if err := st.CreateSensor(ctx, &parent); err != nil {
+		t.Fatalf("create the parent: %v", err)
+	}
+	child = model.Sensor{
+		Name: "NAS", Type: model.SensorPing, Target: "192.168.1.10",
+		Interval: 60, Timeout: 5, Retries: retries, Enabled: true, Parent: "Router",
+	}
+	store.NormaliseSensor(&child)
+	if err := st.CreateSensor(ctx, &child); err != nil {
+		t.Fatalf("create the child: %v", err)
+	}
+	return parent, child
+}
+
+// TestAFailureBehindADownParentOpensNoIncident is the point of the whole feature.
+//
+// A power cut takes the router and everything behind it at once. The router is the
+// outage; the NAS is a consequence of it, and a watchdog that reports both is a
+// watchdog that reports thirty things for one thing.
+func TestAFailureBehindADownParentOpensNoIncident(t *testing.T) {
+	s, st := newTestScheduler(t)
+	ctx := context.Background()
+	parent, child := chainOf(t, st, 1)
+	if err := s.Reconcile(ctx); err != nil {
+		t.Fatalf("reconcile: %v", err)
+	}
+
+	base := time.Date(2026, 10, 16, 12, 0, 0, 0, time.UTC)
+
+	// The router goes first, and it is an ordinary outage with an alert.
+	tr := s.step(ctx, parent, probe(s, parent, result(parent.ID, base, false, "no reply")))
+	if tr.alert != notify.EventDown {
+		t.Fatalf("the parent's failure did not alert: %q", tr.alert)
+	}
+
+	// Now the child fails. Its parent is down, so this is expected.
+	tr = s.step(ctx, child, probe(s, child, result(child.ID, base.Add(time.Minute), false, "no reply")))
+	if tr.alert != "" {
+		t.Errorf("the child alerted with %q while the thing it sits behind was down. "+
+			"One power cut is one outage; thirty alerts is how a watchdog gets muted.",
+			tr.alert)
+	}
+	if tr.incident != nil {
+		t.Errorf("an incident was opened for a sensor whose parent is down")
+	}
+	open, err := st.OpenIncidentFor(ctx, child.ID)
+	if err != nil {
+		t.Fatalf("read the child's incidents: %v", err)
+	}
+	if open != nil {
+		t.Errorf("the child has an incident of its own while its parent is down: %+v", open)
+	}
+	// And the status still says what the probe found, because that is true.
+	if tr.current != model.StatusDown {
+		t.Errorf("the child's status is %q, want %q — being excused is not the same as "+
+			"being up", tr.current, model.StatusDown)
+	}
+}
+
+// TestTheChildEarnsItsOwnIncidentBack is the other half: a dependency explains the
+// failures while it lasts and nothing after it.
+func TestTheChildEarnsItsOwnIncidentBack(t *testing.T) {
+	s, st := newTestScheduler(t)
+	ctx := context.Background()
+	parent, child := chainOf(t, st, 2)
+	if err := s.Reconcile(ctx); err != nil {
+		t.Fatalf("reconcile: %v", err)
+	}
+
+	base := time.Date(2026, 10, 16, 12, 0, 0, 0, time.UTC)
+	takeDown(s, parent, base)
+	s.step(ctx, child, probe(s, child, result(child.ID, base.Add(3*time.Minute), false, "no reply")))
+
+	// The router comes back; the NAS does not. Whatever was wrong with the router is
+	// over, and the NAS failing now is its own news.
+	s.step(ctx, parent, probe(s, parent, result(parent.ID, base.Add(4*time.Minute), true, "reply")))
+
+	at := base.Add(5 * time.Minute)
+	tr := s.step(ctx, child, probe(s, child, result(child.ID, at, false, "still no reply")))
+	if tr.alert != "" {
+		t.Errorf("the first failure after the parent recovered alerted at once: %q — the "+
+			"child has to fail its way past the retries like anything else", tr.alert)
+	}
+	tr = s.step(ctx, child, probe(s, child, result(child.ID, at.Add(time.Minute), false, "still no reply")))
+	if tr.alert != notify.EventDown {
+		t.Fatalf("the child failed past its retries after the parent recovered and no "+
+			"alert went out. A dependency excuses the failures while it lasts and "+
+			"nothing after it: %q", tr.alert)
+	}
+	if tr.incident == nil || tr.incident.StartedAt.Before(at) {
+		t.Errorf("the child's new outage is dated %v, before the parent recovered at %v",
+			tr.incident, at)
+	}
+}
+
+// TestADependencyGoesThroughTheWholeChain holds the multi-level case, which is what
+// "router, then switch, then the things on the switch" needs.
+func TestADependencyGoesThroughTheWholeChain(t *testing.T) {
+	s, st := newTestScheduler(t)
+	ctx := context.Background()
+	parent, child := chainOf(t, st, 1)
+
+	// A third sensor behind the second one.
+	deep := model.Sensor{
+		Name: "Pi", Type: model.SensorPing, Target: "192.168.1.20",
+		Interval: 60, Timeout: 5, Retries: 1, Enabled: true, Parent: "NAS",
+	}
+	store.NormaliseSensor(&deep)
+	if err := st.CreateSensor(ctx, &deep); err != nil {
+		t.Fatalf("create the third sensor: %v", err)
+	}
+	if err := s.Reconcile(ctx); err != nil {
+		t.Fatalf("reconcile: %v", err)
+	}
+
+	base := time.Date(2026, 10, 16, 12, 0, 0, 0, time.UTC)
+	takeDown(s, parent, base)
+
+	// The middle one is excused, and so is the one behind it — the chain is walked,
+	// not just the first link.
+	tr := s.step(ctx, child, probe(s, child, result(child.ID, base.Add(time.Minute), false, "no reply")))
+	if tr.alert != "" {
+		t.Errorf("the middle sensor alerted while the router was down: %q", tr.alert)
+	}
+	tr = s.step(ctx, deep, probe(s, deep, result(deep.ID, base.Add(2*time.Minute), false, "no reply")))
+	if tr.alert != "" {
+		t.Errorf("the sensor two levels down alerted while the router was down: %q.\n"+
+			"A chain that only looks one link up excuses the switch and reports "+
+			"everything on it.", tr.alert)
+	}
+}
+
+// TestAWobblingParentExcusesNothing is the check that keeps one lost ping from
+// silencing an installation.
+//
+// A parent in "flaky" has failed, but not enough times to be believed. Marking
+// everything behind it as expected on that evidence would mean a single dropped packet
+// quietly stops thirty sensors from alerting.
+func TestAWobblingParentExcusesNothing(t *testing.T) {
+	s, st := newTestScheduler(t)
+	ctx := context.Background()
+	// The parent needs three failures before it is believed; the child needs one, so
+	// that its own outage is confirmed on the probe this test is looking at.
+	parent := model.Sensor{
+		Name: "Router", Type: model.SensorPing, Target: "192.168.1.1",
+		Interval: 60, Timeout: 5, Retries: 3, Enabled: true,
+	}
+	store.NormaliseSensor(&parent)
+	if err := st.CreateSensor(ctx, &parent); err != nil {
+		t.Fatalf("create the parent: %v", err)
+	}
+	child := model.Sensor{
+		Name: "NAS", Type: model.SensorPing, Target: "192.168.1.10",
+		Interval: 60, Timeout: 5, Retries: 1, Enabled: true, Parent: "Router",
+	}
+	store.NormaliseSensor(&child)
+	if err := st.CreateSensor(ctx, &child); err != nil {
+		t.Fatalf("create the child: %v", err)
+	}
+	if err := s.Reconcile(ctx); err != nil {
+		t.Fatalf("reconcile: %v", err)
+	}
+
+	base := time.Date(2026, 10, 16, 12, 0, 0, 0, time.UTC)
+	tr := s.step(ctx, parent, probe(s, parent, result(parent.ID, base, false, "no reply")))
+	if tr.current != model.StatusWarn {
+		t.Fatalf("setup: the parent is %q after one failure, want warn", tr.current)
+	}
+
+	tr = s.step(ctx, child, probe(s, child, result(child.ID, base.Add(time.Minute), false, "no reply")))
+	if tr.alert != notify.EventDown {
+		t.Errorf("the child's own confirmed failure alerted with %q while its parent was "+
+			"merely flaky; one dropped packet on the router must not excuse everything "+
+			"behind it", tr.alert)
 	}
 }

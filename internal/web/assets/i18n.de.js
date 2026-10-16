@@ -162,6 +162,14 @@ export const de = {
   'sensor.interval': 'Intervall (s)',
   'sensor.timeout': 'Zeitlimit (s)',
   'sensor.retries': 'Versuche bis ausgefallen',
+  // Ein Sensor, der hinter einem anderen sitzt. Solange der Elternsensor unten ist,
+  // ist dieser entschuldigt: kein eigener Vorfall, keine Meldung, und die
+  // fehlgeschlagenen Prüfungen darin zählen nicht gegen seine Verfügbarkeit. Ein
+  // Stromausfall ist ein Ausfall und nicht dreißig.
+  'sensor.parent': 'Hängt ab von',
+  'sensor.parentNone': 'Nichts — steht für sich',
+  'dependent.badge': 'Abhängig',
+  'dependent.badgeHint': 'Etwas, hinter dem dieser Sensor sitzt, ist ausgefallen. Das hier ist die Folge und kein eigener Ausfall. Geprüft wird weiter, und das Ergebnis wird weiter aufgezeichnet.',
   'sensor.group': 'Gruppe',
   'sensor.site': 'Standort',
   'sensor.tags': 'Schlagwörter',
@@ -699,6 +707,7 @@ export const de = {
   'help.sensor.group': 'Optional. Sensoren mit derselben Gruppe werden auf dem Dashboard unter einer Überschrift gezeichnet.',
   'help.sensor.site': 'Optional. Der Ort, an dem dieser Sensor steht: ein Rack, ein Raum, ein Server bei einem Hoster. Er gruppiert Baum und Wand nach Ort, und mit Koordinaten wird er auf der Karte gezeichnet. Die Liste wird unter Einstellungen → Standorte verwaltet.',
   'help.sensor.groupExample': 'Netzwerk',
+  'help.sensor.parent': 'Solange dieser Sensor unten ist, ist der hier genannte entschuldigt: Er öffnet keinen eigenen Vorfall, meldet nichts, und die fehlgeschlagenen Prüfungen in dieser Zeit zählen nicht gegen seine Verfügbarkeit. Geprüft wird trotzdem weiter — ein Gerät, das vor seinem Elternsensor zurückkommt, ist also zu sehen.',
   'help.sensor.tags': 'Kommagetrennte Wörter, nach denen du suchen kannst und die Meldungsvorlagen verwenden können.',
   'help.sensor.tagsExample': 'lan, kritisch',
   'help.sensor.reminder': 'Sekunden zwischen wiederholten Meldungen, solange der Sensor ausgefallen bleibt. 0 schaltet die Erinnerungen ab, dann kommen nur die erste Meldung und die Entwarnung.',

@@ -136,7 +136,18 @@ type Sensor struct {
 	// one conversion function has to serve both the file and the API. Empty means
 	// "no site", which is a perfectly ordinary state: grouping and the tree work
 	// without one, only the map has nothing to place.
-	Site     string   `json:"site"`
+	Site string `json:"site"`
+	// Parent names another sensor this one sits behind, or "" for nothing.
+	//
+	// A name and not an id, for the reason Site is a name: a configuration file can
+	// name a sensor but can never know the ids in somebody's database, and one
+	// conversion has to serve both the file and the API. Renaming the parent carries
+	// this along, because the reference is declared ON UPDATE CASCADE.
+	//
+	// While that parent is down this sensor is excused: no incident of its own, no
+	// alert, and the probes it fails in there do not count against its uptime. A power
+	// cut is one outage and not thirty.
+	Parent   string   `json:"parent,omitempty"`
 	Tags     []string `json:"tags"`
 	Options  Options  `json:"options"`
 	Channels []int64  `json:"channel_ids"`
@@ -217,6 +228,27 @@ type Site struct {
 
 // Placed reports whether the site has coordinates and can be drawn on the map.
 func (s Site) Placed() bool { return s.Lat != nil && s.Lon != nil }
+
+// MaxParentDepth bounds how far up a chain of parent sensors anything will walk.
+//
+// Cycles cannot get in through the API or the configuration file — both check — but a
+// database edited by hand is not the API, and a probe loop that never returns is worse
+// than one that stops early and judges the sensor on its own evidence.
+const MaxParentDepth = 32
+
+// Excuse says why a probe was left out of a sensor's uptime figure.
+//
+// One mechanism, two reasons. A maintenance window is something a person said in
+// advance; a parent that is down is something that happened to the sensor rather than
+// by it. Both mean the same thing for the arithmetic — the sample is not evidence
+// about this sensor — which is why they share a column and a subtraction.
+const (
+	// ExcuseMaintenance is a probe that landed inside a maintenance window.
+	ExcuseMaintenance = "maintenance"
+	// ExcuseDependency is a probe taken while a sensor further up the chain this one
+	// sits behind was down. A power cut is one outage, not thirty.
+	ExcuseDependency = "dependency"
+)
 
 // WindowKind is how a maintenance window repeats — or that it does not.
 type WindowKind string
@@ -440,11 +472,18 @@ type Result struct {
 	StatusCode int       `json:"status_code,omitempty"`
 	Message    string    `json:"message,omitempty"`
 
-	// Maint marks a probe that landed inside a maintenance window, and is what
-	// keeps it out of the uptime figure. It is recorded rather than the probe
-	// being skipped, so the chart still shows that the box really was away —
-	// "expected" is a fact about the outage, not about the measurement.
-	Maint bool `json:"maint,omitempty"`
+	// Excused marks a probe that was somebody else's fault: it landed inside a
+	// maintenance window, or the sensor sits behind a parent that was down. It is
+	// what keeps the probe out of the uptime figure, and it is recorded rather than
+	// the probe being skipped so that the chart still shows the box really was away
+	// — "expected" is a fact about the outage, not about the measurement.
+	Excused bool `json:"excused,omitempty"`
+
+	// Excuse says why, and is set only when Excused is. It lives on the row rather
+	// than being worked out when somebody looks, because the reason may be gone by
+	// then: a maintenance window can be deleted, and its explanation with it. A
+	// sample that keeps its reason can still be read afterwards.
+	Excuse string `json:"excuse,omitempty"`
 }
 
 // Incident is one continuous period during which a sensor was down.
@@ -509,20 +548,20 @@ type Sample struct {
 	LatMin   float64   `json:"-"`
 	LatMax   float64   `json:"-"`
 
-	// Maint and MaintOK are the probes in this sample's bucket that landed inside
+	// Excused and ExcusedOK are the probes in this sample's bucket that landed inside
 	// a maintenance window, and how many of those succeeded. OK and Total are
 	// carried as they were recorded; the exclusion happens where the figure is
 	// computed, so that a caller which wants to see the raw truth still can —
 	// RecentResults and the tooltip on a bucket both do.
-	Maint   int `json:"maint,omitempty"`
-	MaintOK int `json:"maint_ok,omitempty"`
+	Excused   int `json:"maint,omitempty"`
+	ExcusedOK int `json:"excused_ok,omitempty"`
 }
 
 // Counted returns the sample with the maintenance probes taken out of both sides,
 // which is what a figure is computed from.
 func (s Sample) Counted() Sample {
-	s.Total -= s.Maint
-	s.OK -= s.MaintOK
+	s.Total -= s.Excused
+	s.OK -= s.ExcusedOK
 	if s.Total < 0 {
 		s.Total = 0
 	}
@@ -542,7 +581,7 @@ func (s Sample) LatencyAvg() float64 {
 
 // SeriesPoint is a bucketed data point as returned by the API.
 // SeriesPoint is one bar of a sensor's chart. Total and OK are the probes that
-// were counted; Maint is how many were left out because they fell inside a
+// were counted; Excused is how many were left out because they fell inside a
 // maintenance window, so that a bar which is entirely maintenance can be drawn as
 // maintenance rather than as a gap.
 type SeriesPoint struct {
@@ -552,7 +591,7 @@ type SeriesPoint struct {
 	MaxMS    float64   `json:"max_ms"`
 	OK       int       `json:"ok"`
 	Total    int       `json:"total"`
-	Maint    int       `json:"maint,omitempty"`
+	Excused  int       `json:"excused,omitempty"`
 	UptimePC float64   `json:"uptime_pct"`
 }
 
@@ -626,12 +665,18 @@ type StatusView struct {
 	OpenIncident *Incident `json:"open_incident,omitempty"`
 	LastIncident *Incident `json:"last_incident,omitempty"`
 
-	// InMaintenance says the sensor is inside a maintenance window right now. The
-	// status stays what the probe found — the box really is away — so this is the
-	// only thing that tells a card to say "expected" rather than "broken". Without
-	// it a scheduled outage and an unplanned one look identical on the dashboard,
-	// which is the state of affairs the whole feature exists to fix.
-	InMaintenance bool `json:"in_maintenance,omitempty"`
+	// Excuse says the sensor is currently down for a reason that is not its own, and
+	// which reason: ExcuseMaintenance for a window somebody arranged, ExcuseDependency
+	// for a parent that is down. Empty when the status is the sensor's own business.
+	//
+	// The status stays what the probe found — the box really is away — so this is the
+	// only thing that tells a card to say "expected" rather than "broken". Without it a
+	// scheduled outage and an unplanned one look identical on the dashboard, which is
+	// the state of affairs this exists to fix.
+	//
+	// One field and not two booleans: a card carries one badge, and a sensor inside a
+	// window whose parent is also down has one thing to say about it.
+	Excuse string `json:"excuse,omitempty"`
 }
 
 // Summary is the aggregate header shown above the dashboard grid.
@@ -671,8 +716,8 @@ type SummaryPoint struct {
 	// Probes counts the checks that were counted — maintenance excluded. Maint is
 	// how many were left out, so that a bucket drawn as entirely green can still
 	// say whether anything happened in it at all.
-	Probes int `json:"probes"`
-	Maint  int `json:"maint,omitempty"`
+	Probes  int `json:"probes"`
+	Excused int `json:"excused,omitempty"`
 }
 
 // Role is what a user is allowed to do. The three are ordered, and every

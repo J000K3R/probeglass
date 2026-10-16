@@ -240,15 +240,16 @@ func TestTheSummarySaysWhichSensorsAreUnderMaintenance(t *testing.T) {
 	}
 	decode(t, resp, &summary)
 
-	seen := map[int64]bool{}
+	seen := map[int64]string{}
 	for _, v := range summary.Views {
-		seen[v.ID] = v.InMaintenance
+		seen[v.ID] = v.Excuse
 	}
-	if !seen[covered.ID] {
-		t.Errorf("the sensor under a window is not reported as being in maintenance")
+	if seen[covered.ID] != model.ExcuseMaintenance {
+		t.Errorf("the sensor under a window reports excuse %q, want %q",
+			seen[covered.ID], model.ExcuseMaintenance)
 	}
-	if seen[uncovered.ID] {
-		t.Errorf("a sensor with no window over it is reported as being in maintenance")
+	if seen[uncovered.ID] != "" {
+		t.Errorf("a sensor with no window over it reports excuse %q", seen[uncovered.ID])
 	}
 
 	// And a window that has been switched off stops covering, which is the one check

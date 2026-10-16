@@ -127,15 +127,19 @@ type BackupChannel struct {
 
 // BackupSensor is one sensor, with the names of the channels that alert for it.
 type BackupSensor struct {
-	Name          string         `json:"name"`
-	Type          string         `json:"type"`
-	Target        string         `json:"target"`
-	Interval      int            `json:"interval_s"`
-	Timeout       int            `json:"timeout_s"`
-	Retries       int            `json:"retries"`
-	Enabled       bool           `json:"enabled"`
-	Group         string         `json:"group"`
-	Site          string         `json:"site"`
+	Name     string `json:"name"`
+	Type     string `json:"type"`
+	Target   string `json:"target"`
+	Interval int    `json:"interval_s"`
+	Timeout  int    `json:"timeout_s"`
+	Retries  int    `json:"retries"`
+	Enabled  bool   `json:"enabled"`
+	Group    string `json:"group"`
+	Site     string `json:"site"`
+	// Parent is the name of the sensor this one sits behind, and travels with the
+	// document for the same reason Site does: a backup that lost it would restore a
+	// sensor that alerts for itself while its router is down.
+	Parent        string         `json:"parent"`
 	Tags          []string       `json:"tags"`
 	Options       map[string]any `json:"options"`
 	ReminderEvery int            `json:"reminder_every_s"`
@@ -414,7 +418,8 @@ func exportChannels(ctx context.Context, tx *sql.Tx, jw *jsonWriter, counts *Cou
 func exportSensors(ctx context.Context, tx *sql.Tx, jw *jsonWriter, counts *Counts) error {
 	rows, err := tx.QueryContext(ctx, `
 		SELECT id, name, type, target, interval_s, timeout_s, retries, enabled, grp,
-		       COALESCE(site,''), tags, options, reminder_every_s, sort_order, managed, origin
+		       COALESCE(site,''), COALESCE(parent,''), tags, options, reminder_every_s,
+		       sort_order, managed, origin
 		FROM sensors ORDER BY sort_order ASC, name COLLATE NOCASE ASC`)
 	if err != nil {
 		return err
@@ -430,6 +435,7 @@ func exportSensors(ctx context.Context, tx *sql.Tx, jw *jsonWriter, counts *Coun
 		var (
 			r       row
 			site    string
+			parent  string
 			tags    string
 			options string
 			enabled int
@@ -437,13 +443,14 @@ func exportSensors(ctx context.Context, tx *sql.Tx, jw *jsonWriter, counts *Coun
 		)
 		if err := rows.Scan(&r.id, &r.sensor.Name, &r.sensor.Type, &r.sensor.Target,
 			&r.sensor.Interval, &r.sensor.Timeout, &r.sensor.Retries, &enabled,
-			&r.sensor.Group, &site, &tags, &options, &r.sensor.ReminderEvery,
+			&r.sensor.Group, &site, &parent, &tags, &options, &r.sensor.ReminderEvery,
 			&r.sensor.SortOrder, &managed, &r.sensor.Origin); err != nil {
 			return err
 		}
 		r.sensor.Enabled = enabled != 0
 		r.sensor.Managed = managed != 0
 		r.sensor.Site = site
+		r.sensor.Parent = parent
 		r.sensor.Tags = model.SplitTags(tags)
 		r.sensor.Options = map[string]any{}
 		if options != "" {
@@ -1159,24 +1166,25 @@ func restoreSensors(ctx context.Context, tx *sql.Tx, sensors []BackupSensor, ids
 		if exists {
 			if _, err := tx.ExecContext(ctx, `
 				UPDATE sensors SET type=?, target=?, interval_s=?, timeout_s=?, retries=?,
-				       enabled=?, grp=?, site=?, tags=?, options=?, reminder_every_s=?,
+				       enabled=?, grp=?, site=?, parent=?, tags=?, options=?, reminder_every_s=?,
 				       sort_order=?, managed=?, origin=?, updated_at=?
 				WHERE id=?`,
 				sensor.Type, sensor.Target, interval, timeout, retries, boolToInt(sensor.Enabled),
-				sensor.Group, site, tags, string(options), sensor.ReminderEvery,
-				sensor.SortOrder, boolToInt(sensor.Managed), sensor.Origin, fmtTime(now), id); err != nil {
+				sensor.Group, site, nullIfEmpty(sensor.Parent), tags, string(options),
+				sensor.ReminderEvery, sensor.SortOrder, boolToInt(sensor.Managed), sensor.Origin,
+				fmtTime(now), id); err != nil {
 				return fmt.Errorf("sensor %q: %w", sensor.Name, err)
 			}
 		} else {
 			res, err := tx.ExecContext(ctx, `
 				INSERT INTO sensors (name, type, target, interval_s, timeout_s, retries, enabled,
-				                     grp, site, tags, options, reminder_every_s, sort_order,
+				                     grp, site, parent, tags, options, reminder_every_s, sort_order,
 				                     managed, origin, created_at, updated_at)
-				VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+				VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 				sensor.Name, sensor.Type, sensor.Target, interval, timeout, retries,
-				boolToInt(sensor.Enabled), sensor.Group, site, tags, string(options),
-				sensor.ReminderEvery, sensor.SortOrder, boolToInt(sensor.Managed), sensor.Origin,
-				fmtTime(now), fmtTime(now))
+				boolToInt(sensor.Enabled), sensor.Group, site, nullIfEmpty(sensor.Parent), tags,
+				string(options), sensor.ReminderEvery, sensor.SortOrder, boolToInt(sensor.Managed),
+				sensor.Origin, fmtTime(now), fmtTime(now))
 			if err != nil {
 				return fmt.Errorf("sensor %q: %w", sensor.Name, err)
 			}

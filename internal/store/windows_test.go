@@ -62,7 +62,7 @@ func TestAMaintenanceWindowLeavesTheUptimeAlone(t *testing.T) {
 		for c, expected := range map[int64]bool{planned.ID: i >= perWindow, unplanned.ID: false} {
 			r := model.Result{
 				SensorID: c, TS: base.Add(time.Duration(i) * time.Minute),
-				Success: false, Maint: expected,
+				Success: false, Excused: expected,
 			}
 			if err := st.InsertResult(ctx, &r); err != nil {
 				t.Fatalf("insert: %v", err)
@@ -81,8 +81,8 @@ func TestAMaintenanceWindowLeavesTheUptimeAlone(t *testing.T) {
 			"the five that were expected are not part of what is being asked about",
 			got.Total)
 	}
-	if got.Maint != 5 {
-		t.Errorf("it reported %d probes as maintenance, want 5", got.Maint)
+	if got.Excused != 5 {
+		t.Errorf("it reported %d probes as maintenance, want 5", got.Excused)
 	}
 	if got.OK != 0 || got.Down != 5 {
 		t.Errorf("it read %d ok of %d down, want 0 and 5", got.OK, got.Down)
@@ -94,9 +94,9 @@ func TestAMaintenanceWindowLeavesTheUptimeAlone(t *testing.T) {
 	if err != nil {
 		t.Fatalf("uptime for the control sensor: %v", err)
 	}
-	if control.Total != 10 || control.Maint != 0 {
+	if control.Total != 10 || control.Excused != 0 {
 		t.Errorf("the sensor with the same ten failures and no window counted %d probes "+
-			"of which %d maintenance, want 10 and 0", control.Total, control.Maint)
+			"of which %d maintenance, want 10 and 0", control.Total, control.Excused)
 	}
 
 	// And the two figures are the same shape otherwise, which is what makes this a
@@ -131,7 +131,7 @@ func TestAMaintenanceWindowSurvivesTheRollup(t *testing.T) {
 	for i := 0; i < perWindow*2; i++ {
 		r := model.Result{SensorID: c.ID, TS: base.Add(time.Duration(i) * time.Minute), Success: false}
 		if i >= perWindow {
-			r.Maint = true
+			r.Excused = true
 		}
 		if err := st.InsertResult(ctx, &r); err != nil {
 			t.Fatalf("insert: %v", err)
@@ -145,9 +145,9 @@ func TestAMaintenanceWindowSurvivesTheRollup(t *testing.T) {
 	if err != nil {
 		t.Fatalf("uptime from raw: %v", err)
 	}
-	if raw.Total != perWindow || raw.Maint != perWindow {
+	if raw.Total != perWindow || raw.Excused != perWindow {
 		t.Fatalf("reading the raw rows directly gave %d probes of which %d "+
-			"maintenance, want %d and %d", raw.Total, raw.Maint, perWindow, perWindow)
+			"maintenance, want %d and %d", raw.Total, raw.Excused, perWindow, perWindow)
 	}
 
 	if err := st.Maintain(ctx, time.Now().UTC()); err != nil {
@@ -169,12 +169,12 @@ func TestAMaintenanceWindowSurvivesTheRollup(t *testing.T) {
 	if err != nil {
 		t.Fatalf("uptime from the rollup: %v", err)
 	}
-	if monthly.Total != raw.Total || monthly.OK != raw.OK || monthly.Maint != raw.Maint {
+	if monthly.Total != raw.Total || monthly.OK != raw.OK || monthly.Excused != raw.Excused {
 		t.Errorf("the daily rollup reads %d probes / %d ok / %d maintenance, and the raw "+
 			"rows read %d / %d / %d before they were pruned.\nThe maintenance count has "+
 			"to be carried into every rollup row: this is the tier older than "+
 			"retention.raw, and there is nothing left to recompute it from.",
-			monthly.Total, monthly.OK, monthly.Maint, raw.Total, raw.OK, raw.Maint)
+			monthly.Total, monthly.OK, monthly.Excused, raw.Total, raw.OK, raw.Excused)
 	}
 }
 
@@ -195,7 +195,7 @@ func TestAMaintenanceProbeThatSucceededIsStillLetGo(t *testing.T) {
 	for i := 0; i < 4; i++ {
 		r := model.Result{
 			SensorID: c.ID, TS: base.Add(time.Duration(i) * time.Minute),
-			Success: i > 0, Maint: true,
+			Success: i > 0, Excused: true,
 		}
 		if err := st.InsertResult(ctx, &r); err != nil {
 			t.Fatalf("insert: %v", err)

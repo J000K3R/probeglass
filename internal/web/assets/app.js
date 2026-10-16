@@ -1896,10 +1896,15 @@ function channelTone(channel) {
  */
 function statusPill(sensor) {
   const s = sensor || {};
-  const maint = s.in_maintenance
-    ? `<span class="pill st-maint" title="${esc(t('windows.badgeHint'))}">${esc(t('windows.badge'))}</span>`
-    : '';
-  return `<span class="pill st-${esc(s.status)}"><i class="dot"></i>${esc(statusWord(s.status))}</span>${maint}`;
+  // One badge, whichever reason applies, and the server decides which — it is the
+  // same answer the scheduler acted on, so a card cannot say "expected" about a
+  // failure that opened an incident.
+  const badge = s.excuse === 'dependency'
+    ? `<span class="pill st-dep" title="${esc(t('dependent.badgeHint'))}">${esc(t('dependent.badge'))}</span>`
+    : s.excuse === 'maintenance'
+      ? `<span class="pill st-maint" title="${esc(t('windows.badgeHint'))}">${esc(t('windows.badge'))}</span>`
+      : '';
+  return `<span class="pill st-${esc(s.status)}"><i class="dot"></i>${esc(statusWord(s.status))}</span>${badge}`;
 }
 
 /**
@@ -1958,7 +1963,7 @@ function renderCard(sensor) {
   const acked = sensor.open_incident?.acked_at;
   const example = sensor.origin === 'example';
   return `
-    <article class="card st-${esc(sensor.status)}${down ? ' is-down' : ''}${sensor.in_maintenance ? ' in-maint' : ''}${acked ? ' is-acked' : ''}${example ? ' is-example' : ''}" data-id="${sensor.id}" data-origin="${esc(sensor.origin || '')}" tabindex="0">
+    <article class="card st-${esc(sensor.status)}${down ? ' is-down' : ''}${sensor.excuse ? ' in-excused in-' + esc(sensor.excuse) : ''}${acked ? ' is-acked' : ''}${example ? ' is-example' : ''}" data-id="${sensor.id}" data-origin="${esc(sensor.origin || '')}" tabindex="0">
       <header class="card-head">
         ${statusPill(sensor)}
         <h3 class="card-name">${esc(sensor.name)}</h3>
@@ -1986,7 +1991,7 @@ function renderCard(sensor) {
  */
 function renderListRow(sensor) {
   return `
-    <tr class="row st-${esc(sensor.status)}${sensor.status === 'down' ? ' is-down' : ''}${sensor.in_maintenance ? ' in-maint' : ''}" data-id="${sensor.id}">
+    <tr class="row st-${esc(sensor.status)}${sensor.status === 'down' ? ' is-down' : ''}${sensor.excuse ? ' in-excused in-' + esc(sensor.excuse) : ''}" data-id="${sensor.id}">
       <td>${statusPill(sensor)}</td>
       <td class="cell-name">
         <b>${esc(sensor.name)}</b>
@@ -2040,6 +2045,10 @@ $('#groups').addEventListener('click', async (event) => {
         // one change an operator may make, and sending every field back would mean
         // sending fields they are not allowed to write. The server takes exactly
         // this one, and refuses anything else.
+        //
+        // Which is also what makes sending it bare safe. A whole-sensor payload has
+        // to carry every field the sensor has, and the day it misses one — a site, a
+        // parent — the pause quietly clears it.
         await api(`/api/sensors/${id}`, { method: 'PATCH', body: { enabled: !sensor.enabled } });
         await refresh({ background: true });
         break;
@@ -2717,6 +2726,20 @@ function readOptions(form, def) {
  * made after that. Without the redraw the sensor would have to be pointed at the
  * place it just made by choosing from a list the place is not in yet.
  */
+/**
+ * parentOptions lists the other sensors this one could sit behind.
+ *
+ * The sensor being edited is left out, and so is anything it would make a circle with
+ * — which is only the sensor itself, since the server refuses a deeper circle and the
+ * list cannot know about it. Offering a sensor that would be refused is offering
+ * something that does not work.
+ */
+function parentOptions(selected, selfName) {
+  const other = (state.sensors || []).filter((c) => c.name !== selfName);
+  return `<option value="">${esc(t('sensor.parentNone'))}</option>` +
+    other.map((c) => `<option value="${esc(c.name)}"${c.name === selected ? ' selected' : ''}>${esc(c.name)}</option>`).join('');
+}
+
 function siteOptions(selected) {
   return `<option value="">${esc(t('sites.none'))}</option>` +
     (state.sites || []).map((s) =>
@@ -2762,6 +2785,8 @@ function sensorFormMarkup(sensor) {
         <select name="site" id="sensor-site">${siteOptions(sensor?.site)}</select></label>
       <label class="field"><span>${withHelp(t('sensor.tags'), 'help.sensor.tags')}</span>
         <input name="tags" type="text" value="${esc((sensor?.tags || []).join(', '))}"></label>
+      <label class="field"><span>${withHelp(t('sensor.parent'), 'help.sensor.parent')}</span>
+        <select name="parent" id="sensor-parent">${parentOptions(sensor?.parent, sensor?.name)}</select></label>
     </div>
     <datalist id="group-list">
       ${[...new Set(state.sensors.map((c) => c.group).filter(Boolean))].map((g) => `<option value="${esc(g)}">`).join('')}
@@ -2819,25 +2844,6 @@ async function openSensorEditor(existing = null) {
   }
 }
 
-function sensorToPayload(sensor) {
-  return {
-    name: sensor.name,
-    type: sensor.type,
-    target: sensor.target,
-    interval: sensor.interval,
-    timeout: sensor.timeout,
-    retries: sensor.retries,
-    enabled: sensor.enabled,
-    group: sensor.group,
-    tags: sensor.tags || [],
-    options: sensor.options || {},
-    // The API names this field channel_ids. Reading it as "channels" here
-    // silently detached every alert channel on a pause/resume toggle.
-    channel_ids: sensor.channel_ids || [],
-    reminder_every: sensor.reminder_every || 0,
-  };
-}
-
 function readSensorForm(form) {
   const def = typeDef(form.elements.type.value);
   return {
@@ -2849,6 +2855,7 @@ function readSensorForm(form) {
     retries: Number(form.elements.retries.value) || 1,
     enabled: form.elements.enabled.checked,
     group: form.elements.group.value.trim(),
+    parent: form.elements.parent.value,
     // The "new site" entry is a button in the shape of an option, not a site
     // called that. Choosing it opens the site editor instead of setting a value,
     // and a form saved with it still standing there — the window was dismissed

@@ -40,6 +40,11 @@
      you arrange it". It has to be legible against a card that may be any of the
      three, which is why it is a ring and a pill rather than a repainted status. */
   --maint: #a78bfa;
+  /* A dependency: the box is away because something in front of it is. Sky blue
+     rather than violet, because the two say different things — "I arranged this" and
+     "this happened to me" — and a dashboard where they looked the same would lose
+     the distinction this feature exists to draw. */
+  --dep: #38bdf8;
 
   --accent: #60a5fa;
   --accent-ink: #0b1220;
@@ -122,6 +127,7 @@
     --unknown: #94a3b8;
     --paused: #94a3b8;
     --maint: #7c3aed;
+    --dep: #0369a1;
 
     --accent: #2563eb;
     --accent-ink: #ffffff;
@@ -1033,8 +1039,11 @@ button.widget-pick-label {
 /* A ring rather than a repainted bar: the bar on the left is the status, and a card
    inside a window is still whatever the probe found. The ring is what makes a grid
    readable at a glance without taking that away. */
-.card.in-maint { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--maint) 55%, transparent); }
-.card.in-maint::before { box-shadow: 0 0 0 1px color-mix(in srgb, var(--maint) 70%, transparent); }
+.card.in-excused { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--excuse) 55%, transparent); }
+.card.in-excused::before { box-shadow: 0 0 0 1px color-mix(in srgb, var(--excuse) 70%, transparent); }
+/* Which colour is which reason, set once from the class the card carries. */
+.card.in-maintenance, .tile.in-maintenance, .tree-row.in-maintenance, .site-marker.in-maintenance { --excuse: var(--maint); }
+.card.in-dependency, .tile.in-dependency, .tree-row.in-dependency, .site-marker.in-dependency { --excuse: var(--dep); }
 .card.is-down { border-color: color-mix(in srgb, var(--crit) 45%, var(--border)); }
 /* Example sensors get a quieter tint than a down card: the mark says where the
    row came from, not that anything is wrong with it. */
@@ -1104,7 +1113,7 @@ button.widget-pick-label {
 
 .sensors-table tr.st-down { background: color-mix(in srgb, var(--crit) 6%, transparent); }
 .sensors-table tr.st-warn { background: color-mix(in srgb, var(--warn) 6%, transparent); }
-.sensors-table tr.in-maint { box-shadow: inset 3px 0 0 var(--maint); }
+.sensors-table tr.in-excused { box-shadow: inset 3px 0 0 var(--excuse); }
 .row-crit { background: color-mix(in srgb, var(--crit) 7%, transparent); }
 
 .table-wrap {
@@ -1219,8 +1228,9 @@ button.widget-pick-label {
 .pill.st-warn { color: var(--warn); background: color-mix(in srgb, var(--warn) 15%, transparent); border-color: color-mix(in srgb, var(--warn) 38%, transparent); }
 .pill.st-paused { color: var(--paused); background: color-mix(in srgb, var(--paused) 15%, transparent); }
 .pill.st-maint { color: var(--maint); background: color-mix(in srgb, var(--maint) 15%, transparent); border-color: color-mix(in srgb, var(--maint) 40%, transparent); }
-.tree-row.in-maint { background: color-mix(in srgb, var(--maint) 7%, transparent); }
-.site-marker.in-maint { outline: 2px solid var(--maint); outline-offset: 1px; }
+.pill.st-dep { color: var(--dep); background: color-mix(in srgb, var(--dep) 15%, transparent); border-color: color-mix(in srgb, var(--dep) 40%, transparent); }
+.tree-row.in-excused { background: color-mix(in srgb, var(--excuse) 7%, transparent); }
+.site-marker.in-excused { outline: 2px solid var(--excuse); outline-offset: 1px; }
 .pill.st-unknown { color: var(--unknown); }
 
 /* ------------------------------------------------------------------ charts */
@@ -2143,7 +2153,7 @@ label.field.check > span { color: var(--text); font-size: 0.88rem; }
 .tile.st-up { border-left-color: var(--ok); }
 .tile.st-down { border-left-color: var(--crit); }
 .tile.st-warn { border-left-color: var(--warn); }
-.tile.in-maint { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--maint) 55%, transparent); }
+.tile.in-excused { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--excuse) 55%, transparent); }
 .tile.st-paused { border-left-color: var(--paused); }
 .tile.is-down { background: color-mix(in srgb, var(--crit) 7%, var(--surface)); }
 
