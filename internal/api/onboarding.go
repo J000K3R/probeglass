@@ -313,15 +313,29 @@ func (s *Server) createExampleSensors(ctx context.Context, dialAddr string) (int
 			return len(created), fmt.Errorf("invent history for %s: %w", created[i].Name, err)
 		}
 	}
-	if err := s.store.Maintain(ctx, time.Now().UTC()); err != nil {
-		return len(created), fmt.Errorf("roll up the example history: %w", err)
-	}
-
+	// Enabled before the rollups, and that order is the whole point.
+	//
+	// Rolling up a week of invented history for four sensors is the most expensive
+	// thing this function does — one INSERT ... SELECT over several thousand rows on
+	// the single connection the store allows — and it is a courtesy: without it the
+	// long ranges are empty until the next maintenance pass, five minutes later. The
+	// enabling below is not a courtesy. A sensor that is left disabled is a sensor the
+	// scheduler never hears about: the dashboard shows it as pending and nothing ever
+	// probes it.
+	//
+	// The caller swallows an error from here on purpose — a first run must not fail
+	// because a nicety did — so a rollup that timed out used to take the sensors with
+	// it, silently, and leave exactly that inert dashboard. Doing the part that matters
+	// first means the worst a slow rollup can cost is the rollups.
 	for i := range created {
 		created[i].Enabled = true
 		if err := s.store.UpdateSensor(ctx, &created[i]); err != nil {
 			return len(created), err
 		}
+	}
+
+	if err := s.store.Maintain(ctx, time.Now().UTC()); err != nil {
+		return len(created), fmt.Errorf("roll up the example history: %w", err)
 	}
 
 	// Reconcile reads the history back — it is what turns the gateway's last failed
