@@ -385,6 +385,27 @@
   </form>
 </dialog>
 
+<!-- ---------------------------------------------------- maintenance modal -->
+<!-- The window editor. A third dialog rather than a second use of one of the
+     other two, for the reason the site editor is a second: showModal() on a
+     dialog that is already open throws, and the sensor form is a plausible
+     thing to have open while somebody remembers they meant to announce the
+     outage it is about. -->
+<dialog id="modal-window" class="sheet sheet-narrow">
+  <form id="window-form" method="dialog">
+    <div class="sheet-head">
+      <h2 id="window-title"></h2>
+      <button class="icon-btn" id="window-x" type="button" data-close data-i18n-aria="common.close" aria-label="Close">&times;</button>
+    </div>
+    <div id="window-body" class="sheet-body"></div>
+    <p id="window-error" class="form-error" role="alert"></p>
+    <div class="sheet-foot">
+      <button class="btn" type="button" id="window-cancel" data-close data-i18n="common.cancel">Cancel</button>
+      <button class="btn btn-primary" type="submit" id="window-save" data-i18n="common.save">Save</button>
+    </div>
+  </form>
+</dialog>
+
 <!-- --------------------------------------------------------- widget picker -->
 <!-- What else there is to put in the header. It is a window of its own rather
      than dashed tiles inside the strip: the strip is what the dashboard looks

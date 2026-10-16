@@ -36,6 +36,10 @@ const state = {
   // The sites. They arrive with the summary rather than on their own request, so
   // every view that groups by place already has them by the time it draws.
   sites: [],
+  // The maintenance windows and the kinds the form may offer. Read on the settings
+  // page, like the sites, because nowhere else draws them.
+  windows: [],
+  windowKinds: [],
   // mapHandle is the running map: it can be told that the sensors moved and it
   // can be torn down. It is a live element with its own listeners, not a string
   // of markup, so nothing else can dispose of it.
@@ -1393,6 +1397,21 @@ async function loadSites(force = false) {
   return state.sites;
 }
 
+/**
+ * loadWindows fetches the maintenance windows, and the list of kinds with them.
+ *
+ * The kinds come from the server rather than from a second copy here, the same way
+ * the site kinds do: a form that offered its own idea of what a window can be would
+ * go on offering a value the server had stopped accepting.
+ */
+async function loadWindows(force = false) {
+  if (state.windows.length && !force) return state.windows;
+  const data = await api('/api/maintenance');
+  state.windows = data.windows || [];
+  state.windowKinds = data.kinds || [];
+  return state.windows;
+}
+
 // ---------------------------------------------------------------------------
 // the guided tour
 // ---------------------------------------------------------------------------
@@ -1583,7 +1602,7 @@ async function loadRouteData(route) {
     } else if (route === 'settings') {
       // Both of these decide whether a panel exists at all, so they have to be
       // there before the panel is drawn rather than filled in afterwards.
-      await Promise.all([loadUsers(), loadExampleData(), loadSites()]);
+      await Promise.all([loadUsers(), loadExampleData(), loadSites(), loadWindows()]);
       await renderSettings();
     }
   } catch (err) {
@@ -2867,6 +2886,27 @@ $('#modal-form').addEventListener('submit', async (event) => {
 // and no save button with the dialog above it, which is the point of there being
 // two: a refusal here is written under this window, and the sensor form behind it
 // is exactly as it was.
+$('#window-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const form = event.target;
+  const error = $('#window-error');
+  error.textContent = '';
+  const save = $('#window-save');
+  save.disabled = true;
+  try {
+    await submitWindow(form);
+    windowModal.close();
+  } catch (err) {
+    // The message goes into the dialog rather than into a toast, because every one
+    // of these is about a field in the form in front of you: "a window is for one
+    // sensor or for one group" is only useful while the select that chose is still
+    // on screen, and a toast that fades leaves somebody guessing which one.
+    error.textContent = err.message;
+  } finally {
+    save.disabled = false;
+  }
+});
+
 $('#site-form').addEventListener('submit', async (event) => {
   event.preventDefault();
   const form = event.target;
@@ -3557,6 +3597,344 @@ async function afterSiteChange() {
   await renderSettings();
 }
 
+// ---------------------------------------------------------------------------
+// maintenance windows
+// ---------------------------------------------------------------------------
+
+/**
+ * WEEKDAYS is Monday-first, because that is the order a week is written in most of
+ * Europe and the order the checkboxes are laid out in. The names come from Intl
+ * rather than from the catalogue: a weekday is a word every language already has in
+ * its own calendar, and twenty-eight translations of "Mon" would be twenty-eight
+ * chances to disagree with the date shown next to them.
+ *
+ * 2026-10-05 was a Monday.
+ */
+const WEEKDAYS = [...Array(7)].map((_, i) => ({
+  // Sunday is 0 in both Go and JavaScript, and last in this list.
+  value: (i + 1) % 7,
+  name: new Intl.DateTimeFormat(locale(), { weekday: 'short', timeZone: 'UTC' })
+    .format(new Date(Date.UTC(2026, 9, 5 + i))),
+}));
+
+/** HH:MM into minutes past midnight, and back. */
+function minutesOf(value) {
+  const [h, m] = String(value).split(':').map(Number);
+  return (h || 0) * 60 + (m || 0);
+}
+
+function clockOf(minutes) {
+  return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+}
+
+/**
+ * windowWhen writes a window the way somebody would say it out loud.
+ *
+ * A weekly one is a time of day and a list of days; a one-off is two instants. They
+ * are different sentences because they are different things, and a table that showed
+ * both as a pair of timestamps would make the weekly one look like it expires.
+ */
+function windowWhen(w) {
+  if (w.kind === 'weekly') {
+    const days = (w.weekdays || []).slice().sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7))
+      .map((d) => (WEEKDAYS.find((x) => x.value === d) || {}).name || d);
+    const span = `${clockOf(w.start_min)}–${clockOf(w.end_min)}`;
+    if (days.length === 7) return t('windows.everyDay', { span });
+    return `${days.join(', ')} ${span}`;
+  }
+  if (!w.starts_at || !w.ends_at) return '—';
+  return `${C.fmtDateTime(w.starts_at)} – ${C.fmtDateTime(w.ends_at)}`;
+}
+
+/** windowWhat names what the window is for, in the words the form used. */
+function windowWhat(w) {
+  if (w.sensor_id) {
+    const c = (state.sensors || []).find((x) => x.id === w.sensor_id);
+    return c ? c.name : t('windows.sensorGone', { id: w.sensor_id });
+  }
+  return t('windows.groupName', { group: w.group });
+}
+
+/** windowScopeValue is what the form's select carries, and what it is read back as. */
+function windowScopeValue(w) {
+  return w.sensor_id ? `sensor:${w.sensor_id}` : `group:${w.group}`;
+}
+
+/**
+ * windowFormMarkup builds the editor.
+ *
+ * One form for both shapes, with the half that does not apply hidden — the same
+ * form, because switching a window from weekly to one-off should be one change of
+ * a select and not a second dialog. The blocks are marked with data-kind and
+ * toggled by a delegated listener rather than by an inline handler, so the markup
+ * stays markup.
+ *
+ * The time zone is the browser's, filled in when the form is opened and carried
+ * along invisibly. It is the one fact this process cannot work out for itself: a
+ * server in a container is UTC, and "Sunday at three" is not.
+ */
+function windowFormMarkup(w) {
+  const sensors = state.sensors || [];
+  const groups = [...new Set(sensors.map((c) => c.group).filter(Boolean))].sort();
+  const options = [
+    `<optgroup label="${esc(t('windows.scopeSensors'))}">` +
+      sensors.map((c) => `<option value="sensor:${c.id}">${esc(c.name)}</option>`).join('') +
+      '</optgroup>',
+    groups.length
+      ? `<optgroup label="${esc(t('windows.scopeGroups'))}">` +
+        groups.map((g) => `<option value="group:${esc(g)}">${esc(g)}</option>`).join('') +
+        '</optgroup>'
+      : '',
+  ].join('');
+
+  const kind = w.kind || 'once';
+  const chosen = new Set(w.weekdays || []);
+  const days = WEEKDAYS.map((d) => `
+    <label class="chip-check"><input type="checkbox" name="window_day_${d.value}"
+      ${chosen.has(d.value) ? 'checked' : ''}> <span>${esc(d.name)}</span></label>`).join('');
+
+  // datetime-local wants "YYYY-MM-DDTHH:MM" in the browser's own zone, which is what
+  // the Date is read back as. An instant from the server is therefore rendered by
+  // shifting it into local time first, and read back the same way round.
+  const local = (iso) => {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+
+  return `
+    <label class="field"><span>${esc(t('windows.scope'))}</span>
+      <select name="window_scope">${options}</select>
+    </label>
+
+    <label class="field"><span>${esc(t('windows.kind'))}</span>
+      <select name="window_kind">
+        <option value="once"${kind === 'once' ? ' selected' : ''}>${esc(t('windows.kindOnce'))}</option>
+        <option value="weekly"${kind === 'weekly' ? ' selected' : ''}>${esc(t('windows.kindWeekly'))}</option>
+      </select>
+    </label>
+
+    <div data-kind="once"${kind === 'once' ? '' : ' hidden'}>
+      <label class="field"><span>${esc(t('windows.from'))}</span>
+        <input type="datetime-local" name="window_from" value="${esc(local(w.starts_at))}">
+      </label>
+      <label class="field"><span>${esc(t('windows.to'))}</span>
+        <input type="datetime-local" name="window_to" value="${esc(local(w.ends_at))}">
+      </label>
+    </div>
+
+    <div data-kind="weekly"${kind === 'weekly' ? '' : ' hidden'}>
+      <div class="field"><span>${esc(t('windows.days'))}</span>
+        <div class="chips">${days}</div>
+      </div>
+      <label class="field"><span>${esc(t('windows.from'))}</span>
+        <input type="time" name="window_start" value="${esc(clockOf(w.start_min || 0))}">
+      </label>
+      <label class="field"><span>${esc(t('windows.to'))}</span>
+        <input type="time" name="window_end" value="${esc(clockOf(w.end_min || 0))}">
+      </label>
+    </div>
+
+    <label class="field"><span>${esc(t('windows.note'))}</span>
+      <input type="text" name="window_note" maxlength="200" value="${esc(w.note || '')}"
+             placeholder="${esc(t('windows.notePlaceholder'))}">
+    </label>
+
+    <label class="check"><input type="checkbox" name="window_enabled"
+      ${w.enabled === false ? '' : 'checked'}> <span>${esc(t('windows.enabled'))}</span></label>
+    <p class="panel-hint small">${esc(t('windows.enabledHint'))}</p>`;
+}
+
+/**
+ * maintenancePanel is the list of periods during which downtime is expected.
+ *
+ * It sits in the Monitoring category beside the sites, because that is the same kind
+ * of thing: something an administrator decides in advance about the installation,
+ * rather than something anybody does during an outage.
+ *
+ * A window that is running right now is marked. It is the only place the dashboard
+ * says so outside a card, and it is what somebody checks when a sensor goes quiet and
+ * they want to know whether they arranged it.
+ */
+function maintenancePanel() {
+  const windows = state.windows || [];
+  const now = Date.now();
+  const running = (w) => (w.sensor_id
+    ? (state.sensors || []).some((c) => c.id === w.sensor_id && c.in_maintenance)
+    : (state.sensors || []).some((c) => c.group === w.group && c.in_maintenance));
+
+  const rows = windows.map((w) => `
+    <tr data-id="${w.id}">
+      <td><b>${esc(windowWhat(w))}</b></td>
+      <td>${esc(windowWhen(w))}</td>
+      <td>${w.note ? esc(w.note) : `<span class="muted">${esc(t('common.none'))}</span>`}</td>
+      <td>${w.enabled
+        ? (running(w)
+          ? `<span class="pill pill-down">${esc(t('windows.running'))}</span>`
+          : `<span class="muted small">${esc(t('windows.waiting'))}</span>`)
+        : `<span class="muted small">${esc(t('windows.off'))}</span>`}</td>
+      <td class="row-actions">
+        <button class="btn" data-action="window-edit" data-id="${w.id}"${w.managed ? ` disabled title="${esc(t('windows.managed'))}"` : ''}>${esc(t('common.edit'))}</button>
+        <button class="btn btn-danger" data-action="window-delete" data-id="${w.id}"${w.managed ? ` disabled title="${esc(t('windows.managed'))}"` : ''}>${esc(t('common.delete'))}</button>
+      </td>
+    </tr>`).join('');
+
+  return `
+    <section class="panel" id="windows-panel" data-panel="maintenance" data-group="monitor">
+      <div class="panel-head">
+        <h2>${esc(t('windows.title'))}</h2>
+        <p class="panel-hint">${esc(t('windows.hint'))}</p>
+      </div>
+      ${windows.length ? `
+      <div class="table-wrap">
+        <table class="data-table windows-table">
+          <thead><tr>
+            <th>${esc(t('windows.what'))}</th>
+            <th>${esc(t('windows.when'))}</th>
+            <th>${esc(t('windows.note'))}</th>
+            <th>${esc(t('windows.state'))}</th>
+            <th></th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>` : `<p class="muted small">${esc(t('windows.emptyBody'))}</p>`}
+      <div class="form-actions">
+        <button class="btn btn-primary" data-action="window-new"${denied('admin')}>${esc(t('windows.new'))}</button>
+      </div>
+    </section>`;
+}
+
+/**
+ * windowModal is the window editor, and it is the third dialog on purpose. Its own
+ * element means its own form and its own error line, so the sensor form underneath
+ * keeps every value it was holding — see the comment on `sheet`.
+ */
+const windowModal = sheet({
+  dialog: '#modal-window',
+  form: '#window-form',
+  title: '#window-title',
+  body: '#window-body',
+  error: '#window-error',
+  save: '#window-save',
+  cancel: '#window-cancel',
+  x: '#window-x',
+});
+
+// The kind select switches which half of the form is on screen. Delegated on the
+// body, so it survives the body being rebuilt every time the dialog opens.
+$('#window-body').addEventListener('change', (event) => {
+  if (event.target.name !== 'window_kind') return;
+  for (const part of $$('#window-body [data-kind]')) {
+    part.hidden = part.dataset.kind !== event.target.value;
+  }
+});
+
+/** openWindowEditor opens the editor on an existing window or on a new one. */
+function openWindowEditor(w) {
+  const blank = {
+    kind: 'once',
+    enabled: true,
+    weekdays: [],
+    start_min: 3 * 60,
+    end_min: 4 * 60,
+  };
+  const window_ = w || blank;
+  windowModal.open({
+    title: window_ ? t('windows.editTitle') : t('windows.newTitle'),
+    body: windowFormMarkup(window_),
+    mode: window_ ? 'window-edit' : 'window-new',
+    id: w ? String(w.id) : '',
+    saveLabel: t('common.save'),
+  });
+  const scope = $('#window-body').querySelector('[name="window_scope"]');
+  if (scope) {
+    // Preselect what the editor was opened for, and on a new one the first sensor —
+    // a window for nobody is the one thing the server refuses, so a form that opened
+    // with nothing chosen would greet every user with an error on the first Save.
+    scope.value = w ? windowScopeValue(w) : scope.options[0]?.value || '';
+  }
+}
+
+/**
+ * readWindowForm turns the dialog into what the API takes.
+ *
+ * The two shapes are read from the same fields the markup showed, and only the half
+ * the kind selected is sent. That is the point of sending exactly one shape: a body
+ * carrying both would leave the server guessing which one was meant, and the answer
+ * would be a window whose meaning depended on which half won.
+ */
+function readWindowForm(form) {
+  const value = (name) => (form.elements.namedItem(name)?.value || '').trim();
+  const scope = value('window_scope');
+  const body = {
+    note: value('window_note'),
+    enabled: form.elements.namedItem('window_enabled').checked,
+    kind: value('window_kind'),
+  };
+  if (scope.startsWith('sensor:')) body.sensor_id = Number(scope.slice('sensor:'.length));
+  else body.group = scope.slice('group:'.length);
+
+  // The browser's zone, which is what "3am on Sunday" means to the person typing it.
+  // A container is UTC and has no way to know better.
+  body.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+
+  if (body.kind === 'weekly') {
+    body.weekdays = WEEKDAYS
+      .filter((d) => form.elements.namedItem(`window_day_${d.value}`)?.checked)
+      .map((d) => d.value);
+    body.start_min = minutesOf(value('window_start'));
+    body.end_min = minutesOf(value('window_end') || '24:00');
+    // Midnight at the end means the end of the day, which is 1440 and not 0. A form
+    // that sent 0 would be refused as "all 24 hours", and the refusal would be right
+    // about the number and wrong about what was meant.
+    if (body.end_min === 0) body.end_min = 1440;
+  } else {
+    // datetime-local is read as local time by the Date constructor, which is what was
+    // typed; toISOString() then says which instant that was.
+    body.starts_at = value('window_from') ? new Date(value('window_from')).toISOString() : '';
+    body.ends_at = value('window_to') ? new Date(value('window_to')).toISOString() : '';
+  }
+  return body;
+}
+
+async function submitWindow(form) {
+  const previous = form.dataset.id;
+  const body = readWindowForm(form);
+  await api(previous ? `/api/maintenance/${previous}` : '/api/maintenance', {
+    method: previous ? 'PUT' : 'POST',
+    body,
+  });
+  form.dataset.saved = '1';
+  await afterWindowChange();
+  toast(previous ? t('windows.updated') : t('windows.created'));
+}
+
+async function removeWindow(w) {
+  if (!confirmDialog(t('windows.deleteConfirm', { what: windowWhat(w) }))) return;
+  try {
+    await api(`/api/maintenance/${w.id}`, { method: 'DELETE' });
+    await afterWindowChange();
+    toast(t('windows.deleted'));
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+}
+
+/**
+ * afterWindowChange redraws everything a window can appear in.
+ *
+ * The cards are on that list: a window that is running changes what every sensor it
+ * covers says about itself, so the summary has to be re-read rather than only the
+ * panel redrawn.
+ */
+async function afterWindowChange() {
+  await loadWindows(true);
+  await refresh({ background: true });
+  await renderSettings();
+}
+
 async function saveMap() {
   const panel = $('#map-panel');
   const value = (name) => panel.querySelector(`[name="${name}"]`).value.trim();
@@ -3582,7 +3960,7 @@ async function saveMap() {
 // lookup — see showSettingsCategory.
 const SETTINGS_GROUPS = [
   { key: 'look', panels: ['appearance', 'map'] },
-  { key: 'monitor', panels: ['dashboard', 'sites', 'examples'] },
+  { key: 'monitor', panels: ['dashboard', 'sites', 'maintenance', 'examples'] },
   { key: 'access', panels: ['access', 'users'] },
   { key: 'backup', panels: ['backup'] },
   { key: 'help', panels: ['help', 'diagnostics', 'about'] },
@@ -3727,6 +4105,8 @@ async function renderSettings() {
     </section>
 
     ${sitesPanel()}
+
+    ${maintenancePanel()}
 
     ${examplePanel()}
 
@@ -4149,6 +4529,14 @@ async function onSettingsClick(event) {
     } else if (action === 'site-delete') {
       const site = state.sites.find((s) => s.name === button.dataset.name);
       if (site) await removeSite(site);
+    } else if (action === 'window-new') {
+      openWindowEditor(null);
+    } else if (action === 'window-edit') {
+      const w = (state.windows || []).find((x) => String(x.id) === button.dataset.id);
+      if (w) openWindowEditor(w);
+    } else if (action === 'window-delete') {
+      const w = (state.windows || []).find((x) => String(x.id) === button.dataset.id);
+      if (w) await removeWindow(w);
     } else if (action === 'map-save') {
       await saveMap();
     }

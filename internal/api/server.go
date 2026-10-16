@@ -182,6 +182,7 @@ func (s *Server) Handler() http.Handler {
 	view("GET /api/settings", s.handleGetSettings)
 	view("GET /api/examples", s.handleExampleData)
 	view("GET /api/sites", s.handleListSites)
+	view("GET /api/maintenance", s.handleListWindows)
 
 	// Acting on an outage that has already happened. Nothing here changes what is
 	// monitored or how.
@@ -229,6 +230,13 @@ func (s *Server) Handler() http.Handler {
 	adm("POST /api/sites", s.handleCreateSite)
 	adm("PUT /api/sites/{name}", s.handleUpdateSite)
 	adm("DELETE /api/sites/{name}", s.handleDeleteSite)
+	// Maintenance windows are configuration, not an action taken during an outage:
+	// an administrator decides in advance that a box is allowed to be away, exactly
+	// as they decide which boxes exist. Acknowledging an incident is the other thing,
+	// and that one is an operator's.
+	adm("POST /api/maintenance", s.handleCreateWindow)
+	adm("PUT /api/maintenance/{id}", s.handleUpdateWindow)
+	adm("DELETE /api/maintenance/{id}", s.handleDeleteWindow)
 	// The map's tile URL is installation-wide — it decides which host every
 	// browser in the house talks to — so writing it is an administrator's
 	// decision and not a preference, unlike PUT /api/settings, which any signed-in

@@ -291,10 +291,10 @@ func TestAWindowIsMatchedThroughTheSchedulerNotTheSensorID(t *testing.T) {
 	}
 
 	at := time.Now().UTC()
-	if !s.inWindow(c, at) {
+	if !s.InWindow(c, at) {
 		t.Errorf("a window on the group %q does not reach a sensor carrying it", c.Group)
 	}
-	if s.inWindow(other, at) {
+	if s.InWindow(other, at) {
 		t.Errorf("a window on the group %q reaches a sensor in %q", c.Group, other.Group)
 	}
 }

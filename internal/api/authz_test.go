@@ -92,6 +92,15 @@ func TestRolesDecideWhatMayBeWritten(t *testing.T) {
 		"interval": 60, "timeout": 10, "retries": 1,
 	}
 
+	// A window covering the next hour for one of the example sensors, so that the
+	// write attempts below have something real to aim at.
+	now := time.Now().UTC()
+	newWindow := map[string]any{
+		"sensor_id": sensor.ID, "kind": "once",
+		"starts_at": now.Format(time.RFC3339), "ends_at": now.Add(time.Hour).Format(time.RFC3339),
+		"timezone": "UTC", "enabled": true, "note": "role test",
+	}
+
 	cases := []struct {
 		what   string
 		cookie *http.Cookie
@@ -103,12 +112,15 @@ func TestRolesDecideWhatMayBeWritten(t *testing.T) {
 		{"a viewer may read the sensors", viewerCookie, http.MethodGet, "/api/sensors", nil, http.StatusOK},
 		{"a viewer may read the summary", viewerCookie, http.MethodGet, "/api/summary", nil, http.StatusOK},
 		{"a viewer may read the settings", viewerCookie, http.MethodGet, "/api/settings", nil, http.StatusOK},
+		{"a viewer may read the maintenance windows", viewerCookie, http.MethodGet, "/api/maintenance", nil, http.StatusOK},
 		{"a viewer may not read the accounts", viewerCookie, http.MethodGet, "/api/users", nil, http.StatusForbidden},
 		{"a viewer may not create a sensor", viewerCookie, http.MethodPost, "/api/sensors", newSensor, http.StatusForbidden},
 		{"a viewer may not delete one either", viewerCookie, http.MethodDelete,
 			"/api/sensors/" + itoa(sensor.ID), nil, http.StatusForbidden},
 		{"a viewer may not switch one off", viewerCookie, http.MethodPatch,
 			"/api/sensors/" + itoa(sensor.ID), map[string]any{"enabled": false}, http.StatusForbidden},
+		{"a viewer may not declare a maintenance window", viewerCookie, http.MethodPost,
+			"/api/maintenance", newWindow, http.StatusForbidden},
 
 		{"an operator may pause a sensor", operatorCookie, http.MethodPatch,
 			"/api/sensors/" + itoa(sensor.ID), map[string]any{"enabled": false}, http.StatusOK},
@@ -119,9 +131,16 @@ func TestRolesDecideWhatMayBeWritten(t *testing.T) {
 		{"an operator may not rename one", operatorCookie, http.MethodPut,
 			"/api/sensors/" + itoa(sensor.ID), map[string]any{"name": "renamed"}, http.StatusForbidden},
 		{"an operator may not read the accounts", operatorCookie, http.MethodGet, "/api/users", nil, http.StatusForbidden},
+		// A window is configuration, like the sensor list, and not an action taken
+		// during an outage. An operator acknowledges an incident; an administrator
+		// decides in advance that a box is allowed to be away.
+		{"an operator may not declare a maintenance window either", operatorCookie, http.MethodPost,
+			"/api/maintenance", newWindow, http.StatusForbidden},
 
 		{"an administrator may create a sensor", admin, http.MethodPost, "/api/sensors", newSensor, http.StatusCreated},
 		{"an administrator may read the accounts", admin, http.MethodGet, "/api/users", nil, http.StatusOK},
+		{"an administrator may declare a maintenance window", admin, http.MethodPost,
+			"/api/maintenance", newWindow, http.StatusCreated},
 	}
 
 	for _, c := range cases {

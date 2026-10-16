@@ -120,13 +120,17 @@ func New(st *store.Store, dispatcher *notify.Dispatcher, broker *event.Broker, l
 	}
 }
 
-// inWindow reports whether a sensor is inside a maintenance window at an instant.
+// InWindow reports whether a sensor is inside a maintenance window at an instant.
 //
 // This one answer decides two things that have to agree: whether the probe result
 // is marked as maintenance (and therefore left out of the uptime figure) and whether
 // the failure that produced it is allowed to open an incident. Both come from
 // model.MaintenanceWindow.Covers, so they cannot disagree.
-func (s *Scheduler) inWindow(c model.Sensor, at time.Time) bool {
+//
+// Exported because the API asks it too, when it draws a card. A third answer computed
+// somewhere else is a card that says "expected" while the scheduler is opening an
+// incident, which is the two halves of this feature disagreeing in public.
+func (s *Scheduler) InWindow(c model.Sensor, at time.Time) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return store.ActiveWindows(s.windows, c, at)
@@ -397,7 +401,7 @@ func (s *Scheduler) execute(ctx context.Context, c model.Sensor) {
 	// fact about the outage, not about the measurement, and the chart should show
 	// that the box really was away. A check somebody asked for by hand is marked the
 	// same way, because it is the same probe.
-	res.Maint = s.inWindow(c, res.TS)
+	res.Maint = s.InWindow(c, res.TS)
 
 	if err := s.store.InsertResult(ctx, &res); err != nil {
 		s.log.Error("store probe result", "sensor", c.Name, "error", err)
@@ -682,7 +686,7 @@ func (s *Scheduler) ProbeNow(ctx context.Context, sensorID int64) (model.Result,
 	// fact about the outage, not about the measurement, and the chart should show
 	// that the box really was away. A check somebody asked for by hand is marked the
 	// same way, because it is the same probe.
-	res.Maint = s.inWindow(c, res.TS)
+	res.Maint = s.InWindow(c, res.TS)
 
 	if err := s.store.InsertResult(ctx, &res); err != nil {
 		return res, err
