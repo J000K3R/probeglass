@@ -60,6 +60,13 @@ type state struct {
 	incidentID int64
 	lastNotify time.Time
 	lastResult *model.Result
+
+	// maint records that the sensor is currently down inside a maintenance window,
+	// which is the one kind of down that is not an outage. It is what lets the
+	// failure branch tell "this has been failing since before the window and is
+	// still failing after it" from "this began failing", and it is why a window that
+	// ends while the box is still away produces a new incident rather than silence.
+	maint bool
 }
 
 // Snapshot is a read-only copy of a sensor's runtime state.
@@ -90,6 +97,12 @@ type Scheduler struct {
 	mu      sync.Mutex
 	runners map[int64]*runner
 	states  map[int64]*state
+	// windows is every maintenance window, read whole. It is held rather than
+	// queried because the question "is this sensor inside a window right now" is
+	// asked once per probe per sensor, and an installation has a handful of
+	// windows; a query per probe would be a query every few seconds to answer
+	// something that changes when somebody edits a form.
+	windows []model.MaintenanceWindow
 }
 
 // New builds a scheduler. It does nothing until Start is called.
@@ -105,6 +118,35 @@ func New(st *store.Store, dispatcher *notify.Dispatcher, broker *event.Broker, l
 		runners:    map[int64]*runner{},
 		states:     map[int64]*state{},
 	}
+}
+
+// inWindow reports whether a sensor is inside a maintenance window at an instant.
+//
+// This one answer decides two things that have to agree: whether the probe result
+// is marked as maintenance (and therefore left out of the uptime figure) and whether
+// the failure that produced it is allowed to open an incident. Both come from
+// model.MaintenanceWindow.Covers, so they cannot disagree.
+func (s *Scheduler) inWindow(c model.Sensor, at time.Time) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return store.ActiveWindows(s.windows, c, at)
+}
+
+// ReloadWindows re-reads the maintenance windows.
+//
+// Called when the scheduler starts and after any change to them, which is why it has
+// to be safe to call from an HTTP request: Reconcile explains the same thing for the
+// probe loops, and the answer is the same — the list is data, the loops are
+// goroutines.
+func (s *Scheduler) ReloadWindows(ctx context.Context) error {
+	windows, err := s.store.ListWindows(ctx)
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	s.windows = windows
+	s.mu.Unlock()
+	return nil
 }
 
 // Start launches the probe loops and the maintenance pass.
@@ -150,6 +192,15 @@ func (s *Scheduler) Reconcile(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	// Read before the lock, like the sensors above: the mutex guards the in-memory
+	// state, and holding it across a query would serialise every probe loop behind
+	// a database read. The windows come along on every reconcile rather than only
+	// when they change, because this is also the path a restart takes and because a
+	// stale list here would be a sensor that is silently not being excused.
+	windows, err := s.store.ListWindows(ctx)
+	if err != nil {
+		return err
+	}
 
 	desired := make(map[int64]model.Sensor, len(sensors))
 	for _, c := range sensors {
@@ -160,6 +211,7 @@ func (s *Scheduler) Reconcile(ctx context.Context) error {
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.windows = windows
 
 	// Stop loops that are gone or newly disabled.
 	for id, r := range s.runners {
@@ -338,6 +390,15 @@ func (s *Scheduler) execute(ctx context.Context, c model.Sensor) {
 		StatusCode: out.StatusCode,
 		Message:    out.Message,
 	}
+	// Marked here, at the only moment that knows both the sensor and the clock, and
+	// before the row is written: the marker is what keeps this sample out of the
+	// uptime figure, and by the time anybody reads it back the window it fell in may
+	// have been deleted. The probe is still made and still stored — "expected" is a
+	// fact about the outage, not about the measurement, and the chart should show
+	// that the box really was away. A check somebody asked for by hand is marked the
+	// same way, because it is the same probe.
+	res.Maint = s.inWindow(c, res.TS)
+
 	if err := s.store.InsertResult(ctx, &res); err != nil {
 		s.log.Error("store probe result", "sensor", c.Name, "error", err)
 	}
@@ -424,6 +485,7 @@ func (s *Scheduler) step(ctx context.Context, c model.Sensor, res model.Result) 
 		st.failStreak = 0
 		st.firstFail = time.Time{}
 		st.lastNotify = time.Time{}
+		st.maint = false
 
 		// Read the outage start before the status timestamp is rewritten below:
 		// st.since is about to become the recovery time, and the recovery alert
@@ -437,10 +499,49 @@ func (s *Scheduler) step(ctx context.Context, c model.Sensor, res model.Result) 
 		}
 		if tr.previous == model.StatusDown {
 			tr.incident = s.closeIncident(ctx, c, st, downSince, res.TS)
-			tr.alert = notify.EventUp
-			st.lastNotify = res.TS
+			// No recovery alert for a probe inside a window. If the sensor went
+			// down and came back inside one, no "down" was ever sent — an "up"
+			// with nothing before it is a message about a problem the reader was
+			// never told about. If the outage predates the window, the window
+			// closed it with a note, and the recovery is reported when the window
+			// ends and the sensor is checked outside it again.
+			if !res.Maint {
+				tr.alert = notify.EventUp
+				st.lastNotify = res.TS
+			}
 		}
 	} else {
+		// The window boundaries are noticed here, on the first failure either side of
+		// one, because a probe is the only thing that comes with a clock reading.
+		switch {
+		case res.Maint && !st.maint:
+			st.maint = true
+			// An outage that was already running. It was opened when the downtime
+			// was not expected and it is expected now, so it ends — with a note,
+			// because a closed incident that does not say why is worse than one
+			// that was never opened. Nothing is sent: the message that opened it
+			// went out, and a second one saying the maintenance has started is a
+			// message about a message.
+			if st.incidentID != 0 {
+				tr.incident = s.closeIncident(ctx, c, st, st.since, res.TS)
+			}
+		case !res.Maint && st.maint:
+			// The window has ended and the sensor is still away. What failed in
+			// between was expected, so none of it is evidence about now: the streak
+			// starts again from this probe, and the sensor has to fail its way to
+			// the threshold like anything else before it is called down. The status
+			// follows the streak, so a box that has been away for an hour goes back
+			// to "flaky" for the retries — which is the honest word for "we know it
+			// was away and we are finding out whether it still is".
+			st.maint = false
+			st.failStreak = 0
+			st.firstFail = time.Time{}
+			if st.status == model.StatusDown {
+				st.status = model.StatusWarn
+				tr.statusChanged = true
+			}
+		}
+
 		if st.failStreak == 0 {
 			st.firstFail = res.TS
 		}
@@ -465,11 +566,34 @@ func (s *Scheduler) step(ctx context.Context, c model.Sensor, res model.Result) 
 			st.status = model.StatusDown
 			st.since = start
 			tr.statusChanged = true
+			// The status goes down whether or not a window is running — the box
+			// really is away, and a card that stayed green through a scheduled
+			// outage would be lying about the one thing it is for. What a window
+			// suppresses is the incident and the message, which are claims that
+			// somebody needs to do something.
+			if res.Maint {
+				break
+			}
 			tr.incident = s.openIncident(ctx, c, st, start, res.Message)
 			tr.alert = notify.EventDown
 			st.lastNotify = res.TS
 
-		case st.status == model.StatusDown && c.ReminderEvery > 0:
+		case st.status == model.StatusDown && st.incidentID == 0 && st.failStreak >= threshold && !st.maint:
+			// Down, with no incident against it, and no window to blame. This is the
+			// sensor that a window closed the book on and that never came back: the
+			// streak has climbed to the threshold again on its own, so this is an
+			// outage like any other, with its start at the first failure after the
+			// window rather than at the one before it.
+			start := st.firstFail
+			if start.IsZero() {
+				start = res.TS
+			}
+			st.since = start
+			tr.incident = s.openIncident(ctx, c, st, start, res.Message)
+			tr.alert = notify.EventDown
+			st.lastNotify = res.TS
+
+		case st.status == model.StatusDown && c.ReminderEvery > 0 && !res.Maint:
 			if res.TS.Sub(st.lastNotify) >= time.Duration(c.ReminderEvery)*time.Second {
 				open, err := s.store.OpenIncidentFor(ctx, c.ID)
 				if err != nil {
@@ -551,6 +675,15 @@ func (s *Scheduler) ProbeNow(ctx context.Context, sensorID int64) (model.Result,
 		StatusCode: out.StatusCode,
 		Message:    out.Message,
 	}
+	// Marked here, at the only moment that knows both the sensor and the clock, and
+	// before the row is written: the marker is what keeps this sample out of the
+	// uptime figure, and by the time anybody reads it back the window it fell in may
+	// have been deleted. The probe is still made and still stored — "expected" is a
+	// fact about the outage, not about the measurement, and the chart should show
+	// that the box really was away. A check somebody asked for by hand is marked the
+	// same way, because it is the same probe.
+	res.Maint = s.inWindow(c, res.TS)
+
 	if err := s.store.InsertResult(ctx, &res); err != nil {
 		return res, err
 	}

@@ -598,6 +598,13 @@ type StatusView struct {
 	Heartbeat    []bool    `json:"heartbeat"`
 	OpenIncident *Incident `json:"open_incident,omitempty"`
 	LastIncident *Incident `json:"last_incident,omitempty"`
+
+	// InMaintenance says the sensor is inside a maintenance window right now. The
+	// status stays what the probe found — the box really is away — so this is the
+	// only thing that tells a card to say "expected" rather than "broken". Without
+	// it a scheduled outage and an unplanned one look identical on the dashboard,
+	// which is the state of affairs the whole feature exists to fix.
+	InMaintenance bool `json:"in_maintenance,omitempty"`
 }
 
 // Summary is the aggregate header shown above the dashboard grid.

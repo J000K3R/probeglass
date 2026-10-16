@@ -287,6 +287,13 @@ func (s *Server) statusViews(ctx context.Context, sensors []model.Sensor) ([]mod
 	if err != nil {
 		return nil, err
 	}
+	// Read once for the whole list rather than per sensor, and the same helper the
+	// scheduler uses: a card that said "expected" while the scheduler was opening an
+	// incident would be the two halves of this feature disagreeing in public.
+	windows, err := s.store.ListWindows(ctx)
+	if err != nil {
+		return nil, err
+	}
 
 	// newest incident per sensor, for the card footer
 	lastIncident := map[int64]*model.Incident{}
@@ -328,6 +335,7 @@ func (s *Server) statusViews(ctx context.Context, sensors []model.Sensor) ([]mod
 		if !c.Enabled {
 			v.Status = model.StatusPaused
 		}
+		v.InMaintenance = store.ActiveWindows(windows, c, now)
 		if st, ok := u24[c.ID]; ok {
 			v.Uptime24h = st.Percent
 			v.AvgLatencyMS = st.Latency
