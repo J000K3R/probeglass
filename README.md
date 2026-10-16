@@ -524,3 +524,15 @@ is worth two minutes before you install this anywhere that matters.
 MIT — see [LICENSE](LICENSE). In plain words: use it, change it, ship it, keep the
 notice — and accept that it comes with no warranty of any kind and that nobody is
 liable for anything it does. It is a hobby project, not a product.
+
+---
+
+<p align="center">
+  <a href="https://github.com/j000k3r/probeglass/stargazers">
+    <img src="https://img.shields.io/github/stars/j000k3r/probeglass?style=flat-square&label=stars" alt="Stars on GitHub" height="20">
+  </a>
+  <br>
+  <sub>Nothing here is for sale and nothing is asked for. A star is the only
+  measurement this project has of whether it was worth writing.</sub>
+</p>
+
