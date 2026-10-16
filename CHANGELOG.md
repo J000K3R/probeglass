@@ -20,6 +20,36 @@ here and what the release says are the same document.
 
 ### Added
 
+- **Dependencies between sensors — a power cut is one outage, not thirty.** A sensor
+  can name another as the one it sits behind, and while that one is down the sensor is
+  **excused**: it opens no incident of its own, sends no alert, and the checks it fails
+  in the meantime do not count against its uptime. Its status still says what the probe
+  found, and its card carries a badge saying the downtime is a consequence rather than
+  an outage of its own.
+
+  - **Chains work**: router → switch → the things on the switch. Circles and a parent
+    that does not exist are refused when the sensor is saved.
+  - **Only a confirmed outage counts.** A parent that is merely flaky — one lost ping —
+    excuses nothing, or a single dropped packet on the router would quietly stop thirty
+    sensors from alerting.
+  - **The chain is walked, not just the first link**, so a sensor two levels down is
+    excused by the same router.
+  - A sensor behind a parent that recovers while it is still failing **earns its own
+    incident back**: it uses up its retries again and the new outage is dated from
+    after the parent came back.
+  - Set in the sensor editor, where the picker leaves out the sensor being edited, and
+    in the configuration file as `depends_on`. A file may declare them in any order.
+
+  This is the same mechanism as a maintenance window and not a second one. A window is
+  something a person said in advance; a parent that is down is something that happened
+  to the sensor rather than by it, and both mean the same thing to the arithmetic. So
+  the marker became the general one: `results.maint` is `results.excused` now, with
+  `excused_reason` beside it, and the rollup counts are named for what they are. The
+  boundary handling is shared, which is most of why this is not a parallel copy of the
+  window feature.
+
+### Changed
+
 - **The settings say which channel the installation is on.** Settings → Help and
   maintenance → About has a **Channel** row: **release** for a published version, **dev**
   for a build of the branch under development, **local** for one built from a working
@@ -31,7 +61,9 @@ here and what the release says are the same document.
   the same commit, the same date whenever both follow the same push. It comes from
   somebody running both and having no way to tell which was which.
 
-### Changed
+- **`in_maintenance` is `excuse` on a sensor.** It was a boolean; it is now the reason
+  — `maintenance` or `dependency`, empty when the status is the sensor's own business.
+  One field rather than two overlapping ones, because a card carries one badge.
 
 - **The `:dev` image says which build it is.** It reports the release it follows and
   how far past it — `0.2.1-4-g9c1f0ab` — instead of the literal `0.1.0-dev`, which was

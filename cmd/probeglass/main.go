@@ -323,6 +323,11 @@ func applyDeclarativeConfig(ctx context.Context, st *store.Store, cfg *config.Co
 		log.Info("applied sites from the configuration file", "count", len(cfg.Sites))
 	}
 
+	// Every sensor and the parent it named, for the second pass below.
+	var parents []struct {
+		name   string
+		parent string
+	}
 	for _, spec := range cfg.Sensors {
 		c := spec.ToSensor()
 		store.NormaliseSensor(&c)
@@ -339,8 +344,41 @@ func applyDeclarativeConfig(ctx context.Context, st *store.Store, cfg *config.Co
 			}
 			c.Channels = ids
 		}
+		// The parent is left out of the first pass and set in the second.
+		//
+		// A file may declare a parent anywhere in it, and this loop walks it in the
+		// order somebody wrote it. A sensor whose parent comes later would be a
+		// reference to a row that does not exist yet, which the foreign key refuses —
+		// so the whole file would fail to apply because of the order of its lines. The
+		// channels above are resolved the same way for the same reason.
+		parent := c.Parent
+		c.Parent = ""
 		if err := st.UpsertManagedSensor(ctx, &c); err != nil {
 			return fmt.Errorf("sensor %q: %w", spec.Name, err)
+		}
+		parents = append(parents, struct {
+			name   string
+			parent string
+		}{spec.Name, parent})
+	}
+
+	// Second pass: the chain, now that every sensor in the file exists.
+	for _, p := range parents {
+		if p.parent == "" {
+			continue
+		}
+		c, err := st.GetSensorByName(ctx, p.name)
+		if err != nil {
+			return fmt.Errorf("sensor %q: %w", p.name, err)
+		}
+		c.Parent = p.parent
+		if err := st.ValidateSensor(ctx, c); err != nil {
+			return fmt.Errorf("sensor %q: %w", p.name, err)
+		}
+		// Through the ordinary update path so the row is written the way any other
+		// edit writes it, managed flag included.
+		if err := st.UpdateSensor(ctx, &c); err != nil {
+			return fmt.Errorf("sensor %q: %w", p.name, err)
 		}
 	}
 	if len(cfg.Sensors) > 0 {

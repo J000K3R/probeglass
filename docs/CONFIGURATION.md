@@ -142,6 +142,7 @@ sensors:
     retries: 3
     group: Network
     site: Rack A
+    depends_on: Router     # a sensor this one sits behind; any order in the file
     tags: [infra, lan]
     enabled: true
     reminder_every: 1h

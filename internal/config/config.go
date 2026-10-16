@@ -98,7 +98,16 @@ type SensorSpec struct {
 	// heading. It is a name and not an id because a file has no way to know the
 	// ids in someone's database, and one conversion has to serve both the file and
 	// the API.
-	Site          string        `yaml:"site"`
+	Site string `yaml:"site"`
+	// DependsOn names another sensor this one sits behind. A name for the reason Site
+	// is one: a file has no way to know the ids in somebody's database.
+	//
+	// While that sensor is down, this one opens no incident of its own and its failed
+	// checks do not count against its uptime. A power cut is one outage and not thirty.
+	//
+	// The file may declare them in any order. applyDeclarativeConfig makes two passes,
+	// because a parent named further down the file would not exist yet on the first.
+	DependsOn     string        `yaml:"depends_on"`
 	Tags          []string      `yaml:"tags"`
 	ReminderEvery Duration      `yaml:"reminder_every"`
 	Options       model.Options `yaml:"options"`
@@ -145,6 +154,7 @@ func (s SensorSpec) ToSensor() model.Sensor {
 		Enabled: true,
 		Group:   s.Group,
 		Site:    s.Site,
+		Parent:  strings.TrimSpace(s.DependsOn),
 		Tags:    s.Tags,
 		Options: s.Options,
 		Managed: true,
@@ -486,6 +496,38 @@ func (c *Config) Validate() error {
 	if c.Retention.Hourly.D() < c.Retention.Raw.D() {
 		return fmt.Errorf("retention.hourly (%s) must not be shorter than retention.raw (%s)",
 			c.Retention.Hourly.D(), c.Retention.Raw.D())
+	}
+
+	// A parent has to be a sensor this file declares or one the installation already
+	// has, and the graph has to be a forest. Both are checked here rather than left to
+	// the store, because a file is all one document: a typo in it is a typo in the
+	// file, and saying so at startup names the line rather than the row.
+	byName := map[string]string{}
+	for _, ch := range c.Sensors {
+		byName[ch.Name] = ch.DependsOn
+	}
+	for i, ch := range c.Sensors {
+		if ch.DependsOn == "" {
+			continue
+		}
+		if _, ok := byName[ch.DependsOn]; !ok {
+			// Not in this file — the store will refuse it if the sensor is unknown
+			// there either. Checked at apply time, where the answer is knowable.
+			continue
+		}
+		seen := map[string]bool{ch.Name: true}
+		for name, depth := ch.DependsOn, 0; name != ""; depth++ {
+			if depth >= model.MaxParentDepth {
+				return fmt.Errorf("sensors[%d]: the chain of parents is more than %d deep",
+					i, model.MaxParentDepth)
+			}
+			if seen[name] {
+				return fmt.Errorf("sensors[%d]: %q would end up in a circle of parents",
+					i, ch.Name)
+			}
+			seen[name] = true
+			name = byName[name]
+		}
 	}
 
 	seen := map[string]bool{}

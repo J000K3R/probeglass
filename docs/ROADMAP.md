@@ -139,6 +139,13 @@ promises; the ordering is what the design already supports cheaply.
   is spared is the incident, the alert and the arithmetic. Recurring weekly or a
   single stretch of time, in the zone the person creating it is in.
 
+- [x] **Dependencies between sensors.** Mark the router as a parent of everything
+  behind it, so one power cut produces one incident and one alert instead of thirty.
+  A sensor behind a parent that is down is excused: no incident, no alert, and the
+  checks it fails in the meantime do not count against its uptime — while the probe
+  keeps running. Chains work; circles and unknown parents are refused. The same
+  mechanism as a maintenance window, with a second reason.
+
 ## Next — 0.2.x
 
 Ordered by value per unit of work.
@@ -146,9 +153,6 @@ Ordered by value per unit of work.
 - [ ] **More sensor types.** SSH banner, SMTP/IMAP greeting, UDP port, an ICMP
   TTL/hop sensor, and an HTTP sensor that follows a redirect chain and reports
   what it found. Each is one file in `internal/sensor`.
-- [ ] **Dependencies between sensors.** Mark the router as a parent of everything
-  behind it, so one power cut produces one incident and one alert instead of
-  thirty.
 - [ ] **Dashboard polish.** Per-group colours and drag-to-arrange groups. (The
   side-by-side comparison view this item used to promise is the **tree**, the
   **wall** and the **map**, which shipped above, and pinning a sensor to the top is
