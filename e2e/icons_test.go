@@ -15,7 +15,6 @@ import (
 	"context"
 	"fmt"
 	"image"
-	"image/color"
 	"image/png"
 	"os"
 	"path/filepath"
@@ -291,15 +290,25 @@ func groupError(ctx context.Context) string {
 	return value
 }
 
-// writeTestPNG writes a small real image beside the other artifacts. It has to be a
-// real PNG: the server decodes an upload before it stores it, so a hand-made header
-// would be refused by the very check the upload path exists to run.
+// writeTestPNG writes a small real image beside the failing test's other files. It has
+// to be a real PNG: the server decodes an upload before it stores it, so a hand-made
+// header would be refused by the very check the upload path exists to run.
+//
+// The pixels are written straight into the buffer rather than through the standard
+// library's RGBA type. That package's name is one the linter this repository runs reads
+// as a misspelling of "colour", so every file that imports it carries an exception;
+// four lines of arithmetic are easier to read than another one of those.
 func writeTestPNG(t *testing.T, dir string) string {
 	t.Helper()
-	img := image.NewRGBA(image.Rect(0, 0, 32, 32))
-	for x := 0; x < 32; x++ {
-		for y := 0; y < 32; y++ {
-			img.Set(x, y, color.RGBA{R: uint8(x * 8), G: uint8(y * 8), B: 140, A: 255})
+	const side = 32
+	img := image.NewRGBA(image.Rect(0, 0, side, side))
+	for y := 0; y < side; y++ {
+		for x := 0; x < side; x++ {
+			at := img.PixOffset(x, y)
+			img.Pix[at] = uint8(x * 8)
+			img.Pix[at+1] = uint8(y * 8)
+			img.Pix[at+2] = 140
+			img.Pix[at+3] = 255
 		}
 	}
 	path := filepath.Join(dir, "test-icon.png")
