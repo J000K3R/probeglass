@@ -54,12 +54,20 @@ type site struct {
 	kind      model.SiteKind
 	lat, lon  float64
 	sortOrder int
+	// icon is the symbol the heading of this place wears, as a built-in reference.
+	// A place carries one for the same reason a sensor does, and it is drawn where
+	// places are drawn: the tree and the wall, in front of the heading the machines
+	// under it are gathered by.
+	icon string
 }
 
 var sites = []site{
-	{name: "Homelab", kind: model.SiteLocal, lat: 52.5200, lon: 13.4050, sortOrder: 1},
-	{name: "Rented server", kind: model.SiteExternal, lat: 39.0438, lon: -77.4874, sortOrder: 2},
-	{name: "Frankfurt", kind: model.SiteExternal, lat: 50.1109, lon: 8.6821, sortOrder: 3},
+	{name: "Homelab", kind: model.SiteLocal, lat: 52.5200, lon: 13.4050, sortOrder: 1,
+		icon: icon.BuiltinRef("server")},
+	{name: "Rented server", kind: model.SiteExternal, lat: 39.0438, lon: -77.4874, sortOrder: 2,
+		icon: icon.BuiltinRef("cloud")},
+	{name: "Frankfurt", kind: model.SiteExternal, lat: 50.1109, lon: 8.6821, sortOrder: 3,
+		icon: icon.BuiltinRef("globe")},
 }
 
 // Places returns these three, ready to be written to the sites table.
@@ -85,6 +93,7 @@ func (d site) place() model.Site {
 		Kind:      d.kind,
 		Lat:       &lat,
 		Lon:       &lon,
+		Icon:      d.icon,
 		SortOrder: d.sortOrder,
 		Origin:    model.OriginExample,
 	}

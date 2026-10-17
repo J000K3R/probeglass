@@ -109,6 +109,19 @@ function siteLabel(bucket) {
   return bucket.name || t('sites.none');
 }
 
+/**
+ * The symbol a place carries, if somebody gave it one.
+ *
+ * It comes off the site's own row rather than off the sensors, because it is a
+ * picture of the place: the machines in the rack do not each wear it, the heading
+ * they are gathered under does. A site named by a sensor but absent from the list
+ * — which the daemon creates on the way past — has no row here and therefore no
+ * symbol, which is why this is a function and not a field access.
+ */
+function siteIcon(bucket) {
+  return iconMarkup(bucket.site && bucket.site.icon, { size: 16, cls: 'icon-lead' });
+}
+
 /** The kind of place, as a tag. A site named by a sensor but absent from the list has none. */
 function kindTag(bucket) {
   const kind = bucket.site && bucket.site.kind;
@@ -164,6 +177,7 @@ export function renderTree(sensors, sites, ctx) {
       <summary class="site-head">
         ${CARET}
         <span class="legend-dot st-${esc(bucket.worst)}" aria-hidden="true"></span>
+        ${siteIcon(bucket)}
         <span class="site-name">${esc(siteLabel(bucket))}</span>
         ${kindTag(bucket)}
         <span class="site-count">${esc(headCount(bucket))}</span>
@@ -221,6 +235,7 @@ export function renderWall(sensors, sites, ctx) {
     <section class="wall-group">
       <h2 class="wall-head">
         <span class="legend-dot st-${esc(bucket.worst)}" aria-hidden="true"></span>
+        ${siteIcon(bucket)}
         ${esc(siteLabel(bucket))}
         ${kindTag(bucket)}
         <span class="wall-count">${esc(headCount(bucket))}</span>

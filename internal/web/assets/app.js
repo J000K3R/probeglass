@@ -3659,6 +3659,7 @@ function sitesPanel() {
     <tr data-name="${esc(site.name)}" data-origin="${esc(site.origin || '')}">
       <td><span class="site-kind-cell">
         <i class="legend-dot k-${esc(site.kind)}" aria-hidden="true"></i>
+        ${iconUI.iconMarkup(site.icon, { size: 15 })}
         <b>${esc(site.name)}</b>
         ${site.origin === 'example' ? `<span class="pill badge-example" title="${esc(t('sites.exampleHint'))}">${esc(t('examples.badge'))}</span>` : ''}
       </span></td>
