@@ -19,7 +19,7 @@ import (
 // grouping — it simply has nothing to draw on the map, which is why the two
 // coordinate columns are nullable and 0 is left to mean 0.
 
-const siteColumns = `name, kind, lat, lon, sort_order, managed, origin, created_at, updated_at`
+const siteColumns = `name, kind, lat, lon, icon, sort_order, managed, origin, created_at, updated_at`
 
 func scanSite(sc rowScanner) (model.Site, error) {
 	var (
@@ -30,7 +30,7 @@ func scanSite(sc rowScanner) (model.Site, error) {
 		createdAt string
 		updatedAt string
 	)
-	if err := sc.Scan(&s.Name, &kind, &lat, &lon, &s.SortOrder, &managed, &s.Origin,
+	if err := sc.Scan(&s.Name, &kind, &lat, &lon, &s.Icon, &s.SortOrder, &managed, &s.Origin,
 		&createdAt, &updatedAt); err != nil {
 		return s, err
 	}
@@ -53,6 +53,7 @@ func scanSite(sc rowScanner) (model.Site, error) {
 // trimmed and a missing kind becomes the homelab, which is what most sites are.
 func NormaliseSite(s *model.Site) {
 	s.Name = strings.TrimSpace(s.Name)
+	s.Icon = strings.TrimSpace(s.Icon)
 	if s.Kind == "" {
 		s.Kind = model.SiteLocal
 	}
@@ -161,9 +162,9 @@ func (s *Store) CreateSite(ctx context.Context, site *model.Site) error {
 	now := time.Now().UTC()
 	site.CreatedAt, site.UpdatedAt = now, now
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO sites (name, kind, lat, lon, sort_order, managed, origin, created_at, updated_at)
-		VALUES (?,?,?,?,?,?,?,?,?)`,
-		site.Name, string(site.Kind), floatOrNull(site.Lat), floatOrNull(site.Lon),
+		INSERT INTO sites (name, kind, lat, lon, icon, sort_order, managed, origin, created_at, updated_at)
+		VALUES (?,?,?,?,?,?,?,?,?,?)`,
+		site.Name, string(site.Kind), floatOrNull(site.Lat), floatOrNull(site.Lon), site.Icon,
 		site.SortOrder, boolInt(site.Managed), site.Origin, fmtTime(now), fmtTime(now))
 	if err != nil {
 		return wrapUnique(err, "site", site.Name)
@@ -230,9 +231,9 @@ func (s *Store) updateSite(ctx context.Context, oldName string, site *model.Site
 	// Site it built itself would otherwise clear the marker on every save, and the
 	// site would quietly stop being example data.
 	res, err := s.db.ExecContext(ctx, `
-		UPDATE sites SET name=?, kind=?, lat=?, lon=?, sort_order=?, managed=?, origin=?, updated_at=?
+		UPDATE sites SET name=?, kind=?, lat=?, lon=?, icon=?, sort_order=?, managed=?, origin=?, updated_at=?
 		WHERE name = ?`,
-		site.Name, string(site.Kind), floatOrNull(site.Lat), floatOrNull(site.Lon),
+		site.Name, string(site.Kind), floatOrNull(site.Lat), floatOrNull(site.Lon), site.Icon,
 		site.SortOrder, boolInt(flag), existing.Origin, fmtTime(now), oldName)
 	if err != nil {
 		return wrapUnique(err, "site", site.Name)

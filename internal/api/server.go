@@ -183,6 +183,12 @@ func (s *Server) Handler() http.Handler {
 	view("GET /api/examples", s.handleExampleData)
 	view("GET /api/sites", s.handleListSites)
 	view("GET /api/maintenance", s.handleListWindows)
+	// Icons are read by everyone: a sensor card draws its symbol for a viewer as
+	// much as for an administrator, and a symbol is not a secret. The bytes are a
+	// separate route because that is what an `<img src>` can point at.
+	view("GET /api/icons", s.handleListIcons)
+	view("GET /api/icons/{id}", s.handleIconBytes)
+	view("GET /api/groups", s.handleListGroups)
 
 	// Acting on an outage that has already happened. Nothing here changes what is
 	// monitored or how.
@@ -230,6 +236,13 @@ func (s *Server) Handler() http.Handler {
 	adm("POST /api/sites", s.handleCreateSite)
 	adm("PUT /api/sites/{name}", s.handleUpdateSite)
 	adm("DELETE /api/sites/{name}", s.handleDeleteSite)
+	// An icon and a group's settings are configuration, like the things they hang
+	// off: which symbol a box wears is a decision about the installation, not an
+	// action taken during an outage.
+	adm("POST /api/icons", s.handleUploadIcon)
+	adm("DELETE /api/icons/{id}", s.handleDeleteIcon)
+	adm("PUT /api/groups/{name}", s.handleSetGroup)
+	adm("DELETE /api/groups/{name}", s.handleForgetGroup)
 	// Maintenance windows are configuration, not an action taken during an outage:
 	// an administrator decides in advance that a box is allowed to be away, exactly
 	// as they decide which boxes exist. Acknowledging an incident is the other thing,

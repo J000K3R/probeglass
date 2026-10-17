@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/j000k3r/probeglass/internal/icon"
 	"github.com/j000k3r/probeglass/internal/model"
 )
 
@@ -29,6 +30,10 @@ type backupFixture struct {
 	sampleHour time.Time
 	probes     int
 	failures   int
+	// icon and group are the two tables that exist because somebody chose
+	// something: an uploaded image, and what a group's heading looks like.
+	icon  model.Icon
+	group model.Group
 }
 
 // newBackupFixture builds an installation that has history: two complete hours of
@@ -46,9 +51,21 @@ func newBackupFixture(t *testing.T) *backupFixture {
 
 	f := &backupFixture{store: st}
 
-	f.site = model.Site{Name: "Rack A", Kind: "local"}
+	f.site = model.Site{Name: "Rack A", Kind: "local", Icon: "builtin:server"}
 	if err := st.CreateSite(ctx, &f.site); err != nil {
 		t.Fatalf("create site: %v", err)
+	}
+
+	// An uploaded image, and a group wearing it. The image is the one row in this
+	// document that keeps its id through a restore, so the fixture has to have one
+	// for the round trip to prove anything about it.
+	f.icon = model.Icon{Name: "fritzbox"}
+	if err := st.CreateIcon(ctx, &f.icon, testPNG(t, 20, 20)); err != nil {
+		t.Fatalf("create icon: %v", err)
+	}
+	f.group = model.Group{Name: "LAN", Icon: icon.UploadRef(f.icon.ID), Colour: "amber", SortOrder: 3}
+	if err := st.SetGroup(ctx, &f.group); err != nil {
+		t.Fatalf("set group: %v", err)
 	}
 
 	f.channel = model.Channel{
@@ -61,7 +78,8 @@ func newBackupFixture(t *testing.T) *backupFixture {
 
 	f.sensor = mustSensor(t, st, model.Sensor{
 		Name: "Router", Type: model.SensorPing, Target: "10.0.0.1",
-		Site: "Rack A", Tags: []string{"lan", "core"},
+		Site: "Rack A", Group: "LAN", Tags: []string{"lan", "core"},
+		Icon:     icon.UploadRef(f.icon.ID),
 		Channels: []int64{f.channel.ID},
 		Options:  map[string]any{"count": float64(3)},
 	})
@@ -347,6 +365,41 @@ func TestExportRestoreRoundTrip(t *testing.T) {
 	}
 	if router.Site != "Rack A" || model.JoinTags(router.Tags) != "lan,core" {
 		t.Errorf("restored Router has site %q and tags %q", router.Site, model.JoinTags(router.Tags))
+	}
+	// The uploaded image it wears, under the number it had before: the icon column
+	// says `upload:<id>` as text with no foreign key behind it, so an image that came
+	// back under a different id would leave this reference pointing at nothing.
+	if router.Icon != icon.UploadRef(f.icon.ID) {
+		t.Errorf("restored Router wears %q, want %q", router.Icon, icon.UploadRef(f.icon.ID))
+	}
+	restoredIcon, restoredBytes, err := fresh.GetIcon(ctx, f.icon.ID)
+	if err != nil {
+		t.Fatalf("the uploaded icon did not come back: %v", err)
+	}
+	if restoredIcon.MediaType != "image/png" || restoredIcon.Width != 20 || restoredIcon.Height != 20 {
+		t.Errorf("restored icon = %+v, want the 20x20 PNG from the fixture", restoredIcon)
+	}
+	if !bytes.Equal(restoredBytes, testPNG(t, 20, 20)) {
+		t.Error("the restored icon's bytes are not the bytes that were backed up")
+	}
+
+	// The group's settings, which the sensors restore with: the group itself is only
+	// a word on Router.
+	groups, err := fresh.ListGroups(ctx)
+	if err != nil {
+		t.Fatalf("list groups: %v", err)
+	}
+	if len(groups) != 1 {
+		t.Fatalf("restored %d groups, want the one the fixture made: %+v", len(groups), groups)
+	}
+	if g := groups[0]; g.Name != "LAN" || g.Icon != icon.UploadRef(f.icon.ID) ||
+		g.Colour != "amber" || g.SortOrder != 3 || g.SensorCount != 1 {
+		t.Errorf("restored group = %+v, want LAN with the fixture's icon, colour and order", g)
+	}
+	if sites, err := fresh.ListSites(ctx); err != nil {
+		t.Fatalf("list sites: %v", err)
+	} else if len(sites) != 1 || sites[0].Icon != "builtin:server" {
+		t.Errorf("restored sites = %+v, want Rack A wearing the server drawing", sites)
 	}
 	assigned, err := fresh.ChannelsForSensor(ctx, router.ID)
 	if err != nil {

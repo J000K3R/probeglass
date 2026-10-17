@@ -112,6 +112,15 @@ type SensorSpec struct {
 	ReminderEvery Duration      `yaml:"reminder_every"`
 	Options       model.Options `yaml:"options"`
 	Channels      []string      `yaml:"channels"`
+	// Icon is the symbol drawn beside the sensor's name: `builtin:router` for one
+	// of the drawings that ship with the program, `upload:7` for an image somebody
+	// uploaded to this installation.
+	//
+	// It is here for the same reason every other field is: a sensor the file
+	// declares is written from the file on every start, whole. A column the file
+	// could not name would be cleared each time the daemon came up, and an icon set
+	// in the dashboard on a file-owned sensor would quietly disappear overnight.
+	Icon string `yaml:"icon"`
 }
 
 // SiteSpec is one site as declared in the YAML config file.
@@ -125,6 +134,10 @@ type SiteSpec struct {
 	Kind string   `yaml:"kind"`
 	Lat  *float64 `yaml:"lat"`
 	Lon  *float64 `yaml:"lon"`
+	// Icon is the symbol for the place, in the same two forms a sensor's takes. It
+	// is optional in the strong sense: a site with none keeps the pin its kind
+	// gives it, which is what every site had before icons existed.
+	Icon string `yaml:"icon"`
 }
 
 // ChannelSpec is one alert channel as declared in the YAML config file.
@@ -155,6 +168,7 @@ func (s SensorSpec) ToSensor() model.Sensor {
 		Group:   s.Group,
 		Site:    s.Site,
 		Parent:  strings.TrimSpace(s.DependsOn),
+		Icon:    strings.TrimSpace(s.Icon),
 		Tags:    s.Tags,
 		Options: s.Options,
 		Managed: true,
@@ -181,6 +195,7 @@ func (s SiteSpec) ToSite() model.Site {
 		Kind:    model.SiteKind(s.Kind),
 		Lat:     s.Lat,
 		Lon:     s.Lon,
+		Icon:    strings.TrimSpace(s.Icon),
 		Managed: true,
 	}
 }

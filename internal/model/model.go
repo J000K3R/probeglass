@@ -151,6 +151,13 @@ type Sensor struct {
 	Tags     []string `json:"tags"`
 	Options  Options  `json:"options"`
 	Channels []int64  `json:"channel_ids"`
+	// Icon is the symbol drawn beside this sensor's name, and empty means none.
+	//
+	// It is one string carrying one of three things — nothing, a `builtin:` name,
+	// or an `upload:` row id — and internal/icon is where that is read and written.
+	// The column's default is the empty string, so a sensor that never had one
+	// looks exactly as it did before this existed.
+	Icon string `json:"icon,omitempty"`
 	// ReminderEvery re-sends the DOWN alert every N seconds while the sensor
 	// stays down. 0 disables reminders (state transitions only).
 	ReminderEvery int  `json:"reminder_every"`
@@ -204,12 +211,16 @@ func (k SiteKind) Valid() bool {
 // pointers because 0/0 is a real coordinate in the Gulf of Guinea, and a zero
 // value therefore cannot be made to mean "not placed".
 type Site struct {
-	Name      string   `json:"name"`
-	Kind      SiteKind `json:"kind"`
-	Lat       *float64 `json:"lat,omitempty"`
-	Lon       *float64 `json:"lon,omitempty"`
-	SortOrder int      `json:"sort_order"`
-	Managed   bool     `json:"managed"` // declared in the config file, read-only in the UI
+	Name string   `json:"name"`
+	Kind SiteKind `json:"kind"`
+	Lat  *float64 `json:"lat,omitempty"`
+	Lon  *float64 `json:"lon,omitempty"`
+	// Icon is the symbol drawn for this place, in the same three forms a sensor's
+	// carries. Empty means none, and the map's pin is drawn from the kind either
+	// way — an icon is what somebody adds on top of it.
+	Icon      string `json:"icon,omitempty"`
+	SortOrder int    `json:"sort_order"`
+	Managed   bool   `json:"managed"` // declared in the config file, read-only in the UI
 	// Origin records that the site was invented rather than made by hand. It is
 	// the same marker Sensor carries, and it is here for the same reason: the
 	// example sensors need somewhere to live, and "remove the example data" has to
@@ -228,6 +239,73 @@ type Site struct {
 
 // Placed reports whether the site has coordinates and can be drawn on the map.
 func (s Site) Placed() bool { return s.Lat != nil && s.Lon != nil }
+
+// Group is what is known about a group beyond its name.
+//
+// A group is still a word somebody typed on a sensor — there is no table of the
+// groups themselves and no foreign key from `sensors.grp`, which is what keeps
+// making one as cheap as it has always been. This holds the things a word cannot
+// say on its own: the symbol drawn for it, the colour of its heading, and where it
+// belongs in the order. A group nobody has said anything about has no row here at
+// all, which is the ordinary state of a fresh installation.
+type Group struct {
+	Name string `json:"name"`
+	// Icon is the symbol for the group's heading, in the same three forms a
+	// sensor's carries: nothing, `builtin:` or `upload:`.
+	Icon string `json:"icon"`
+	// Colour is one of Accents, or empty for the theme's own.
+	//
+	// A name rather than a hex value, for the reason the accent setting is one:
+	// every colour in this dashboard exists twice — once for the dark theme and
+	// once for the light one — and a stored `#f59e0b` would be the dark theme's
+	// amber drawn on a white page by somebody who never saw this program.
+	Colour    string    `json:"colour"`
+	SortOrder int       `json:"sort_order"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+
+	// SensorCount is how many sensors name this group. Not a column: it is counted
+	// when the groups are listed, and it is what the settings screen shows beside
+	// the name — a group is otherwise invisible until a sensor uses it.
+	SensorCount int `json:"sensor_count"`
+}
+
+// Accents are the colours a group may be given, in the order the picker offers
+// them. The dashboard's own accent setting is chosen from the same six names, and
+// style.css defines what each one is in both themes.
+var Accents = []string{"azure", "violet", "emerald", "amber", "rose", "slate"}
+
+// ValidAccent reports whether name is one of them. The empty string is not: it is
+// "no colour of its own", which is the absence of a choice rather than a choice.
+func ValidAccent(name string) bool {
+	for _, a := range Accents {
+		if a == name {
+			return true
+		}
+	}
+	return false
+}
+
+// Icon is one uploaded image, without the bytes.
+//
+// The bytes are what the database holds; this is what a listing needs, and it is
+// deliberately not the image: the picker lists a hundred icons and decodes none of
+// them, because the dimensions and the media type were recorded when the file
+// arrived.
+type Icon struct {
+	ID        int64     `json:"id"`
+	Name      string    `json:"name"`
+	MediaType string    `json:"media_type"`
+	Width     int       `json:"width"`
+	Height    int       `json:"height"`
+	Size      int       `json:"size"` // bytes, as stored
+	CreatedAt time.Time `json:"created_at"`
+
+	// Uses is how many sensors, sites and groups point at this image. Not a column
+	// — counted when the icons are listed, because the question it answers is asked
+	// at the moment of deleting one: "what stops working if I say yes".
+	Uses int `json:"uses"`
+}
 
 // MaxParentDepth bounds how far up a chain of parent sensors anything will walk.
 //

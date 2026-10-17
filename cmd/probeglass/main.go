@@ -307,6 +307,9 @@ func applyDeclarativeConfig(ctx context.Context, st *store.Store, cfg *config.Co
 	for _, spec := range cfg.Sites {
 		site := spec.ToSite()
 		store.NormaliseSite(&site)
+		if err := st.ValidateIconRef(ctx, site.Icon); err != nil {
+			return fmt.Errorf("site %q: %w", spec.Name, err)
+		}
 		if err := st.UpsertManagedSite(ctx, &site); err != nil {
 			return fmt.Errorf("site %q: %w", spec.Name, err)
 		}
@@ -332,6 +335,9 @@ func applyDeclarativeConfig(ctx context.Context, st *store.Store, cfg *config.Co
 		c := spec.ToSensor()
 		store.NormaliseSensor(&c)
 		if err := sensor.Validate(c); err != nil {
+			return fmt.Errorf("sensor %q: %w", spec.Name, err)
+		}
+		if err := st.ValidateIconRef(ctx, c.Icon); err != nil {
 			return fmt.Errorf("sensor %q: %w", spec.Name, err)
 		}
 		if len(spec.Channels) > 0 {

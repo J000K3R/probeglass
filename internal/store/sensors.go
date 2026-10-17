@@ -13,7 +13,7 @@ import (
 )
 
 const sensorColumns = `id, name, type, target, interval_s, timeout_s, retries, enabled,
-	grp, site, parent, tags, options, reminder_every_s, sort_order, managed, origin, created_at, updated_at`
+	grp, site, parent, icon, tags, options, reminder_every_s, sort_order, managed, origin, created_at, updated_at`
 
 type rowScanner interface {
 	Scan(dest ...any) error
@@ -33,7 +33,7 @@ func scanSensor(sc rowScanner) (model.Sensor, error) {
 		updatedAt string
 	)
 	err := sc.Scan(&c.ID, &c.Name, &typ, &c.Target, &c.Interval, &c.Timeout, &c.Retries,
-		&enabled, &c.Group, &site, &parent, &tags, &options, &c.ReminderEvery, &c.SortOrder,
+		&enabled, &c.Group, &site, &parent, &c.Icon, &tags, &options, &c.ReminderEvery, &c.SortOrder,
 		&managed, &c.Origin, &createdAt, &updatedAt)
 	if err != nil {
 		return c, err
@@ -124,6 +124,7 @@ func NormaliseSensor(c *model.Sensor) {
 	c.Target = strings.TrimSpace(c.Target)
 	c.Group = strings.TrimSpace(c.Group)
 	c.Site = strings.TrimSpace(c.Site)
+	c.Icon = strings.TrimSpace(c.Icon)
 	c.Tags = model.SplitTags(model.JoinTags(c.Tags))
 	if c.Interval <= 0 {
 		c.Interval = 60
@@ -258,10 +259,10 @@ func insertSensor(ctx context.Context, tx *sql.Tx, c *model.Sensor) error {
 
 	res, err := tx.ExecContext(ctx, `
 		INSERT INTO sensors (name, type, target, interval_s, timeout_s, retries, enabled,
-			grp, site, parent, tags, options, reminder_every_s, sort_order, managed, origin, created_at, updated_at)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			grp, site, parent, icon, tags, options, reminder_every_s, sort_order, managed, origin, created_at, updated_at)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		c.Name, string(c.Type), c.Target, c.Interval, c.Timeout, c.Retries, boolInt(c.Enabled),
-		c.Group, nullIfEmpty(c.Site), nullIfEmpty(c.Parent), model.JoinTags(c.Tags), string(options),
+		c.Group, nullIfEmpty(c.Site), nullIfEmpty(c.Parent), c.Icon, model.JoinTags(c.Tags), string(options),
 		c.ReminderEvery, c.SortOrder, boolInt(c.Managed), c.Origin, fmtTime(now), fmtTime(now))
 	if err != nil {
 		return wrapSensorErr(err, c)
@@ -324,11 +325,11 @@ func (s *Store) updateSensor(ctx context.Context, c *model.Sensor, managed *bool
 		c.Managed = *managed
 		res, err := tx.ExecContext(ctx, `
 			UPDATE sensors SET name=?, type=?, target=?, interval_s=?, timeout_s=?, retries=?,
-				enabled=?, grp=?, site=?, parent=?, tags=?, options=?, reminder_every_s=?, sort_order=?,
+				enabled=?, grp=?, site=?, parent=?, icon=?, tags=?, options=?, reminder_every_s=?, sort_order=?,
 				managed=?, updated_at=?
 			WHERE id = ?`,
 			c.Name, string(c.Type), c.Target, c.Interval, c.Timeout, c.Retries,
-			boolInt(c.Enabled), c.Group, nullIfEmpty(c.Site), nullIfEmpty(c.Parent),
+			boolInt(c.Enabled), c.Group, nullIfEmpty(c.Site), nullIfEmpty(c.Parent), c.Icon,
 			model.JoinTags(c.Tags), string(options), c.ReminderEvery, c.SortOrder, boolInt(*managed),
 			fmtTime(now), c.ID)
 		if err != nil {

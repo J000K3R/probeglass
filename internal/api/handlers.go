@@ -455,6 +455,10 @@ type sensorInput struct {
 	Options       model.Options `json:"options"`
 	ChannelIDs    *[]int64      `json:"channel_ids"`
 	ReminderEvery *int          `json:"reminder_every"`
+	// Icon is the symbol drawn beside the sensor's name: empty for none, a
+	// `builtin:` name, or an `upload:` id. An explicit empty string clears it, like
+	// the parent and the site above.
+	Icon *string `json:"icon"`
 	// Probe makes POST /api/sensors/validate also run the sensor once, which is
 	// what the "Test" button in the dashboard form sends. It is ignored on
 	// create and update.
@@ -513,6 +517,9 @@ func (in sensorInput) toSensor(base model.Sensor) model.Sensor {
 	if in.Enabled != nil {
 		c.Enabled = *in.Enabled
 	}
+	if in.Icon != nil {
+		c.Icon = strings.TrimSpace(*in.Icon)
+	}
 	return c
 }
 
@@ -558,6 +565,10 @@ func (s *Server) handleCreateSensor(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := sensor.Validate(c); err != nil {
+		writeError(w, http.StatusBadRequest, "%s", err.Error())
+		return
+	}
+	if err := s.store.ValidateIconRef(r.Context(), c.Icon); err != nil {
 		writeError(w, http.StatusBadRequest, "%s", err.Error())
 		return
 	}
@@ -610,6 +621,10 @@ func (s *Server) handleUpdateSensor(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := sensor.Validate(updated); err != nil {
+		writeError(w, http.StatusBadRequest, "%s", err.Error())
+		return
+	}
+	if err := s.store.ValidateIconRef(ctx, updated.Icon); err != nil {
 		writeError(w, http.StatusBadRequest, "%s", err.Error())
 		return
 	}
@@ -719,6 +734,14 @@ func (s *Server) handleValidateSensor(w http.ResponseWriter, r *http.Request) {
 
 	resp := map[string]any{"valid": true}
 	if err := sensor.Validate(c); err != nil {
+		writeJSON(w, http.StatusOK, map[string]any{"valid": false, "error": err.Error()})
+		return
+	}
+	// The icon is checked here too, and not only on the way in: the form's Test
+	// button is where somebody finds out that the symbol they chose does not exist,
+	// and a check that only ran at save time would report it as a failed save
+	// instead of as a field that is wrong.
+	if err := s.store.ValidateIconRef(r.Context(), c.Icon); err != nil {
 		writeJSON(w, http.StatusOK, map[string]any{"valid": false, "error": err.Error()})
 		return
 	}

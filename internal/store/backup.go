@@ -98,6 +98,8 @@ type BackupDoc struct {
 
 	Settings  *map[string]string `json:"settings"`
 	Sites     *[]BackupSite      `json:"sites"`
+	Groups    *[]BackupGroup     `json:"groups"`
+	Icons     *[]BackupIcon      `json:"icons"`
 	Channels  *[]BackupChannel   `json:"channels"`
 	Sensors   *[]BackupSensor    `json:"sensors"`
 	Users     *[]BackupUser      `json:"users"`
@@ -112,8 +114,41 @@ type BackupSite struct {
 	Kind      string   `json:"kind"`
 	Lat       *float64 `json:"lat"`
 	Lon       *float64 `json:"lon"`
+	Icon      string   `json:"icon,omitempty"`
 	SortOrder int      `json:"sort_order"`
 	Managed   bool     `json:"managed"`
+}
+
+// BackupGroup is what somebody has said about a group: its symbol, its colour and
+// its place in the order. The group itself is a word on a sensor and is not in this
+// document at all — restoring the sensors restores the groups with them.
+type BackupGroup struct {
+	Name      string `json:"name"`
+	Icon      string `json:"icon,omitempty"`
+	Colour    string `json:"colour,omitempty"`
+	SortOrder int    `json:"sort_order"`
+}
+
+// BackupIcon is one uploaded image, bytes and all, base64 in the JSON.
+//
+// The bytes travel because a backup that left them behind would not be the whole
+// installation: the file would restore the sensors that wear an uploaded icon and
+// none of the icons, and every one of them would draw nothing with no explanation
+// anywhere. They are small — internal/icon caps one at 64 KiB — and a backup is
+// already a document people open in an editor rather than mail around.
+//
+// The id is in the file and is written back as it stands, which is the one place in
+// this document where a row keeps its id. It has to: a sensor's icon column holds
+// `upload:7` as text, so a restore that renumbered the images would leave every
+// reference pointing at whatever happened to land in that row.
+type BackupIcon struct {
+	ID        int64  `json:"id"`
+	Name      string `json:"name,omitempty"`
+	MediaType string `json:"media_type"`
+	Width     int    `json:"width"`
+	Height    int    `json:"height"`
+	Data      []byte `json:"data"`
+	CreatedAt string `json:"created_at"`
 }
 
 // BackupChannel is one alert channel, credentials and all.
@@ -140,6 +175,7 @@ type BackupSensor struct {
 	// document for the same reason Site does: a backup that lost it would restore a
 	// sensor that alerts for itself while its router is down.
 	Parent        string         `json:"parent"`
+	Icon          string         `json:"icon,omitempty"`
 	Tags          []string       `json:"tags"`
 	Options       map[string]any `json:"options"`
 	ReminderEvery int            `json:"reminder_every_s"`
@@ -199,6 +235,8 @@ type BackupRollup struct {
 type Counts struct {
 	Settings  int `json:"settings"`
 	Sites     int `json:"sites"`
+	Groups    int `json:"groups"`
+	Icons     int `json:"icons"`
 	Channels  int `json:"channels"`
 	Sensors   int `json:"sensors"`
 	Users     int `json:"users"`
@@ -254,6 +292,12 @@ func (s *Store) Export(ctx context.Context, w io.Writer, opts ExportOptions) (Co
 
 	err := s.tx(ctx, func(tx *sql.Tx) error {
 		if err := exportSettings(ctx, tx, jw, &counts); err != nil {
+			return err
+		}
+		if err := exportGroups(ctx, tx, jw, &counts); err != nil {
+			return err
+		}
+		if err := exportIcons(ctx, tx, jw, &counts); err != nil {
 			return err
 		}
 		if err := exportSites(ctx, tx, jw, &counts); err != nil {
@@ -339,9 +383,66 @@ func exportSettings(ctx context.Context, tx *sql.Tx, jw *jsonWriter, counts *Cou
 	return nil
 }
 
+func exportGroups(ctx context.Context, tx *sql.Tx, jw *jsonWriter, counts *Counts) error {
+	rows, err := tx.QueryContext(ctx, `
+		SELECT name, icon, colour, sort_order FROM groups
+		ORDER BY sort_order ASC, name COLLATE NOCASE ASC`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	jw.section("groups")
+	jw.raw("[")
+	first := true
+	for rows.Next() {
+		var g BackupGroup
+		if err := rows.Scan(&g.Name, &g.Icon, &g.Colour, &g.SortOrder); err != nil {
+			return err
+		}
+		jw.item(first, g)
+		first = false
+		counts.Groups++
+	}
+	jw.close("]", first)
+	return rows.Err()
+}
+
+// exportIcons writes the uploaded images, bytes included.
+//
+// The bytes make this the one section of the document that is not a sentence per
+// row: each image is base64 in the JSON, and one icon is up to eighty-eight
+// kilobytes of it. The writer holds one row at a time and never the section, so the
+// memory this costs is one icon rather than all of them.
+func exportIcons(ctx context.Context, tx *sql.Tx, jw *jsonWriter, counts *Counts) error {
+	rows, err := tx.QueryContext(ctx,
+		`SELECT id, name, media_type, width, height, bytes, created_at FROM icons
+		 ORDER BY id ASC`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	jw.section("icons")
+	jw.raw("[")
+	first := true
+	for rows.Next() {
+		var i BackupIcon
+		if err := rows.Scan(&i.ID, &i.Name, &i.MediaType, &i.Width, &i.Height,
+			&i.Data, &i.CreatedAt); err != nil {
+			return err
+		}
+		jw.item(first, i)
+		first = false
+		counts.Icons++
+	}
+	jw.close("]", first)
+	return rows.Err()
+}
+
 func exportSites(ctx context.Context, tx *sql.Tx, jw *jsonWriter, counts *Counts) error {
 	rows, err := tx.QueryContext(ctx, `
-		SELECT name, kind, lat, lon, sort_order, managed FROM sites
+		SELECT name, kind, lat, lon, icon, sort_order, managed FROM sites
 		ORDER BY sort_order ASC, name COLLATE NOCASE ASC`)
 	if err != nil {
 		return err
@@ -357,7 +458,8 @@ func exportSites(ctx context.Context, tx *sql.Tx, jw *jsonWriter, counts *Counts
 			lat, lon sql.NullFloat64
 			managed  int
 		)
-		if err := rows.Scan(&site.Name, &site.Kind, &lat, &lon, &site.SortOrder, &managed); err != nil {
+		if err := rows.Scan(&site.Name, &site.Kind, &lat, &lon, &site.Icon,
+			&site.SortOrder, &managed); err != nil {
 			return err
 		}
 		if lat.Valid {
@@ -418,7 +520,7 @@ func exportChannels(ctx context.Context, tx *sql.Tx, jw *jsonWriter, counts *Cou
 func exportSensors(ctx context.Context, tx *sql.Tx, jw *jsonWriter, counts *Counts) error {
 	rows, err := tx.QueryContext(ctx, `
 		SELECT id, name, type, target, interval_s, timeout_s, retries, enabled, grp,
-		       COALESCE(site,''), COALESCE(parent,''), tags, options, reminder_every_s,
+		       COALESCE(site,''), COALESCE(parent,''), icon, tags, options, reminder_every_s,
 		       sort_order, managed, origin
 		FROM sensors ORDER BY sort_order ASC, name COLLATE NOCASE ASC`)
 	if err != nil {
@@ -443,7 +545,7 @@ func exportSensors(ctx context.Context, tx *sql.Tx, jw *jsonWriter, counts *Coun
 		)
 		if err := rows.Scan(&r.id, &r.sensor.Name, &r.sensor.Type, &r.sensor.Target,
 			&r.sensor.Interval, &r.sensor.Timeout, &r.sensor.Retries, &enabled,
-			&r.sensor.Group, &site, &parent, &tags, &options, &r.sensor.ReminderEvery,
+			&r.sensor.Group, &site, &parent, &r.sensor.Icon, &tags, &options, &r.sensor.ReminderEvery,
 			&r.sensor.SortOrder, &managed, &r.sensor.Origin); err != nil {
 			return err
 		}
@@ -846,6 +948,23 @@ func restoreAll(ctx context.Context, tx *sql.Tx, doc BackupDoc) (Counts, bool, e
 		}
 	}
 
+	// Icons and groups first: nothing points at them through a foreign key, so
+	// their order among themselves does not matter — but a sensor restored a moment
+	// later should find the image it names already in the table rather than the
+	// other way round, and reading the statements in the order they are applied is
+	// worth more than the microseconds it costs.
+	if doc.Groups != nil {
+		if err := restoreGroups(ctx, tx, *doc.Groups, &counts); err != nil {
+			return counts, false, err
+		}
+	}
+
+	if doc.Icons != nil {
+		if err := restoreIcons(ctx, tx, *doc.Icons, &counts); err != nil {
+			return counts, false, err
+		}
+	}
+
 	// Sites before sensors: a sensor's site is a foreign key into this table, and
 	// SQLite checks it at the end of the statement rather than deferring it to the
 	// commit.
@@ -1059,13 +1178,76 @@ func restoreSites(ctx context.Context, tx *sql.Tx, sites []BackupSite, counts *C
 			return fmt.Errorf("%w: a site in this backup has no name", ErrBadBackup)
 		}
 		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO sites (name, kind, lat, lon, sort_order, managed, created_at, updated_at)
-			VALUES (?,?,?,?,?,?,?,?)`,
-			site.Name, site.Kind, site.Lat, site.Lon, site.SortOrder,
+			INSERT INTO sites (name, kind, lat, lon, icon, sort_order, managed, created_at, updated_at)
+			VALUES (?,?,?,?,?,?,?,?,?)`,
+			site.Name, site.Kind, site.Lat, site.Lon, site.Icon, site.SortOrder,
 			boolToInt(site.Managed), fmtTime(now), fmtTime(now)); err != nil {
 			return fmt.Errorf("site %q: %w", site.Name, err)
 		}
 		counts.Sites++
+	}
+	return nil
+}
+
+// restoreGroups replaces what the file says about groups.
+//
+// Nothing has to be cleared first, which is the pleasant half of a group being a
+// word on a sensor rather than a row: no foreign key points here, so the rows can be
+// replaced in any order and a sensor whose group the file does not mention simply
+// has no settings, exactly as it would on a fresh installation.
+func restoreGroups(ctx context.Context, tx *sql.Tx, groups []BackupGroup, counts *Counts) error {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM groups`); err != nil {
+		return err
+	}
+	now := time.Now().UTC()
+	for _, g := range groups {
+		if g.Name == "" {
+			return fmt.Errorf("%w: a group in this backup has no name", ErrBadBackup)
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO groups (name, icon, colour, sort_order, created_at, updated_at)
+			VALUES (?,?,?,?,?,?)`,
+			g.Name, g.Icon, g.Colour, g.SortOrder, fmtTime(now), fmtTime(now)); err != nil {
+			return fmt.Errorf("group %q: %w", g.Name, err)
+		}
+		counts.Groups++
+	}
+	return nil
+}
+
+// restoreIcons replaces the uploaded images, ids and all.
+//
+// The id is written back as the file has it, which is the one row in this document
+// that keeps its identity through a restore. It has to be: a sensor's icon column
+// says `upload:7` as plain text, with no foreign key and nothing to re-link it, so
+// an image that came back under a different number would leave every reference
+// pointing at whatever else landed there. The bytes are not re-validated — this is a
+// file this program wrote, and refusing half of it because an image is larger than
+// today's cap would be a restore that did not happen for a reason nobody could act
+// on.
+//
+// A sensor whose icon the file does not carry keeps the reference it has, and it
+// draws nothing. That is the same state an icon reaches by being deleted, and it is
+// why the delete endpoint asks first: the reference is only a string.
+func restoreIcons(ctx context.Context, tx *sql.Tx, icons []BackupIcon, counts *Counts) error {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM icons`); err != nil {
+		return err
+	}
+	for _, i := range icons {
+		if len(i.Data) == 0 {
+			return fmt.Errorf("%w: icon %d in this backup has no image", ErrBadBackup, i.ID)
+		}
+		createdAt := i.CreatedAt
+		if createdAt == "" {
+			createdAt = fmtTime(time.Now().UTC())
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO icons (id, name, media_type, width, height, bytes, created_at)
+			VALUES (?,?,?,?,?,?,?)`,
+			i.ID, i.Name, i.MediaType, i.Width, i.Height, i.Data, createdAt); err != nil {
+			return fmt.Errorf("icon %d: %w", i.ID, err)
+		}
+		counts.Icons++
 	}
 	return nil
 }
@@ -1178,13 +1360,13 @@ func restoreSensors(ctx context.Context, tx *sql.Tx, sensors []BackupSensor, ids
 		} else {
 			res, err := tx.ExecContext(ctx, `
 				INSERT INTO sensors (name, type, target, interval_s, timeout_s, retries, enabled,
-				                     grp, site, parent, tags, options, reminder_every_s, sort_order,
+				                     grp, site, parent, icon, tags, options, reminder_every_s, sort_order,
 				                     managed, origin, created_at, updated_at)
-				VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+				VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 				sensor.Name, sensor.Type, sensor.Target, interval, timeout, retries,
-				boolToInt(sensor.Enabled), sensor.Group, site, nullIfEmpty(sensor.Parent), tags,
-				string(options), sensor.ReminderEvery, sensor.SortOrder, boolToInt(sensor.Managed),
-				sensor.Origin, fmtTime(now), fmtTime(now))
+				boolToInt(sensor.Enabled), sensor.Group, site, nullIfEmpty(sensor.Parent),
+				sensor.Icon, tags, string(options), sensor.ReminderEvery, sensor.SortOrder,
+				boolToInt(sensor.Managed), sensor.Origin, fmtTime(now), fmtTime(now))
 			if err != nil {
 				return fmt.Errorf("sensor %q: %w", sensor.Name, err)
 			}

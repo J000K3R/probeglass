@@ -427,12 +427,28 @@ func (r *run) checkConfigSpecs(ctx context.Context) {
 		if err := sensor.Validate(c); err != nil {
 			bad = append(bad, fmt.Sprintf("sensor %q: %v", spec.Name, err))
 		}
+		// The icon is checked here as well as in serve, and for the same reason the
+		// rest of the file is: an `upload:` reference to an image this installation
+		// does not have would stop the daemon at the next start, and doctor exists
+		// to say that in advance rather than in a container that will not come up.
+		// Without a database there is nothing to look the id up in, and the check is
+		// skipped rather than reported as a failure that is not one.
+		if r.st != nil {
+			if err := r.st.ValidateIconRef(ctx, c.Icon); err != nil {
+				bad = append(bad, fmt.Sprintf("sensor %q: %v", spec.Name, err))
+			}
+		}
 	}
 	for _, spec := range r.cfg.Sites {
 		site := spec.ToSite()
 		store.NormaliseSite(&site)
 		if err := store.ValidateSite(site); err != nil {
 			bad = append(bad, fmt.Sprintf("site %q: %v", spec.Name, err))
+		}
+		if r.st != nil {
+			if err := r.st.ValidateIconRef(ctx, site.Icon); err != nil {
+				bad = append(bad, fmt.Sprintf("site %q: %v", spec.Name, err))
+			}
 		}
 	}
 	for _, spec := range r.cfg.Channels {

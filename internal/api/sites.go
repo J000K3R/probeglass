@@ -54,6 +54,7 @@ type siteInput struct {
 	Kind string   `json:"kind"`
 	Lat  *float64 `json:"lat"`
 	Lon  *float64 `json:"lon"`
+	Icon string   `json:"icon"`
 }
 
 func (in siteInput) toSite() model.Site {
@@ -62,6 +63,7 @@ func (in siteInput) toSite() model.Site {
 		Kind: model.SiteKind(strings.ToLower(strings.TrimSpace(in.Kind))),
 		Lat:  in.Lat,
 		Lon:  in.Lon,
+		Icon: strings.TrimSpace(in.Icon),
 	}
 }
 
@@ -73,6 +75,10 @@ func (s *Server) handleCreateSite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	site := in.toSite()
+	if err := s.store.ValidateIconRef(r.Context(), site.Icon); err != nil {
+		writeError(w, http.StatusBadRequest, "%s", err.Error())
+		return
+	}
 	if err := s.store.CreateSite(r.Context(), &site); err != nil {
 		s.writeSiteError(w, err, "could not create the site")
 		return
@@ -106,6 +112,10 @@ func (s *Server) handleUpdateSite(w http.ResponseWriter, r *http.Request) {
 	}
 	site := in.toSite()
 	ctx := r.Context()
+	if err := s.store.ValidateIconRef(ctx, site.Icon); err != nil {
+		writeError(w, http.StatusBadRequest, "%s", err.Error())
+		return
+	}
 	if err := s.store.UpdateSite(ctx, oldName, &site); err != nil {
 		s.writeSiteError(w, err, "could not update the site")
 		return
@@ -177,6 +187,11 @@ func (s *Server) writeSiteError(w http.ResponseWriter, err error, msg string) {
 // for a person — "latitude 91 is outside -90..90" — and giving each one a type so
 // that a handler could switch on it would buy nothing a reader of the message
 // does not already get.
+//
+// Every sentence the store refuses input with belongs in this list, which is why
+// the icon and group ones are here beside the site ones: what the list decides is
+// the difference between a 400 that says what to type instead and a 500 that sends
+// whoever reads the log looking for a bug that is not there.
 func isValidationError(err error) bool {
 	if err == nil {
 		return false
@@ -190,6 +205,19 @@ func isValidationError(err error) bool {
 		"is outside",
 		"both coordinates or neither",
 		"already exists",
+		// icons and groups
+		"a group needs a name",
+		"is not a colour",
+		"is not an icon",
+		"there is no built-in icon",
+		"there is no uploaded icon",
+		"an icon may be at most",
+		"an icon has to be",
+		"an icon name may be at most",
+		"the image could not be read",
+		"the file is empty",
+		"the image has no size",
+		"images of type",
 	} {
 		if strings.Contains(msg, s) {
 			return true
