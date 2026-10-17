@@ -420,10 +420,10 @@ export const de = {
   'settings.doctorFail': 'fehler',
   'settings.doctorOutput': 'Vollständige Ausgabe',
   'settings.dashboard': 'Dashboard-Vorgaben',
-  'settings.dashboardHint': 'Was diese Installation gespeichert hat und wie lange sie es behält. Die Kopf-Widgets weiter unten sind dieselbe Liste, die man auf dem Dashboard selbst durch Ziehen der Kacheln anordnet.',
-  // Der Kopf des Dashboards wird auf dem Dashboard selbst angeordnet; dieses
-  // Panel ist dieselbe Liste, ausgeschrieben, für alle, die sie lieber als Liste
-  // sehen als Kacheln hin und her zu ziehen.
+  'settings.dashboardHint': 'Was diese Installation gespeichert hat und wie lange sie es behält.',
+  // Der Kopf des Dashboards wird auf dem Dashboard selbst angeordnet; die
+  // Kategorie „Widgets" ist dieselbe Liste, ausgeschrieben, für alle, die sie
+  // lieber als Liste sehen als Kacheln hin und her zu ziehen.
   'settings.widgets': 'Widgets im Kopf',
   'settings.widgetsHint': 'Was oben auf dem Dashboard steht und in welcher Reihenfolge. Dieselbe Liste ordnet man an, indem man die Kacheln selbst zieht.',
   'settings.retention': 'Aufbewahrung des Verlaufs',

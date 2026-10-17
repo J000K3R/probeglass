@@ -56,12 +56,12 @@ type pickerView struct {
 	Chosen  []string `json:"chosen"`
 }
 
-// The list is drawn twice — in the Widgets category and at the bottom of the
-// Dashboard panel — so every lookup here goes through the panel the test is looking
-// at. An id on its own would find whichever copy came first in the document, which
-// is the one in the category that is not on screen.
+// The list is drawn in the Widgets category, and the window the arranging button
+// opens carries a second copy of it, so every lookup here goes through the panel
+// the test is looking at. An id on its own would find whichever copy came first in
+// the document, which is the one in the window nobody has opened.
 const readPicker = `(() => {
-  const rows = [...document.querySelectorAll('[data-panel="dashboard"] .widget-picks .widget-pick')];
+  const rows = [...document.querySelectorAll('[data-panel="widgets"] .widget-picks .widget-pick')];
   const box = (row) => row.querySelector('[data-pick-toggle]');
   return {
     offered: rows.map((row) => box(row).dataset.pickToggle),
@@ -117,7 +117,7 @@ func TestDashboardHeaderIsTheOldHeaderByDefault(t *testing.T) {
 			"starts with: uptime, latency, probes and since", shape.Figures)
 	}
 
-	// --- the picker, and the list that lives twice ---------------------------
+	// --- the picker, and the list the server keeps ---------------------------
 	//
 	// Which widgets exist is written down in two places: model.Widgets in Go,
 	// which is what the server will store, and the registry in widgets.js, which
@@ -128,8 +128,8 @@ func TestDashboardHeaderIsTheOldHeaderByDefault(t *testing.T) {
 	if err := withTimeout(ctx, func(tctx context.Context) error {
 		return chromedp.Do(tctx,
 			chromedp.Evaluate[chromedp.Void](`location.hash = '#/settings'`),
-			openSettingsCategory("monitor"),
-			chromedp.WaitVisible(`[data-panel="dashboard"] .widget-picks`),
+			openSettingsCategory("widgets"),
+			chromedp.WaitVisible(`[data-panel="widgets"] .widget-picks`),
 		)
 	}); err != nil {
 		capture(t, ctx, dir, "widget-picker-missing")

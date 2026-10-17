@@ -107,7 +107,7 @@ promises; the ordering is what the design already supports cheaply.
   width — the field does not go in behind the `⋮`, because a search box that has to be
   unfolded out of a menu is a search box nobody on a phone uses. One line from 320
   pixels to 2400, with less on it.
-- [x] **Settings in five tabs** with icons, one category on screen at a time rather
+- [x] **Settings in named tabs** with icons, one category on screen at a time rather
   than ten identical panels in a column. A settings hit in the search switches to
   the tab that owns it.
 - [x] **A header made of widgets.** The strip at the top of the dashboard — the ring

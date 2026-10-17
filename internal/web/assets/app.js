@@ -3521,25 +3521,25 @@ function widgetsPanel() {
         ${choice('clock', ui.clock, ['auto', '24', '12'])}
       </div>
       <p class="muted small">${esc(t('settings.clockHint'))}</p>
-      ${widgetPicker('widget-picks')}
+      ${widgetPicker()}
     </section>`;
 }
 
 /**
  * widgetPicker is the list of every widget there is, with a place to move it to.
  *
- * It is drawn twice — once in the Widgets category and once at the bottom of the
- * Dashboard panel, where the header is arranged — so it takes the id it is drawn
- * under. Two elements with one id is invalid, and it is invalid in the way that bites:
- * a lookup for that id finds whichever came first in the document, which is the copy
- * in the other category and therefore hidden. A test that waited for it waited for a
- * list nobody could see.
+ * It is drawn once, in the Widgets category, and that is the whole answer to where
+ * the header is arranged. It used to be drawn twice as well — here and at the bottom
+ * of the Dashboard panel under Monitoring — which put one list in two categories and
+ * left "which of these two is the real one" to be worked out by whoever found them.
+ * Both copies wrote the same preference, so neither was wrong; a setting that appears
+ * in two places still reads as two settings.
  *
- * The class is what the redraw goes by, since both copies have to follow a change.
+ * The class is what the redraw goes by.
  */
-function widgetPicker(id) {
+function widgetPicker() {
   return `
-    <ul class="widget-picks" id="${esc(id)}">${widgetPickRows()}</ul>
+    <ul class="widget-picks" id="widget-picks">${widgetPickRows()}</ul>
     <div class="form-actions">
       <button type="button" class="btn btn-small" data-pick-reset>${esc(t('widgets.reset'))}</button>
     </div>`;
@@ -3585,7 +3585,13 @@ async function persistWidgets(list) {
   syncWidgetPicker();
 }
 
-/** syncWidgetPicker redraws both copies of the picker's rows from the stored list. */
+/**
+ * syncWidgetPicker redraws every copy of the picker's rows from the stored list.
+ *
+ * "Every", not "the": the list is in the Widgets category as well as in the window
+ * the arranging button opens, and the two are on screen at different times — so one
+ * is redrawn that nobody is looking at, which is cheaper than working out which.
+ */
 function syncWidgetPicker() {
   for (const host of $$('.widget-picks')) host.innerHTML = widgetPickRows();
 }
@@ -4570,7 +4576,6 @@ async function renderSettings() {
         <dt>${esc(t('settings.retentionHourly'))}</dt><dd>${runtime.retention_hourly_hours ? `${runtime.retention_hourly_hours} h` : '—'}</dd>
         <dt>${esc(t('settings.retentionDaily'))}</dt><dd>${esc(t('settings.retentionDailyValue'))}</dd>
       </dl>
-      ${widgetPicker('widget-picks-board')}
     </section>
 
     ${sitesPanel()}

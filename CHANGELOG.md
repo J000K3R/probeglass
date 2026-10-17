@@ -150,6 +150,24 @@ here and what the release says are the same document.
   pointer is on the card or the keyboard is in it. The card's name carries a tooltip,
   so a name that does not fit is still readable.
 
+- **What the header shows is a settings category of its own, and its list is in it
+  once.** **Widgets** is the sixth category, holding the list of widgets and the way the
+  **clock** is written. It used to be a corner of Monitoring, which had grown to four
+  panels about things that are not what is being monitored.
+
+  The list itself was drawn twice — in that corner and in the new category, both writing
+  the same preference — so a setting that exists once appeared in two places, and which
+  of the two was "the real one" was left to whoever found them. It is now in the Widgets
+  category alone, and the Dashboard defaults panel under Monitoring is what it says it
+  is: what this installation has stored and how long it keeps it.
+
+  The **clock** writes its time the way the interface language does, and that is right
+  until it is not: somebody who reads English but grew up with a 24-hour clock is not
+  asking for `2:30 PM`. So there is a choice of **Automatic**, **24-hour** and
+  **12-hour** beside the list. It is a per-account preference like the theme and it
+  travels the same road, and the server refuses anything else — `clock=99` is a 400
+  rather than a stored value nothing can draw.
+
 - **Empty and loading states look like states, not like sentences.** A table with no
   rows, a list with nothing in it and a form with nothing to show all get the same
   box, where before some were an empty box and some were a muted sentence in the

@@ -423,10 +423,10 @@ const en = {
   'settings.doctorFail': 'fail',
   'settings.doctorOutput': 'Full command output',
   'settings.dashboard': 'Dashboard defaults',
-  'settings.dashboardHint': 'What this installation has stored, and how long it keeps it. The header widgets below are the same list that is arranged by dragging the tiles on the dashboard itself.',
-  // The header of the dashboard is arranged on the dashboard itself; this panel
-  // is the same list, spelled out, for anybody who would rather see it as a list
-  // than drag tiles around.
+  'settings.dashboardHint': 'What this installation has stored, and how long it keeps it.',
+  // The header of the dashboard is arranged on the dashboard itself; the Widgets
+  // category is the same list, spelled out, for anybody who would rather see it as
+  // a list than drag tiles around.
   'settings.widgets': 'Header widgets',
   'settings.widgetsHint': 'What is shown at the top of the dashboard, and in what order. The same list is arranged by dragging the tiles themselves.',
   'settings.retention': 'History retention',
