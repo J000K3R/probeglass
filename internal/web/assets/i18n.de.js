@@ -209,6 +209,13 @@ export const de = {
   'detail.incidents': 'Vorfälle in diesem Zeitraum',
   'detail.downtime': 'Ausfallzeit insgesamt',
   'detail.openSince': 'Ausgefallen seit',
+  // Die Beziehungen, im Dialog statt nur im Formular: was hinter diesem Sensor steht und
+  // was hinter ihm selbst steht. Eine Karte sagt „erwartet", wenn ein Elternteil unten
+  // ist, und sagt gar nichts, wenn alles läuft — ein grüner Sensor hinter einem anderen
+  // gab also keinen Hinweis, bis jemand das Formular öffnete.
+  'detail.dependsOn': 'Hängt ab von {name}',
+  'detail.dependedOnBy': '1 Sensor steht dahinter',
+  'detail.dependedOnByPlural': '{count} Sensoren stehen dahinter',
   'detail.lastProbe': 'Letzte Prüfung',
   'detail.never': 'nie',
   'detail.averageShort': 'Ø',
