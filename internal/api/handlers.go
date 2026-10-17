@@ -222,11 +222,22 @@ func (s *Server) handleSummary(w http.ResponseWriter, r *http.Request) {
 		sites[i].SensorCount = counts[sites[i].Name]
 	}
 
+	// The groups travel with the sensors for the reason the sites do: the card
+	// view, the tree and the wall all draw a heading per group, and two of them
+	// draw the symbol and the colour the settings give it. A second request would
+	// be a heading that appears plain and then changes its mind.
+	groups, err := s.store.ListGroups(ctx)
+	if err != nil {
+		s.fail(w, err, http.StatusInternalServerError, "could not load the groups")
+		return
+	}
+
 	writeJSON(w, http.StatusOK, map[string]any{
 		"summary":   sum,
 		"sensors":   views,
 		"incidents": recent,
 		"sites":     sites,
+		"groups":    groups,
 	})
 }
 

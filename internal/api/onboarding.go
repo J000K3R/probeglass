@@ -10,6 +10,7 @@ import (
 
 	"github.com/j000k3r/probeglass/internal/config"
 	"github.com/j000k3r/probeglass/internal/demo"
+	"github.com/j000k3r/probeglass/internal/icon"
 	"github.com/j000k3r/probeglass/internal/model"
 	"github.com/j000k3r/probeglass/internal/store"
 )
@@ -78,6 +79,12 @@ type exampleSensor struct {
 	// refused by the database.
 	Site    string
 	History demo.History
+	// Icon is the symbol the example wears. The examples carry one for the same
+	// reason they carry a site: the alternative is a first-run dashboard that shows
+	// the feature nowhere at all, and a picture of a router beside the gateway is
+	// what tells somebody the field exists. A built-in and never an upload — an
+	// example cannot name a row in somebody's database, and must not need one.
+	Icon string
 }
 
 // exampleSensorInterval is how often the examples probe. Five minutes is slow
@@ -147,7 +154,7 @@ func exampleSensors(dialAddr string) []exampleSensor {
 		{
 			Name: "This dashboard (example)", Type: model.SensorHTTP,
 			Target: "http://" + dialAddr + "/healthz",
-			Site:   here,
+			Site:   here, Icon: icon.BuiltinRef("monitor"),
 			History: demo.History{
 				Window: window, BaseMS: 3, JitterMS: 1,
 				SuccessMsg: "HTTP 200 OK", FailMsg: "dial tcp: connection refused",
@@ -156,7 +163,7 @@ func exampleSensors(dialAddr string) []exampleSensor {
 		{
 			Name: "Internet gateway (example)", Type: model.SensorPing,
 			Target: "192.168.1.1",
-			Site:   here,
+			Site:   here, Icon: icon.BuiltinRef("router"),
 			History: demo.History{
 				Window: window, BaseMS: 2, JitterMS: 1,
 				SuccessMsg: "3/3 replies, 0% loss", FailMsg: "100% packet loss",
@@ -166,7 +173,7 @@ func exampleSensors(dialAddr string) []exampleSensor {
 		{
 			Name: "Public DNS (example)", Type: model.SensorDNS,
 			Target: "one.one.one.one",
-			Site:   other,
+			Site:   other, Icon: icon.BuiltinRef("globe"),
 			History: demo.History{
 				Window: window, BaseMS: 24, JitterMS: 11,
 				SuccessMsg: "1 A record", FailMsg: "no such host",
@@ -175,7 +182,7 @@ func exampleSensors(dialAddr string) []exampleSensor {
 		{
 			Name: "Example website (example)", Type: model.SensorHTTP,
 			Target: "https://example.org",
-			Site:   other,
+			Site:   other, Icon: icon.BuiltinRef("cloud"),
 			History: demo.History{
 				Window: window, BaseMS: 148, JitterMS: 45,
 				SuccessMsg: "HTTP 200 OK", FailMsg: "dial tcp: i/o timeout",
@@ -294,6 +301,7 @@ func (s *Server) createExampleSensors(ctx context.Context, dialAddr string) (int
 			Retries:  2,
 			Enabled:  false,
 			Group:    "Examples",
+			Icon:     ex.Icon,
 			Options:  model.Options{},
 			// The mark that makes "remove all the example data" possible later. It
 			// is set here and by `seed --demo`, and by nothing else; a sensor the

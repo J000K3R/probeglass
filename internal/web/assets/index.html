@@ -406,6 +406,29 @@
   </form>
 </dialog>
 
+<!-- ---------------------------------------------------------- group modal -->
+<!-- The group editor. A fourth dialog, for the reason the other three are separate
+     elements: showModal() on an open dialog throws, and Settings is a page where
+     somebody may well have another one open. It edits what is *about* a group —
+     its symbol, its colour and where it stands in the order — and never the group
+     itself, which is a word typed on a sensor and is not a row anywhere. The name
+     is shown and not editable: renaming it here would mean renaming it on every
+     sensor that carries it, and those are sensors, not headings. -->
+<dialog id="modal-group" class="sheet sheet-narrow">
+  <form id="group-form" method="dialog">
+    <div class="sheet-head">
+      <h2 id="group-title"></h2>
+      <button class="icon-btn" id="group-x" type="button" data-close data-i18n-aria="common.close" aria-label="Close">&times;</button>
+    </div>
+    <div id="group-body" class="sheet-body"></div>
+    <p id="group-error" class="form-error" role="alert"></p>
+    <div class="sheet-foot">
+      <button class="btn" type="button" id="group-cancel" data-close data-i18n="common.cancel">Cancel</button>
+      <button class="btn btn-primary" type="submit" id="group-save" data-i18n="common.save">Save</button>
+    </div>
+  </form>
+</dialog>
+
 <!-- --------------------------------------------------------- widget picker -->
 <!-- What else there is to put in the header. It is a window of its own rather
      than dashed tiles inside the strip: the strip is what the dashboard looks

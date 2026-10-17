@@ -146,6 +146,14 @@ promises; the ordering is what the design already supports cheaply.
   keeps running. Chains work; circles and unknown parents are refused. The same
   mechanism as a maintenance window, with a second reason.
 
+- [x] **Symbols on sensors, places and groups.** Twenty-six drawings ship in the
+  binary and any image can be uploaded to the database instead — PNG, JPEG or GIF,
+  never SVG. A group's heading can wear one too, along with a colour from the same
+  six the accent setting offers, which is the half of "per-group colours" that used
+  to be a roadmap line of its own. Uploaded images are bytes in the one SQLite file
+  rather than files beside it, so copying that file is still the whole backup, and
+  an image something still points at cannot be deleted without saying so.
+
 ## Next — 0.2.x
 
 Ordered by value per unit of work.
@@ -153,10 +161,11 @@ Ordered by value per unit of work.
 - [ ] **More sensor types.** SSH banner, SMTP/IMAP greeting, UDP port, an ICMP
   TTL/hop sensor, and an HTTP sensor that follows a redirect chain and reports
   what it found. Each is one file in `internal/sensor`.
-- [ ] **Dashboard polish.** Per-group colours and drag-to-arrange groups. (The
-  side-by-side comparison view this item used to promise is the **tree**, the
-  **wall** and the **map**, which shipped above, and pinning a sensor to the top is
-  the header built out of widgets, which shipped with it.)
+- [ ] **Drag-to-arrange groups.** The order is a number in the group editor today,
+  which works and is not a thing anybody wants to do twice. (Per-group colours and
+  icons shipped above; the side-by-side comparison view this item used to promise is
+  the **tree**, the **wall** and the **map**, and pinning a sensor to the top is the
+  header built out of widgets.)
 - [ ] **Escalation.** A second channel that only fires when an incident is still
   open after N minutes.
 - [ ] **Import and export, for the configuration file.** The dashboard can already

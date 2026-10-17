@@ -16,8 +16,22 @@ import * as mapUI from './map.js';
 import * as userUI from './user.js';
 import * as searchUI from './search.js';
 import * as widgetsUI from './widgets.js';
+import * as iconUI from './icons.js';
 
 const esc = C.esc;
+
+/**
+ * ACCENTS are the colours this dashboard offers, for its own accent and for a
+ * group's heading — one list, because they are one palette and a second copy would
+ * be a colour that exists in one place and not in the other. The server sends the
+ * same six names along with the groups; this is what a build that has not heard
+ * from that route yet draws from.
+ *
+ * It is defined up here, above the state object that reads it: `const` is not
+ * hoisted into usability, and a list declared further down would make the whole
+ * module fail at the first line that touches it.
+ */
+const ACCENTS = ['azure', 'violet', 'emerald', 'amber', 'rose', 'slate'];
 
 // ---------------------------------------------------------------------------
 // state
@@ -36,6 +50,12 @@ const state = {
   // The sites. They arrive with the summary rather than on their own request, so
   // every view that groups by place already has them by the time it draws.
   sites: [],
+  // The groups, and what somebody has said about them: an icon, a colour, a place
+  // in the order. A group exists because a sensor names it, so this list is a
+  // superset of the headings the dashboard draws and never a requirement for one —
+  // a sensor in a group with no row here is the ordinary state of a fresh
+  // installation. They arrive with the summary for the same reason the sites do.
+  groups: [],
   // The maintenance windows and the kinds the form may offer. Read on the settings
   // page, like the sites, because nowhere else draws them.
   windows: [],
@@ -53,6 +73,9 @@ const state = {
   // the removal button is there at all, and how much it says it will take.
   exampleData: null,
   settings: null,
+  // The colours a group may be given, as the server lists them. Defaulted to the
+  // same six names so that the editor is complete before the first answer arrives.
+  accents: ACCENTS,
   query: '',
   route: 'dashboard',
   detail: null,
@@ -120,17 +143,27 @@ function when(value) {
 // on instead of hanging forever.
 const API_TIMEOUT_MS = 15000;
 
-/** Fetch JSON from the API, surfacing the server's error message. */
+/**
+ * Fetch JSON from the API, surfacing the server's error message.
+ *
+ * A FormData body is passed through as it is, with no Content-Type of ours: the
+ * one place that happens is an icon upload, and the boundary that separates the
+ * parts of a multipart body is chosen by the browser when it builds it. Setting
+ * `application/json` here would make the file unreadable on the server, and setting
+ * the type by hand is not possible either — the boundary is not known to this
+ * function. Everything else is JSON, as it always was.
+ */
 async function api(path, { method = 'GET', body, timeout = API_TIMEOUT_MS } = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);
+  const form = typeof FormData !== 'undefined' && body instanceof FormData;
   let res;
   try {
     res = await fetch(path, {
       method,
       credentials: 'same-origin',
-      headers: body === undefined ? {} : { 'Content-Type': 'application/json' },
-      body: body === undefined ? undefined : JSON.stringify(body),
+      headers: body === undefined || form ? {} : { 'Content-Type': 'application/json' },
+      body: body === undefined ? undefined : (form ? body : JSON.stringify(body)),
       signal: controller.signal,
     });
   } catch (err) {
@@ -289,6 +322,22 @@ const siteModal = sheet({
   save: '#site-save',
   cancel: '#site-cancel',
   x: '#site-x',
+});
+
+/**
+ * groupModal is the group editor, and it is the fourth dialog on purpose: its own
+ * element means its own form and its own error line, so whatever was open
+ * underneath keeps every value it was holding — see the comment on `sheet`.
+ */
+const groupModal = sheet({
+  dialog: '#modal-group',
+  form: '#group-form',
+  title: '#group-title',
+  body: '#group-body',
+  error: '#group-error',
+  save: '#group-save',
+  cancel: '#group-cancel',
+  x: '#group-x',
 });
 
 // A locked dialog has no way out but its own button: Escape would close it and
@@ -835,6 +884,11 @@ function showApp() {
   mountSearch();
   buildIncidentFilter();
 
+  // The icon pickers are wired here rather than inside the forms that carry them,
+  // because those forms are rebuilt on every open. One delegated listener set on the
+  // document is what survives that.
+  iconUI.mount({ api, toast, confirm: confirmDialog });
+
   applyHash();
 
   // The first load decides whether the dashboard is usable. If it fails, say so
@@ -1345,6 +1399,7 @@ async function refresh({ background = true, initial = false } = {}) {
     state.sensors = data.sensors || [];
     state.recentIncidents = data.incidents || [];
     state.sites = data.sites || [];
+    state.groups = data.groups || [];
     if (state.route === 'incidents') await loadIncidents();
     renderAll();
     applyRoleGating();
@@ -1602,7 +1657,7 @@ async function loadRouteData(route) {
     } else if (route === 'settings') {
       // Both of these decide whether a panel exists at all, so they have to be
       // there before the panel is drawn rather than filled in afterwards.
-      await Promise.all([loadUsers(), loadExampleData(), loadSites(), loadWindows()]);
+      await Promise.all([loadUsers(), loadExampleData(), loadSites(), loadGroups(), loadWindows()]);
       await renderSettings();
     }
   } catch (err) {
@@ -1749,6 +1804,11 @@ function renderDashboard() {
  * renderByGroup lays sensors out under the heading of the group they belong to,
  * in the order they arrived. It is what the card and list views have always
  * done; the tree and the wall do their own, deeper, nesting.
+ *
+ * The heading wears what the settings say about the group — its symbol and its
+ * colour — and a group nobody has said anything about keeps the plain heading it
+ * has always had. That is the ordinary case, so it is the one the markup falls back
+ * to rather than the one it is special-cased for.
  */
 function renderByGroup(sensors, render) {
   const byGroup = new Map();
@@ -1759,7 +1819,11 @@ function renderByGroup(sensors, render) {
   }
   let html = '';
   for (const [group, items] of byGroup) {
-    if (group) html += `<h2 class="group-title">${esc(group)}</h2>`;
+    if (group) {
+      const settings = iconUI.groupOf(state.groups, group);
+      html += `<h2 class="group-title"${iconUI.colourAttr(settings)}>` +
+        `${iconUI.groupIcon(settings)}${esc(group)}</h2>`;
+    }
     html += render(items);
   }
   return html;
@@ -1770,10 +1834,12 @@ function renderByGroup(sensors, render) {
  *
  * The callbacks are the same ones the cards already use, so every view opens the
  * same detail and offers the same buttons — the layouts module never learns what
- * any of it does, it only draws.
+ * any of it does, it only draws. The groups come along as data rather than as a way
+ * to ask, so that a layout can draw a heading without knowing where the settings
+ * came from.
  */
 function layoutContext() {
-  return { statusPill, cardActions, sparkline: C.sparkline, openDetail };
+  return { statusPill, cardActions, sparkline: C.sparkline, openDetail, groups: state.groups };
 }
 
 /**
@@ -1975,6 +2041,14 @@ function cardStats(sensor) {
     </div>`;
 }
 
+/**
+ * renderCard draws one sensor as a card.
+ *
+ * The symbol leads the name, and it is the sensor's own: nothing here asks what
+ * type it is. A ping sensor and an HTTP sensor on the same box are two rows of one
+ * story, and which drawing somebody chose for each is more use on a dashboard than
+ * the type they already know.
+ */
 function renderCard(sensor) {
   const down = sensor.status === 'down';
   const acked = sensor.open_incident?.acked_at;
@@ -1983,7 +2057,7 @@ function renderCard(sensor) {
     <article class="card st-${esc(sensor.status)}${down ? ' is-down' : ''}${sensor.excuse ? ' in-excused in-' + esc(sensor.excuse) : ''}${acked ? ' is-acked' : ''}${example ? ' is-example' : ''}" data-id="${sensor.id}" data-origin="${esc(sensor.origin || '')}" tabindex="0">
       <header class="card-head">
         ${statusPill(sensor)}
-        <h3 class="card-name">${esc(sensor.name)}</h3>
+        <h3 class="card-name">${iconUI.iconMarkup(sensor.icon, { size: 16, cls: 'icon-lead' })}${esc(sensor.name)}</h3>
         ${example ? `<span class="pill badge-example" title="${esc(t('examples.badgeHint'))}">${esc(t('examples.badge'))}</span>` : ''}
         ${acked ? `<span class="pill st-acked" title="${esc(t('ack.badge'))}">🔕 ${esc(t('ack.short'))}</span>` : ''}
       </header>
@@ -2011,7 +2085,7 @@ function renderListRow(sensor) {
     <tr class="row st-${esc(sensor.status)}${sensor.status === 'down' ? ' is-down' : ''}${sensor.excuse ? ' in-excused in-' + esc(sensor.excuse) : ''}" data-id="${sensor.id}">
       <td>${statusPill(sensor)}</td>
       <td class="cell-name">
-        <b>${esc(sensor.name)}</b>
+        <b>${iconUI.iconMarkup(sensor.icon, { size: 15, cls: 'icon-lead' })}${esc(sensor.name)}</b>
         <span class="muted">${esc(sensor.target)}</span>
       </td>
       <td>${C.sparkline(sensor.sparkline || [], { width: 140, height: 26 })}</td>
@@ -2802,6 +2876,10 @@ function sensorFormMarkup(sensor) {
       <span>${esc(c.name)} <small class="muted">${esc(c.type)}</small></span></label>`;
   }).join('');
 
+  // The icon field is a div rather than a label, unlike every field around it, and
+  // that is not an oversight: it holds a button, and a label forwards a click to the
+  // first labelable element inside it — so a click on "Icon" would open the picker
+  // and close it again in the same breath.
   return `
     <div class="grid-2">
       <label class="field"><span>${withHelp(t('sensor.name'), 'help.sensor.name')}</span>
@@ -2834,6 +2912,10 @@ function sensorFormMarkup(sensor) {
       <label class="field"><span>${withHelp(t('sensor.parent'), 'help.sensor.parent')}</span>
         <select name="parent" id="sensor-parent">${parentOptions(sensor?.parent, sensor?.name)}</select></label>
     </div>
+
+    <div class="field adv-hide"><span>${withHelp(t('icons.label'), 'help.sensor.icon')}</span>
+      ${iconUI.iconFieldMarkup(sensor?.icon || '')}</div>
+
     <datalist id="group-list">
       ${[...new Set(state.sensors.map((c) => c.group).filter(Boolean))].map((g) => `<option value="${esc(g)}">`).join('')}
     </datalist>
@@ -2908,6 +2990,7 @@ function readSensorForm(form) {
     // without making anything — means the sensor has no place, not a place
     // called `__new__`.
     site: form.elements.site.value === NEW_SITE ? '' : form.elements.site.value,
+    icon: iconUI.readIconField(form),
     tags: form.elements.tags.value.split(',').map((v) => v.trim()).filter(Boolean),
     reminder_every: Number(form.elements.reminder_every.value) || 0,
     options: readOptions(form, def),
@@ -3048,6 +3131,26 @@ $('#site-form').addEventListener('submit', async (event) => {
     await submitSite(form);
     siteModal.close();
   } catch (err) {
+    error.textContent = err.message;
+  } finally {
+    save.disabled = false;
+  }
+});
+
+$('#group-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const form = event.target;
+  const error = $('#group-error');
+  error.textContent = '';
+  const save = $('#group-save');
+  save.disabled = true;
+  try {
+    await submitGroup(form);
+    groupModal.close();
+  } catch (err) {
+    // In the dialog and not in a toast, for the reason the site form gives: these
+    // are messages about the fields in front of you — "there is no built-in icon
+    // nope" is only useful while the picker that chose it is still on screen.
     error.textContent = err.message;
   } finally {
     save.disabled = false;
@@ -3382,13 +3485,25 @@ function widgetsPanel() {
         ${choice('clock', ui.clock, ['auto', '24', '12'])}
       </div>
       <p class="muted small">${esc(t('settings.clockHint'))}</p>
-      ${widgetPicker()}
+      ${widgetPicker('widget-picks')}
     </section>`;
 }
 
-function widgetPicker() {
+/**
+ * widgetPicker is the list of every widget there is, with a place to move it to.
+ *
+ * It is drawn twice — once in the Widgets category and once at the bottom of the
+ * Dashboard panel, where the header is arranged — so it takes the id it is drawn
+ * under. Two elements with one id is invalid, and it is invalid in the way that bites:
+ * a lookup for that id finds whichever came first in the document, which is the copy
+ * in the other category and therefore hidden. A test that waited for it waited for a
+ * list nobody could see.
+ *
+ * The class is what the redraw goes by, since both copies have to follow a change.
+ */
+function widgetPicker(id) {
   return `
-    <ul class="widget-picks" id="widget-picks">${widgetPickRows()}</ul>
+    <ul class="widget-picks" id="${esc(id)}">${widgetPickRows()}</ul>
     <div class="form-actions">
       <button type="button" class="btn btn-small" data-pick-reset>${esc(t('widgets.reset'))}</button>
     </div>`;
@@ -3434,10 +3549,9 @@ async function persistWidgets(list) {
   syncWidgetPicker();
 }
 
-/** syncWidgetPicker redraws the picker's rows from the stored list. */
+/** syncWidgetPicker redraws both copies of the picker's rows from the stored list. */
 function syncWidgetPicker() {
-  const host = $('#widget-picks');
-  if (host) host.innerHTML = widgetPickRows();
+  for (const host of $$('.widget-picks')) host.innerHTML = widgetPickRows();
 }
 
 /** Move one widget one place along in the stored list. */
@@ -3585,6 +3699,55 @@ function sitesPanel() {
 }
 
 /**
+ * groupsPanel lists the groups this installation has, and what their headings look
+ * like.
+ *
+ * Every row is a word some sensor carries, and some of those rows have settings and
+ * some have none — the two are drawn the same way, because a group with no settings
+ * is a group, not an unfinished one. There is no "new group" button: a group is made
+ * by typing its name on a sensor, and a button here that made a row with no sensors
+ * on it would be inventing a second way to do that.
+ */
+function groupsPanel() {
+  const groups = state.groups || [];
+  const rows = groups.map((group) => {
+    const settings = iconUI.groupOf(groups, group.name);
+    return `
+    <tr data-name="${esc(group.name)}"${iconUI.colourAttr(settings)}>
+      <td><span class="group-cell">
+        <i class="group-dot" aria-hidden="true"></i>
+        ${iconUI.groupIcon(settings, 16)}
+        <b>${esc(group.name)}</b>
+      </span></td>
+      <td class="num">${group.sensor_count || 0}</td>
+      <td class="row-actions">
+        <button class="btn" data-action="group-edit" data-name="${esc(group.name)}"${denied('admin')}>${esc(t('common.edit'))}</button>
+        <button class="btn btn-danger" data-action="group-forget" data-name="${esc(group.name)}"${denied('admin')}>${esc(t('groups.forget'))}</button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  return `
+    <section class="panel" id="groups-panel" data-panel="groups" data-group="monitor">
+      <div class="panel-head">
+        <h2>${esc(t('groups.title'))}</h2>
+        <p class="panel-hint">${esc(t('groups.hint'))}</p>
+      </div>
+      ${groups.length ? `
+      <div class="table-wrap">
+        <table class="data-table groups-table">
+          <thead><tr>
+            <th>${esc(t('sensor.group'))}</th>
+            <th class="num">${esc(t('settings.sensors'))}</th>
+            <th></th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>` : `<p class="muted small">${esc(t('groups.empty'))}</p>`}
+    </section>`;
+}
+
+/**
  * mapPanel is the tile source, and the sentence that has to be read with it.
  *
  * Empty is the default and it means "off" rather than "not set": the map draws the
@@ -3630,7 +3793,7 @@ function mapPanel() {
  * without saying why reads like a mistake.
  */
 function openSiteDialog(existing, { onSaved, onClosed, hint } = {}) {
-  const site = existing || { name: '', kind: 'local', lat: null, lon: null };
+  const site = existing || { name: '', kind: 'local', lat: null, lon: null, icon: '' };
   const coord = (value) => (value === null || value === undefined ? '' : String(value));
   const form = $('#site-form');
   const dialog = $('#modal-site');
@@ -3648,6 +3811,8 @@ function openSiteDialog(existing, { onSaved, onClosed, hint } = {}) {
         <select name="kind">
           ${['local', 'external'].map((k) => `<option value="${k}"${k === site.kind ? ' selected' : ''}>${esc(t(`sites.kind.${k}`))}</option>`).join('')}
         </select></label>
+      <div class="field adv-hide"><span>${withHelp(t('icons.label'), 'help.sites.icon')}</span>
+        ${iconUI.iconFieldMarkup(site.icon || '')}</div>
       <div class="grid-2">
         <label class="field"><span>${esc(t('sites.latitude'))}</span>
           <input name="lat" type="number" step="any" min="-90" max="90" value="${esc(coord(site.lat))}"></label>
@@ -3679,7 +3844,11 @@ function openSiteDialog(existing, { onSaved, onClosed, hint } = {}) {
  */
 function readSiteForm(form) {
   const value = (name) => form.elements.namedItem(name).value.trim();
-  const body = { name: value('site_name'), kind: value('kind') };
+  const body = {
+    name: value('site_name'),
+    kind: value('kind'),
+    icon: iconUI.readIconField(form),
+  };
   const lat = value('lat');
   const lon = value('lon');
   if (lat !== '' || lon !== '') {
@@ -3744,6 +3913,111 @@ async function removeSite(site) {
  */
 async function afterSiteChange() {
   await loadSites(true);
+  await refresh({ background: true });
+  await renderSettings();
+}
+
+// ---------------------------------------------------------------------------
+// groups
+// ---------------------------------------------------------------------------
+
+/**
+ * loadGroups reads the groups and what is known about them.
+ *
+ * The dashboard gets them with the summary; this is for the settings page opened
+ * directly, where there is no summary behind it — a bookmark to Settings, or a
+ * reload while the tab is already chosen.
+ */
+async function loadGroups(force = false) {
+  if (state.groups.length && !force) return state.groups;
+  const data = await api('/api/groups');
+  state.groups = data.groups || [];
+  // The colours come with the list, and are kept so that the editor offers exactly
+  // what the server would accept. ACCENTS is what a build that has not heard from
+  // this route yet falls back to, and the two are the same six names.
+  if (data.accents && data.accents.length) state.accents = data.accents;
+  return state.groups;
+}
+
+/**
+ * openGroupEditor edits what is about a group: its symbol, its colour, and where it
+ * stands in the order.
+ *
+ * The name is printed and not editable, and that is the design talking: a group is a
+ * word on a sensor, so "renaming" one here would mean rewriting it on every sensor
+ * that carries it — which is editing sensors, and not what this window is for. An
+ * empty row is a group nobody has said anything about yet, which is why this opens
+ * with nothing filled in rather than refusing to exist.
+ */
+function openGroupEditor(name, group) {
+  const settings = group || { name, icon: '', colour: '', sort_order: 0 };
+  groupModal.open({
+    title: t('groups.editorTitle', { name }),
+    mode: 'group',
+    id: name,
+    body: `
+      <p class="muted small sheet-note">${esc(t('groups.editorNote', {
+        count: settings.sensor_count || 0,
+      }))}</p>
+      <div class="field"><span>${withHelp(t('icons.label'), 'help.groups.icon')}</span>
+        ${iconUI.iconFieldMarkup(settings.icon || '')}</div>
+      <label class="field"><span>${withHelp(t('groups.colour'), 'help.groups.colour')}</span>
+        <select name="colour">
+          <option value="">${esc(t('groups.colourNone'))}</option>
+          ${(state.accents || ACCENTS).map((c) =>
+            `<option value="${esc(c)}"${c === settings.colour ? ' selected' : ''}>${esc(t(`settings.accent.${c}`))}</option>`).join('')}
+        </select></label>
+      <label class="field"><span>${esc(t('groups.order'))}</span>
+        <input name="sort_order" type="number" value="${Number(settings.sort_order) || 0}"></label>
+      <p class="muted small">${esc(t('groups.orderHint'))}</p>`,
+  });
+}
+
+/** readGroupForm turns the editor into what the API takes. */
+function readGroupForm(form) {
+  return {
+    icon: iconUI.readIconField(form),
+    colour: form.elements.colour.value,
+    sort_order: Number(form.elements.sort_order.value) || 0,
+  };
+}
+
+async function submitGroup(form) {
+  const name = form.dataset.id;
+  await api(`/api/groups/${encodeURIComponent(name)}`, {
+    method: 'PUT',
+    body: readGroupForm(form),
+  });
+  await afterGroupChange();
+  toast(t('groups.saved'));
+}
+
+/**
+ * forgetGroup removes what was said about a group and leaves the group alone.
+ *
+ * The question says so in as many words, because the button sits in a table of rows
+ * that look like things and "delete" next to a row reads like deleting the row. What
+ * goes is the symbol, the colour and the place in the order; the sensors keep the
+ * word and the heading keeps standing there.
+ */
+async function forgetGroup(name, group) {
+  const count = (group && group.sensor_count) || 0;
+  if (!confirmDialog(t('groups.forgetConfirm', { name, count }))) return;
+  await api(`/api/groups/${encodeURIComponent(name)}`, { method: 'DELETE' });
+  await afterGroupChange();
+  toast(t('groups.forgotten'));
+}
+
+/**
+ * afterGroupChange redraws every place a group appears.
+ *
+ * The headings are drawn from the summary the dashboard was last given, so a change
+ * to a group's symbol or colour has to reach the summary as well as this panel —
+ * otherwise the tree goes on drawing the old heading and the edit looks like it did
+ * not take.
+ */
+async function afterGroupChange() {
+  await loadGroups(true);
   await refresh({ background: true });
   await renderSettings();
 }
@@ -4115,7 +4389,7 @@ const SETTINGS_GROUPS = [
   // arrangement used to sit: what the top of the dashboard shows is not what is being
   // monitored, and Monitoring had grown to four panels.
   { key: 'widgets', panels: ['widgets'] },
-  { key: 'monitor', panels: ['dashboard', 'sites', 'maintenance', 'examples'] },
+  { key: 'monitor', panels: ['dashboard', 'sites', 'groups', 'maintenance', 'examples'] },
   { key: 'access', panels: ['access', 'users'] },
   { key: 'backup', panels: ['backup'] },
   { key: 'help', panels: ['help', 'diagnostics', 'about'] },
@@ -4224,7 +4498,7 @@ async function renderSettings() {
       <div class="grid-2">
         ${choice('mode', ui.mode, ['simple', 'advanced'])}
         ${choice('theme', ui.theme, ['auto', 'dark', 'light'])}
-        ${choice('accent', ui.accent, ['azure', 'violet', 'emerald', 'amber', 'rose', 'slate'], 'adv-hide')}
+        ${choice('accent', ui.accent, ACCENTS, 'adv-hide')}
         ${choice('density', ui.density, ['comfortable', 'compact'], 'adv-hide')}
         ${choice('layout', ui.layout, ['grid', 'list', 'tree', 'wall', 'map'], 'adv-hide')}
         <label class="field"><span>${esc(t('settings.language'))}</span>
@@ -4259,10 +4533,12 @@ async function renderSettings() {
         <dt>${esc(t('settings.retentionHourly'))}</dt><dd>${runtime.retention_hourly_hours ? `${runtime.retention_hourly_hours} h` : '—'}</dd>
         <dt>${esc(t('settings.retentionDaily'))}</dt><dd>${esc(t('settings.retentionDailyValue'))}</dd>
       </dl>
-      ${widgetPicker()}
+      ${widgetPicker('widget-picks-board')}
     </section>
 
     ${sitesPanel()}
+
+    ${groupsPanel()}
 
     ${maintenancePanel()}
 
@@ -4690,6 +4966,12 @@ async function onSettingsClick(event) {
     } else if (action === 'site-delete') {
       const site = state.sites.find((s) => s.name === button.dataset.name);
       if (site) await removeSite(site);
+    } else if (action === 'group-edit') {
+      const group = iconUI.groupOf(state.groups, button.dataset.name);
+      openGroupEditor(button.dataset.name, group);
+    } else if (action === 'group-forget') {
+      const group = iconUI.groupOf(state.groups, button.dataset.name);
+      await forgetGroup(button.dataset.name, group);
     } else if (action === 'window-new') {
       openWindowEditor(null);
     } else if (action === 'window-edit') {

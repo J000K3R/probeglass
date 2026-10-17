@@ -56,8 +56,12 @@ type pickerView struct {
 	Chosen  []string `json:"chosen"`
 }
 
+// The list is drawn twice — in the Widgets category and at the bottom of the
+// Dashboard panel — so every lookup here goes through the panel the test is looking
+// at. An id on its own would find whichever copy came first in the document, which
+// is the one in the category that is not on screen.
 const readPicker = `(() => {
-  const rows = [...document.querySelectorAll('#widget-picks .widget-pick')];
+  const rows = [...document.querySelectorAll('[data-panel="dashboard"] .widget-picks .widget-pick')];
   const box = (row) => row.querySelector('[data-pick-toggle]');
   return {
     offered: rows.map((row) => box(row).dataset.pickToggle),
@@ -125,7 +129,7 @@ func TestDashboardHeaderIsTheOldHeaderByDefault(t *testing.T) {
 		return chromedp.Do(tctx,
 			chromedp.Evaluate[chromedp.Void](`location.hash = '#/settings'`),
 			openSettingsCategory("monitor"),
-			chromedp.WaitVisible(`#widget-picks`),
+			chromedp.WaitVisible(`[data-panel="dashboard"] .widget-picks`),
 		)
 	}); err != nil {
 		capture(t, ctx, dir, "widget-picker-missing")

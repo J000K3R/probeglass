@@ -191,6 +191,56 @@ const en = {
   'sensor.moveDown': 'Move down',
   'sensor.invalid': 'Please correct the highlighted fields.',
 
+  // Icons: the drawings that ship with the program, and the field that picks one.
+  //
+  // The names below are what the picker offers and what a symbol is announced as
+  // wherever it is drawn, so each one says what the drawing shows rather than what
+  // its file is called: somebody looking for their router is looking for "Router",
+  // and `router.svg` is a detail of the build. A name assembled at call time —
+  // t(`icons.name.${name}`) — which is why assets_test.go holds this list against
+  // the drawings in internal/icon, the way it holds the sensor types.
+  'icons.label': 'Icon',
+  'icons.none': 'No icon',
+  'icons.choose': 'Choose an icon',
+  'icons.builtinGroup': 'Built in',
+  'icons.uploadedGroup': 'Uploaded',
+  'icons.upload': 'Upload an image',
+  'icons.uploading': 'Uploading…',
+  'icons.uploadDone': 'Image uploaded.',
+  'icons.hint': 'PNG, JPEG or GIF — at most {kb} KiB and {px} pixels a side.',
+  'icons.loading': 'Loading…',
+  'icons.empty': 'Nothing uploaded yet.',
+  'icons.delete': 'Delete',
+  'icons.deleteConfirm': 'Delete the image "{name}" from the list?',
+  'icons.deleteInUse': 'The image "{name}" is still used. Delete it and take it off everything that wears it?',
+  'icons.deleted': 'Image deleted.',
+  'icons.name.router': 'Router',
+  'icons.name.switch': 'Switch',
+  'icons.name.server': 'Server',
+  'icons.name.nas': 'NAS',
+  'icons.name.container': 'Container',
+  'icons.name.cloud': 'Cloud',
+  'icons.name.globe': 'Internet',
+  'icons.name.database': 'Database',
+  'icons.name.disk': 'Disk',
+  'icons.name.cpu': 'Processor',
+  'icons.name.wifi': 'Wi-Fi',
+  'icons.name.camera': 'Camera',
+  'icons.name.printer': 'Printer',
+  'icons.name.battery': 'Battery',
+  'icons.name.plug': 'Socket',
+  'icons.name.thermometer': 'Temp.',
+  'icons.name.bulb': 'Light',
+  'icons.name.lock': 'Lock',
+  'icons.name.certificate': 'Certificate',
+  'icons.name.bell': 'Alert',
+  'icons.name.mail': 'E-mail',
+  'icons.name.phone': 'Phone',
+  'icons.name.laptop': 'Laptop',
+  'icons.name.monitor': 'Screen',
+  'icons.name.clock': 'Clock',
+  'icons.name.tag': 'Label',
+
   'field.time': 'Time',
   'field.result': 'Result',
   'field.latency': 'Latency',
@@ -584,6 +634,23 @@ const en = {
   'totp.codesRenewed': 'New recovery codes created. The old ones no longer work.',
 
   // ------------------------------------------------------------- example data
+  // Groups. A group is a word typed on a sensor, so this screen is about the words
+  // already in use rather than about creating one: there is no "new group" button,
+  // and the name in the editor is printed rather than editable for the same reason.
+  'groups.title': 'Groups',
+  'groups.hint': 'A group exists because a sensor names it. What is set here is what its heading looks like on the dashboard.',
+  'groups.empty': 'No groups yet. A group is made by typing its name into the group field of a sensor.',
+  'groups.editorTitle': 'Group "{name}"',
+  'groups.editorNote': 'This is what the heading looks like. {count} sensor(s) carry this group. The name is written on the sensors and is not changed here.',
+  'groups.colour': 'Heading colour',
+  'groups.colourNone': 'None — the theme\'s own',
+  'groups.order': 'Position in the order',
+  'groups.orderHint': 'Lower numbers come first. Groups with the same number stand in alphabetical order.',
+  'groups.forget': 'Forget',
+  'groups.forgetConfirm': 'Forget the symbol and colour of "{name}"? Its {count} sensor(s) keep the group and the heading stays.',
+  'groups.forgotten': 'Group settings removed.',
+  'groups.saved': 'Group saved.',
+
   'examples.title': 'Example data',
   'examples.hint': 'The sensors this dashboard started with are examples: they point at real hosts, but they are not chosen by you and they say nothing about your network. The places they stand on are examples too.',
   'examples.count': '{sensors} example sensor(s), {results} stored probe(s) and {incidents} incident(s), at {sites} example place(s).',
@@ -731,6 +798,15 @@ const en = {
   'help.sensor.channelsExample': 'Homelab Telegram',
   'help.sensor.enabled': 'Untick to stop probing. A paused sensor keeps its history and shows grey. Pausing is not acknowledging: acknowledging keeps the probing and stops only the reminders.',
   'help.sensor.enabledExample': 'ticked',
+
+  'help.sensor.icon': 'Optional. The symbol drawn beside this sensor\'s name on every view. Built-in drawings follow the theme; an image you upload keeps its own colours.',
+  'help.sensor.iconExample': 'Router',
+  'help.sites.icon': 'Optional. The symbol for this place, drawn beside its name in the tree and in the settings list. The map keeps the pin its kind gives it.',
+  'help.sites.iconExample': 'Server',
+  'help.groups.icon': 'Optional. The symbol drawn before the group\'s heading on the dashboard.',
+  'help.groups.iconExample': 'Network',
+  'help.groups.colour': 'Optional. The colour of the group\'s heading and of its symbol. Left empty, the heading keeps the colour the theme gives it.',
+  'help.groups.colourExample': 'Amber',
 
   'help.opt.expected_status': 'Which HTTP status codes count as healthy: one code, a list, or a range.',
   'help.opt.expected_statusExample': '200-299',

@@ -507,6 +507,23 @@ func capture(ctx context.Context, base, out string) error {
 	if err := shot(ctx, out, "sensor-form", 1600, 1000); err != nil {
 		return err
 	}
+	// The icon picker, opened on that same form. It is the one control in the
+	// dashboard whose body is pictures rather than words, and a page that describes
+	// choosing a symbol reads better with the grid of them than without it. The
+	// panel is closed with the picker's own button rather than by closing the
+	// dialog, so that the picture after this one is the form as it always was.
+	if err := do(ctx, "the icon picker",
+		chromedp.Click(`#modal [data-icon-open]`),
+		chromedp.WaitVisible(`.icon-panel .icon-grid`),
+	); err != nil {
+		return err
+	}
+	if err := shot(ctx, out, "icon-picker", 1600, 1000, chromedp.Sleep(400*time.Millisecond)); err != nil {
+		return err
+	}
+	if err := do(ctx, "closing the picker", chromedp.Click(`#modal [data-icon-open]`)); err != nil {
+		return err
+	}
 	if err := do(ctx, "closing the sensor form", chromedp.Click(`#modal [data-close]`)); err != nil {
 		return err
 	}

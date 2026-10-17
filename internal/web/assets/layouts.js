@@ -18,6 +18,7 @@
 
 import { t } from './i18n.js';
 import { esc, fmtPct, fmtLatency, fmtAgo, heartbeat } from './charts.js';
+import { colourAttr, groupIcon, groupOf, iconMarkup } from './icons.js';
 
 /**
  * worstStatus is the most serious status among a set of sensors.
@@ -168,11 +169,17 @@ export function renderTree(sensors, sites, ctx) {
         <span class="site-count">${esc(headCount(bucket))}</span>
       </summary>
       <div class="site-body">
-        ${bucket.groups.map((group) => `
+        ${bucket.groups.map((group) => {
+          // What the settings say about this group, if anything: a symbol and a
+          // colour, or nothing at all, which is what most groups have.
+          const settings = groupOf(ctx.groups, group.name);
+          return `
           <div class="group-node">
-            ${group.name ? `<div class="group-label">${esc(group.name)}</div>` : ''}
+            ${group.name ? `<div class="group-label"${colourAttr(settings)}>` +
+              `${groupIcon(settings, 15)}${esc(group.name)}</div>` : ''}
             ${group.sensors.map((sensor) => treeRow(sensor, ctx)).join('')}
-          </div>`).join('')}
+          </div>`;
+        }).join('')}
       </div>
     </details>`).join('');
 }
@@ -188,7 +195,7 @@ export function treeRow(sensor, ctx) {
   return `
     <div class="tree-row st-${esc(sensor.status)}${sensor.excuse ? ' in-excused in-' + esc(sensor.excuse) : ''}" data-id="${sensor.id}" tabindex="0">
       ${ctx.statusPill(sensor)}
-      <span class="row-name">${esc(sensor.name)}
+      <span class="row-name">${iconMarkup(sensor.icon, { size: 15, cls: 'icon-lead' })}${esc(sensor.name)}
         <span class="row-target">${esc(sensor.target)}</span></span>
       <span class="row-spark">${ctx.sparkline(sensor.sparkline || [], { width: 120, height: 24 })}</span>
       <span class="num" title="${esc(t('summary.uptime'))}">${esc(fmtPct(sensor.uptime_24h))}</span>
@@ -230,7 +237,7 @@ export function tile(sensor, ctx) {
     <article class="tile st-${esc(sensor.status)}${down ? ' is-down' : ''}${sensor.excuse ? ' in-excused in-' + esc(sensor.excuse) : ''}" data-id="${sensor.id}" tabindex="0">
       <header class="tile-head">
         ${ctx.statusPill(sensor)}
-        <span class="tile-name" title="${esc(sensor.target)}">${esc(sensor.name)}</span>
+        <span class="tile-name" title="${esc(sensor.target)}">${iconMarkup(sensor.icon, { size: 15, cls: 'icon-lead' })}${esc(sensor.name)}</span>
       </header>
       ${heartbeat(beats, {
         empty: t('heartbeat.none'),

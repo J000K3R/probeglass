@@ -22,6 +22,7 @@ import (
 	"math/rand"
 	"time"
 
+	"github.com/j000k3r/probeglass/internal/icon"
 	"github.com/j000k3r/probeglass/internal/model"
 	"github.com/j000k3r/probeglass/internal/store"
 )
@@ -128,6 +129,12 @@ type sensor struct {
 	// the meantime do not count against its uptime. The pair below is the demonstration
 	// of it, and the reason the red pin on the map reports one outage rather than two.
 	parent string
+	// icon is the symbol this entry wears, as a built-in reference. The demo set
+	// carries them because it is what the documentation's pictures and the website's
+	// clickable demo are drawn from, and a feature that appears in none of those is a
+	// feature nobody discovers. Every one is a built-in: an upload would name a row in
+	// somebody's database, which a dataset that ships inside the binary cannot do.
+	icon string
 	// paused is for the entries a fresh installation cannot reach. See above.
 	paused     bool
 	tags       []string
@@ -163,7 +170,7 @@ func (d sensor) history(window time.Duration) History {
 var sensors = []sensor{
 	{
 		name: "Example website", sensorType: model.SensorHTTP, target: "https://example.org",
-		group: "Internet", site: "Frankfurt", tags: []string{"web", "public"},
+		group: "Internet", site: "Frankfurt", tags: []string{"web", "public"}, icon: icon.BuiltinRef("cloud"),
 		baseMS: 148, jitterMS: 45, intervalS: 60,
 		options:    model.Options{"expected_status": "200-299", "cert_warn_days": 14},
 		successMsg: "HTTP 200 OK", failMsg: "dial tcp: i/o timeout",
@@ -174,7 +181,7 @@ var sensors = []sensor{
 	},
 	{
 		name: "Public resolver", sensorType: model.SensorDNS, target: "one.one.one.one",
-		group: "Internet", site: "Frankfurt", tags: []string{"dns"},
+		group: "Internet", site: "Frankfurt", tags: []string{"dns"}, icon: icon.BuiltinRef("globe"),
 		baseMS: 24, jitterMS: 11, intervalS: 60,
 		options:    model.Options{"record_type": "A"},
 		successMsg: "1 A record", failMsg: "no such host",
@@ -184,7 +191,7 @@ var sensors = []sensor{
 	},
 	{
 		name: "Internet ping", sensorType: model.SensorPing, target: "1.1.1.1",
-		group: "Network", site: "Frankfurt", tags: []string{"latency"},
+		group: "Network", site: "Frankfurt", tags: []string{"latency"}, icon: icon.BuiltinRef("wifi"),
 		baseMS: 11, jitterMS: 5, intervalS: 30,
 		options:    model.Options{"count": 3},
 		successMsg: "3/3 replies, 0% loss", failMsg: "100% packet loss",
@@ -194,7 +201,7 @@ var sensors = []sensor{
 	},
 	{
 		name: "Resolver port", sensorType: model.SensorTCP, target: "1.1.1.1:53",
-		group: "Network", site: "Frankfurt", tags: []string{"tcp"},
+		group: "Network", site: "Frankfurt", tags: []string{"tcp"}, icon: icon.BuiltinRef("plug"),
 		baseMS: 31, jitterMS: 9, intervalS: 120,
 		successMsg: "connected in 31ms", failMsg: "connection refused",
 		outages: []Outage{
@@ -204,7 +211,7 @@ var sensors = []sensor{
 	},
 	{
 		name: "Example website TLS", sensorType: model.SensorTLS, target: "example.org:443",
-		group: "Internet", site: "Frankfurt", tags: []string{"tls", "public"},
+		group: "Internet", site: "Frankfurt", tags: []string{"tls", "public"}, icon: icon.BuiltinRef("certificate"),
 		baseMS: 162, jitterMS: 52, intervalS: 300,
 		options:    model.Options{"server_name": "example.org", "cert_warn_days": 14},
 		successMsg: "TLS 1.3 · certificate valid for 82 day(s)", failMsg: "TLS certificate expires in 6 day(s)",
@@ -212,7 +219,7 @@ var sensors = []sensor{
 	},
 	{
 		name: "Package mirror", sensorType: model.SensorHTTP, target: "https://deb.debian.org",
-		group: "Internet", site: "Frankfurt", tags: []string{"web", "public"},
+		group: "Internet", site: "Frankfurt", tags: []string{"web", "public"}, icon: icon.BuiltinRef("database"),
 		baseMS: 121, jitterMS: 38, intervalS: 300,
 		options:    model.Options{"expected_status": "200-399", "body_contains": "Debian"},
 		successMsg: "HTTP 200 OK", failMsg: "body does not contain \"Debian\"",
@@ -222,7 +229,7 @@ var sensors = []sensor{
 	},
 	{
 		name: "DNS over TLS", sensorType: model.SensorTLS, target: "1.1.1.1:853",
-		group: "Internet", site: "Frankfurt", tags: []string{"tls", "dns"},
+		group: "Internet", site: "Frankfurt", tags: []string{"tls", "dns"}, icon: icon.BuiltinRef("lock"),
 		baseMS: 44, jitterMS: 14, intervalS: 600,
 		options:    model.Options{"server_name": "cloudflare-dns.com", "cert_warn_days": 21},
 		successMsg: "TLS 1.3 · certificate valid for 61 day(s)", failMsg: "TLS handshake failed",
@@ -232,7 +239,7 @@ var sensors = []sensor{
 	// The homelab itself. Disabled — see the note on the sensor type.
 	{
 		name: "Router: ping", sensorType: model.SensorPing, target: "192.168.1.1",
-		group: "Homelab", site: "Homelab", paused: true, tags: []string{"latency"},
+		group: "Homelab", site: "Homelab", paused: true, tags: []string{"latency"}, icon: icon.BuiltinRef("router"),
 		baseMS: 2, jitterMS: 1, intervalS: 30,
 		options:    model.Options{"count": 3},
 		successMsg: "3/3 replies, 0% loss", failMsg: "100% packet loss",
@@ -242,7 +249,7 @@ var sensors = []sensor{
 	},
 	{
 		name: "NAS: SSH", sensorType: model.SensorTCP, target: "192.168.1.10:22",
-		group: "Homelab", site: "Homelab", paused: true, tags: []string{"ssh", "storage"},
+		group: "Homelab", site: "Homelab", paused: true, tags: []string{"ssh", "storage"}, icon: icon.BuiltinRef("disk"),
 		baseMS: 4, jitterMS: 2, intervalS: 120,
 		successMsg: "connected in 4ms", failMsg: "connection refused",
 		outages: []Outage{
@@ -251,7 +258,7 @@ var sensors = []sensor{
 	},
 	{
 		name: "NAS: web interface", sensorType: model.SensorHTTP, target: "http://192.168.1.10",
-		group: "Homelab", site: "Homelab", paused: true, tags: []string{"web", "storage"},
+		group: "Homelab", site: "Homelab", paused: true, tags: []string{"web", "storage"}, icon: icon.BuiltinRef("nas"),
 		baseMS: 38, jitterMS: 12, intervalS: 300,
 		options:    model.Options{"expected_status": "200-399"},
 		successMsg: "HTTP 200 OK", failMsg: "dial tcp: i/o timeout",
@@ -259,7 +266,7 @@ var sensors = []sensor{
 	},
 	{
 		name: "Printer: ink level", sensorType: model.SensorSNMP, target: "192.168.1.20",
-		group: "Homelab", site: "Homelab", paused: true, tags: []string{"snmp"},
+		group: "Homelab", site: "Homelab", paused: true, tags: []string{"snmp"}, icon: icon.BuiltinRef("printer"),
 		baseMS: 17, jitterMS: 6, intervalS: 900,
 		options: model.Options{
 			"oid":       "1.3.6.1.2.1.43.11.1.1.9.1.1",
@@ -279,7 +286,7 @@ var sensors = []sensor{
 		// and claims nothing, which is the honest thing for a check that would fail on
 		// every machine this dataset is ever loaded onto.
 		name: "NAS: container", sensorType: model.SensorDocker, target: "nextcloud",
-		group: "Homelab", site: "Homelab", paused: true, tags: []string{"docker", "storage"},
+		group: "Homelab", site: "Homelab", paused: true, tags: []string{"docker", "storage"}, icon: icon.BuiltinRef("container"),
 		baseMS: 9, jitterMS: 3, intervalS: 300,
 		successMsg: "running, healthy", failMsg: "container not running",
 		outages: []Outage{
@@ -295,7 +302,7 @@ var sensors = []sensor{
 		// to leave off, because a hoster's box very often filters ICMP and this dataset
 		// cannot tell a firewall from an outage.
 		name: "Rented server: ping", sensorType: model.SensorPing, target: "vps.example.net",
-		group: "Rented server", site: "Rented server", paused: true, tags: []string{"latency"},
+		group: "Rented server", site: "Rented server", paused: true, tags: []string{"latency"}, icon: icon.BuiltinRef("server"),
 		baseMS: 31, jitterMS: 9, intervalS: 60,
 		options:    model.Options{"count": 3},
 		successMsg: "3/3 replies, 0% loss", failMsg: "100% packet loss",
@@ -305,7 +312,7 @@ var sensors = []sensor{
 	// A rented box somewhere else, which is the other reason to put sensors on a map.
 	{
 		name: "Rented server: SSH", sensorType: model.SensorTCP, target: "vps.example.net:22",
-		group: "Rented server", site: "Rented server", tags: []string{"ssh"},
+		group: "Rented server", site: "Rented server", tags: []string{"ssh"}, icon: icon.BuiltinRef("cpu"),
 		baseMS: 26, jitterMS: 8, intervalS: 120,
 		successMsg: "connected in 26ms", failMsg: "no such host",
 		outages: []Outage{
@@ -318,7 +325,7 @@ var sensors = []sensor{
 	},
 	{
 		name: "Rented server: web", sensorType: model.SensorHTTP, target: "https://vps.example.net",
-		group: "Rented server", site: "Rented server", parent: "Rented server: SSH", tags: []string{"web"},
+		group: "Rented server", site: "Rented server", parent: "Rented server: SSH", tags: []string{"web"}, icon: icon.BuiltinRef("monitor"),
 		baseMS: 174, jitterMS: 44, intervalS: 300,
 		options:    model.Options{"expected_status": "200-399", "cert_warn_days": 21},
 		successMsg: "HTTP 200 OK", failMsg: "no such host",
@@ -367,6 +374,7 @@ func (d sensor) model() model.Sensor {
 		Name:     d.name,
 		Type:     d.sensorType,
 		Target:   d.target,
+		Icon:     d.icon,
 		Interval: d.intervalS,
 		Timeout:  10,
 		Retries:  1,

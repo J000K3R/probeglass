@@ -48,6 +48,60 @@ here and what the release says are the same document.
   boundary handling is shared, which is most of why this is not a parallel copy of the
   window feature.
 
+- **A symbol on every sensor, place and group — one of ours, or a picture of your own.**
+  A sensor, a site and a group's heading can each carry an icon, drawn beside the name
+  in every view: the cards, the list, the tree and the wall.
+
+  - **Two kinds of symbol.** Twenty-six drawings ship inside the binary — router,
+    switch, server, NAS, container, cloud, printer, camera — and they follow the theme,
+    so one file is right in both themes and under all six accents. Beyond those, an
+    image can be uploaded: PNG, JPEG or GIF, at most 64 KiB and 512 pixels a side.
+  - **Uploaded images live in the database, not on disk.** "One SQLite file, and
+    copying it is the whole backup" is a promise this project makes in three places,
+    and an icon in a directory beside the database would quietly make it false — the
+    copy would come back without them. They are small: a hundred at the cap are six
+    megabytes.
+  - **No SVG, and that is not a preference.** An SVG is not an image but a document:
+    it may carry script and external references, and it would be served from this
+    dashboard's own origin, where that script would run with the session cookie of
+    whoever looked at it. What an upload may be is decided by reading the file, never
+    by its name or the type the browser claimed for it.
+  - **An image that something is still wearing cannot just disappear.** Deleting one
+    is refused while sensors, sites or groups point at it, and the refusal says how
+    many. Saying "clear" as well takes it off them and deletes it in the same
+    transaction.
+  - **Groups have settings, and are still not rows.** A group exists because somebody
+    typed its name on a sensor: no foreign key, no create step, and nothing to keep in
+    step when a sensor is renamed. What is stored *about* a group is its symbol, the
+    colour of its heading and its place in the order. Forgetting a group removes those
+    and leaves every sensor exactly where it was.
+  - **A group's colour is one of six names, never a hex value**, for the reason the
+    accent setting is one: every colour in this interface exists twice, once per
+    theme, and a stored `#f59e0b` would be the dark theme's amber drawn on somebody's
+    white page.
+  - **Built-in drawings are drawings and nothing else.** They are the files that ship
+    in the binary and are served from the dashboard's own origin, so a test holds every
+    one of them to that: no `<script>`, no `onload`, no external reference.
+  - The configuration file takes both, as `icon: builtin:router` on a sensor or a site.
+    It has to be able to: a sensor the file declares is written from the file whole on
+    every start, so a column the file could not name would be cleared each time the
+    daemon came up. `probeglass doctor` checks the same references, because a file
+    doctor accepts has to be a file serve applies.
+  - The backup carries all of it — the columns, the group settings, and the uploaded
+    images with their bytes. The image id is the one row in that document that keeps
+    its identity through a restore: a sensor's icon column holds `upload:7` as plain
+    text with no foreign key behind it, so an image that came back under a different
+    number would leave every reference pointing at whatever else landed there.
+  - The four example sensors a fresh installation starts with carry a symbol, and so
+    does the demo data set, so the feature is on the first dashboard anybody looks at
+    rather than in a settings page nobody opened.
+
+  Sensors and sites got a column each and groups a small table of their own; both are
+  migration 9 and apply themselves on the next start. A group was deliberately *not*
+  turned into a row with sensors pointing at it: that would make creating a group a
+  step of its own and reach into the configuration file, the backup, the example data
+  and every delete path, and a heading somebody typed is not worth that.
+
 ### Changed
 
 - **The settings say which channel the installation is on.** Settings → Help and

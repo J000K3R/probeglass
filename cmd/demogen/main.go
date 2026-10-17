@@ -382,6 +382,12 @@ func (r *recorder) recordDashboard(ctx context.Context, st *store.Store) error {
 		// this list itself for the chips, which is exact — the filters are a
 		// comparison against columns that are in the recorded rows.
 		"/api/incidents?limit=200",
+		// The groups and the icons. Both are read when somebody opens a picker or
+		// the group editor, and both are one click away from a sensor form in the
+		// demo — a route missing from this list is a demo that breaks under the
+		// mouse rather than one that quietly shows less.
+		"/api/groups",
+		"/api/icons",
 	}
 	for _, raw := range fixed {
 		if err := r.get(ctx, raw); err != nil {

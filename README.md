@@ -158,6 +158,11 @@ frontend pipeline to keep alive.
   groups the tree and the wall, and with coordinates it is drawn on the map.
   Optional throughout — a sensor without a site behaves exactly as it did before
   sites existed.
+- **Symbols** — put a picture beside a name: twenty-six drawings ship inside the
+  binary, and any PNG, JPEG or GIF you upload lives in the database beside
+  everything else, so copying the one SQLite file is still a complete backup.
+  Sensors, sites and group headings each carry one, and a group can have a colour
+  as well.
 - **History** — raw samples for 7 days, hourly rollups for 90 days, daily
   rollups forever. Uptime percentages stay correct at every zoom level because
   exactly one resolution answers any given range.

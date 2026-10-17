@@ -193,6 +193,57 @@ export const de = {
   'sensor.moveDown': 'Nach unten',
   'sensor.invalid': 'Bitte korrigiere die markierten Felder.',
 
+  // Symbole: die Zeichnungen, die mit dem Programm kommen, und das Feld, das eines
+  // auswählt.
+  //
+  // Die Namen hier sind das, was die Auswahl anbietet und wie ein Symbol überall
+  // angesagt wird; jeder beschreibt deshalb, was die Zeichnung zeigt, und nicht, wie
+  // ihre Datei heißt: wer seinen Router sucht, sucht „Router", und `router.svg` ist
+  // ein Detail des Builds. Der Name wird zur Laufzeit zusammengesetzt —
+  // t(`icons.name.${name}`) —, deshalb hält assets_test.go diese Liste gegen die
+  // Zeichnungen in internal/icon, so wie es die Sensortypen hält.
+  'icons.label': 'Symbol',
+  'icons.none': 'Kein Symbol',
+  'icons.choose': 'Symbol wählen',
+  'icons.builtinGroup': 'Mitgeliefert',
+  'icons.uploadedGroup': 'Hochgeladen',
+  'icons.upload': 'Bild hochladen',
+  'icons.uploading': 'Wird hochgeladen…',
+  'icons.uploadDone': 'Bild hochgeladen.',
+  'icons.hint': 'PNG, JPEG oder GIF — höchstens {kb} KiB und {px} Pixel pro Seite.',
+  'icons.loading': 'Wird geladen…',
+  'icons.empty': 'Noch nichts hochgeladen.',
+  'icons.delete': 'Löschen',
+  'icons.deleteConfirm': 'Das Bild „{name}" aus der Liste löschen?',
+  'icons.deleteInUse': 'Das Bild „{name}" wird noch verwendet. Löschen und überall abnehmen?',
+  'icons.deleted': 'Bild gelöscht.',
+  'icons.name.router': 'Router',
+  'icons.name.switch': 'Switch',
+  'icons.name.server': 'Server',
+  'icons.name.nas': 'NAS',
+  'icons.name.container': 'Container',
+  'icons.name.cloud': 'Cloud',
+  'icons.name.globe': 'Internet',
+  'icons.name.database': 'Datenbank',
+  'icons.name.disk': 'Festplatte',
+  'icons.name.cpu': 'Prozessor',
+  'icons.name.wifi': 'WLAN',
+  'icons.name.camera': 'Kamera',
+  'icons.name.printer': 'Drucker',
+  'icons.name.battery': 'Akku',
+  'icons.name.plug': 'Steckdose',
+  'icons.name.thermometer': 'Temp.',
+  'icons.name.bulb': 'Lampe',
+  'icons.name.lock': 'Schloss',
+  'icons.name.certificate': 'Zertifikat',
+  'icons.name.bell': 'Alarm',
+  'icons.name.mail': 'E-Mail',
+  'icons.name.phone': 'Telefon',
+  'icons.name.laptop': 'Notebook',
+  'icons.name.monitor': 'Bildschirm',
+  'icons.name.clock': 'Uhr',
+  'icons.name.tag': 'Etikett',
+
   'field.time': 'Zeit',
   'field.result': 'Ergebnis',
   'field.latency': 'Antwortzeit',
@@ -582,6 +633,24 @@ export const de = {
   'totp.codesRenewed': 'Neue Wiederherstellungscodes erzeugt. Die alten funktionieren nicht mehr.',
 
   // ------------------------------------------------------------ Beispieldaten
+  // Gruppen. Eine Gruppe ist ein Wort, das auf einem Sensor steht; dieser Bildschirm
+  // handelt deshalb von den Wörtern, die schon in Gebrauch sind, und nicht vom
+  // Anlegen einer Gruppe: es gibt keinen Knopf „Neue Gruppe", und der Name im Editor
+  // steht da, statt editierbar zu sein — aus demselben Grund.
+  'groups.title': 'Gruppen',
+  'groups.hint': 'Eine Gruppe entsteht, weil ein Sensor sie nennt. Hier wird festgelegt, wie ihre Überschrift auf dem Dashboard aussieht.',
+  'groups.empty': 'Noch keine Gruppen. Eine Gruppe entsteht, indem ihr Name in das Gruppenfeld eines Sensors geschrieben wird.',
+  'groups.editorTitle': 'Gruppe „{name}"',
+  'groups.editorNote': 'So sieht die Überschrift aus. {count} Sensor(en) tragen diese Gruppe. Der Name steht auf den Sensoren und wird hier nicht geändert.',
+  'groups.colour': 'Farbe der Überschrift',
+  'groups.colourNone': 'Keine — die des Themes',
+  'groups.order': 'Platz in der Reihenfolge',
+  'groups.orderHint': 'Kleinere Zahlen kommen zuerst. Gruppen mit derselben Zahl stehen alphabetisch.',
+  'groups.forget': 'Vergessen',
+  'groups.forgetConfirm': 'Symbol und Farbe von „{name}" vergessen? Die {count} Sensor(en) behalten die Gruppe, die Überschrift bleibt.',
+  'groups.forgotten': 'Gruppeneinstellungen entfernt.',
+  'groups.saved': 'Gruppe gespeichert.',
+
   'examples.title': 'Beispieldaten',
   'examples.hint': 'Die Sensoren, mit denen dieses Dashboard begonnen hat, sind Beispiele: Sie zeigen auf echte Hosts, aber sie sind nicht von dir ausgewählt und sagen nichts über dein Netz. Die Orte, an denen sie stehen, sind ebenfalls Beispiele.',
   'examples.count': '{sensors} Beispielsensor(en), {results} gespeicherte Prüfung(en) und {incidents} Vorfall/Vorfälle an {sites} Beispielort(en).',
@@ -729,6 +798,15 @@ export const de = {
   'help.sensor.channelsExample': 'Homelab Telegram',
   'help.sensor.enabled': 'Häkchen weg, um nicht mehr zu prüfen. Ein pausierter Sensor behält seinen Verlauf und erscheint grau. Pausieren ist nicht Quittieren: Quittieren lässt die Prüfungen weiterlaufen und stoppt nur die Erinnerungen.',
   'help.sensor.enabledExample': 'angehakt',
+
+  'help.sensor.icon': 'Optional. Das Symbol neben dem Namen dieses Sensors, in jeder Ansicht. Mitgelieferte Zeichnungen folgen dem Theme; ein hochgeladenes Bild behält seine eigenen Farben.',
+  'help.sensor.iconExample': 'Router',
+  'help.sites.icon': 'Optional. Das Symbol für diesen Standort, neben seinem Namen im Baum und in der Einstellungsliste. Auf der Karte bleibt der Pin, den die Art vorgibt.',
+  'help.sites.iconExample': 'Server',
+  'help.groups.icon': 'Optional. Das Symbol vor der Überschrift der Gruppe auf dem Dashboard.',
+  'help.groups.iconExample': 'Netzwerk',
+  'help.groups.colour': 'Optional. Die Farbe der Überschrift und des Symbols dieser Gruppe. Leer behält die Überschrift die Farbe des Themes.',
+  'help.groups.colourExample': 'Amber',
 
   'help.opt.expected_status': 'Welche HTTP-Statuscodes als gesund gelten: ein Code, eine Liste oder ein Bereich.',
   'help.opt.expected_statusExample': '200-299',

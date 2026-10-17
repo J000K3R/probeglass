@@ -143,6 +143,7 @@ sensors:
     group: Network
     site: Rack A
     depends_on: Router     # a sensor this one sits behind; any order in the file
+    icon: builtin:router   # a drawing that ships with the program, or upload:<id>
     tags: [infra, lan]
     enabled: true
     reminder_every: 1h
@@ -160,6 +161,7 @@ sensors:
 | `enabled` | default true |
 | `group`, `tags` | display grouping and filtering only |
 | `site` | name of a site; **created if it does not exist yet**, default empty |
+| `icon` | symbol drawn beside the name: `builtin:<name>`, or `upload:<id>` for an image somebody uploaded in the dashboard; default none |
 | `reminder_every` | re-alert while an incident stays open; `0` means never |
 | `options` | type-specific, see below |
 | `channels` | names of alert channels, as declared above or created in the UI |
@@ -169,9 +171,10 @@ sensors:
 | `name` | required, unique; what a sensor's `site` refers to |
 | `kind` | `local` (the homelab) or `external` (a hoster or a cloud); default `local` |
 | `lat`, `lon` | optional, but both or neither; `lat` −90…90, `lon` −180…180 |
+| `icon` | symbol for the place, in the same two forms a sensor's takes |
 
 A site declared here is managed like a sensor from the file: the file owns its
-name, kind and coordinates, and none of them can be changed from the dashboard —
+name, kind, coordinates and icon, and none of them can be changed from the dashboard —
 the row is refused rather than accepted and quietly put back by the next start. A
 site that is only *named* by a sensor — never declared under `sites:` — is a
 different thing: it is created if missing and otherwise left alone, so
@@ -179,6 +182,14 @@ coordinates somebody gave it in the dashboard survive the next start.
 
 A channel referenced by name that does not exist is a startup error, not a
 silent no-alert. All names are validated before anything is written.
+
+The same goes for an icon: `builtin:router` is one of the drawings that ship with
+the program, and an `upload:<id>` that this installation does not have stops the
+start rather than being stored as a symbol that draws nothing. `probeglass doctor`
+reports both without touching anything. A sensor the file declares is written from
+the file whole on every start, which is why the icon has to be nameable here at all
+— a column the file could not mention would be cleared each time the daemon came
+up.
 
 ### Sensor options
 
