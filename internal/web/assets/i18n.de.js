@@ -193,6 +193,11 @@ export const de = {
   'sensor.moveDown': 'Nach unten',
   'sensor.invalid': 'Bitte korrigiere die markierten Felder.',
 
+  // Das Dashboard ohne etwas anzuzeigen, weil das Suchfeld alles herausfiltert. Es
+  // ist ein anderer Satz als „es gibt keine Sensoren", und beide waren früher
+  // derselbe — was jemandem mit vier Sensoren sagte, er habe keine.
+  'dashboard.noneMatching': 'Nichts passt zu „{query}".',
+
   // Symbole: die Zeichnungen, die mit dem Programm kommen, und das Feld, das eines
   // auswählt.
   //

@@ -377,7 +377,14 @@ export function heartbeat(beats, { width = 240, height = 22, empty = '—', labe
       ` width="${bar.toFixed(2)}" height="${h.toFixed(2)}" rx="1">` +
       `<title>${esc(title)}</title></rect>`;
   });
-  return svg(width, height, body, 'preserveAspectRatio="none" role="img"');
+  // Wrapped, and the wrapper is the whole of it: the marks are painted by
+  // `.heartbeat .beat` — green for a check that answered, red for one that did not
+  // — and a bare <svg> matched none of that, so every mark came out in the SVG
+  // default, which is black. The strip has been a black bar in the wall since the
+  // wall was written, and it was the empty case above that had the wrapper, so the
+  // one place the colours were tested was the one place they were not needed.
+  return `<div class="heartbeat">` +
+    svg(width, height, body, 'preserveAspectRatio="none" role="img"') + `</div>`;
 }
 
 // ---------------------------------------------------------------------------

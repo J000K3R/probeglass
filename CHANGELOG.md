@@ -11,7 +11,7 @@ here and what the release says are the same document.
 
 | Version | Released | In one line |
 | --- | --- | --- |
-| [Unreleased] | — | A symbol on a sensor, a place or a group's heading |
+| [Unreleased] | — | A symbol on a sensor, a place or a group's heading, and one set of measurements for the whole dashboard |
 | [0.2.1] | 2026-10-16 | A sensor under maintenance says so |
 | [0.2.0] | 2026-10-16 | Maintenance windows, a second interface language, and the container as the only thing that ships |
 | [0.1.0] | 2026-10-12 | The first release: sensors, history, incidents, alerts, accounts, and the dashboard |
@@ -126,6 +126,53 @@ here and what the release says are the same document.
   the one image that could not say which work it was.
 - **A tag with a hyphen in it is marked as a pre-release on GitHub.** `v0.3.0-rc.1`
   already left `latest` alone in the registry; the release page said nothing about it.
+
+- **The dashboard has two scales instead of a number per rule.** Spacing is six steps
+  — 2, 4, 8, 12, 16, 24, 32 — and type is five, and every rule in the stylesheet now
+  names one of them.
+
+  Nothing was wrong with any single rule; there were just fifteen distinct font sizes
+  and eighteen distinct paddings, so two things that are the same kind of thing were
+  never quite the same size. The steps are named for what they are for — `--text-2` is
+  the name of a thing, `--text-4` the second sentence about it — so a new rule picks
+  the step that matches its job rather than the one that looks right on its own. The
+  three old names (`--pad`, `--pad-sm`, `--gap`) still work and mean the steps they
+  always meant. One height, `--ctl-h`, is shared by everything that is pressed or
+  typed into, so a button beside an input is the same box as the field next to it.
+
+- **Group headings are the same heading in all four views.** The cards, the list, the
+  tree and the wall now draw a group's symbol, its colour and how many sensors are in
+  it — and how many of those are down — in one shape, from one rule. The card and list
+  views used to have a plain lowercase word where the tree had a dressed heading.
+
+- **A card reads as information first.** The head is one line — status, name, badges —
+  and the row of actions underneath (move, refresh, pause, copy) is dimmed until the
+  pointer is on the card or the keyboard is in it. The card's name carries a tooltip,
+  so a name that does not fit is still readable.
+
+- **Empty and loading states look like states, not like sentences.** A table with no
+  rows, a list with nothing in it and a form with nothing to show all get the same
+  box, where before some were an empty box and some were a muted sentence in the
+  middle of the page. Loading does the same, in the shape of what is coming.
+
+  The dashboard's "nothing here" was also one sentence for two situations: an
+  installation with no sensors at all, and a search that filtered everything out. The
+  second says what it is now, and names the search.
+
+### Fixed
+
+- **The wall's heartbeat strip was a black bar.** The marks are painted green or red
+  by `.heartbeat .beat`, and the strip was returned as a bare `<svg>`, which matched
+  none of that and came out in the SVG default colour. It has been black since the wall
+  was written: the empty case beside it had the wrapper, so the one place the colours
+  were exercised was the one place the wrapper was not needed.
+
+- **An excused sensor's row came apart in the tree.** The tree lays a row out as a
+  five-column grid, and the status pill and its "maintenance" or "dependency" badge
+  were two elements where the first column expected one — so everything after them
+  moved a column along and the last wrapped onto a second line. A row now carries its
+  pill and its badge in one box. This was the row somebody is looking at precisely when
+  something is wrong.
 
 ## [0.2.1] - 2026-10-16
 

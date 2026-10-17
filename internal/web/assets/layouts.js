@@ -190,7 +190,7 @@ export function renderTree(sensors, sites, ctx) {
           return `
           <div class="group-node">
             ${group.name ? `<div class="group-label"${colourAttr(settings)}>` +
-              `${groupIcon(settings, 15)}${esc(group.name)}</div>` : ''}
+              `${groupIcon(settings)}${esc(group.name)}</div>` : ''}
             ${group.sensors.map((sensor) => treeRow(sensor, ctx)).join('')}
           </div>`;
         }).join('')}
@@ -209,7 +209,7 @@ export function treeRow(sensor, ctx) {
   return `
     <div class="tree-row st-${esc(sensor.status)}${sensor.excuse ? ' in-excused in-' + esc(sensor.excuse) : ''}" data-id="${sensor.id}" tabindex="0">
       ${ctx.statusPill(sensor)}
-      <span class="row-name">${iconMarkup(sensor.icon, { size: 15, cls: 'icon-lead' })}${esc(sensor.name)}
+      <span class="row-name">${iconMarkup(sensor.icon, { size: 16, cls: 'icon-lead' })}${esc(sensor.name)}
         <span class="row-target">${esc(sensor.target)}</span></span>
       <span class="row-spark">${ctx.sparkline(sensor.sparkline || [], { width: 120, height: 24 })}</span>
       <span class="num" title="${esc(t('summary.uptime'))}">${esc(fmtPct(sensor.uptime_24h))}</span>
@@ -252,7 +252,7 @@ export function tile(sensor, ctx) {
     <article class="tile st-${esc(sensor.status)}${down ? ' is-down' : ''}${sensor.excuse ? ' in-excused in-' + esc(sensor.excuse) : ''}" data-id="${sensor.id}" tabindex="0">
       <header class="tile-head">
         ${ctx.statusPill(sensor)}
-        <span class="tile-name" title="${esc(sensor.target)}">${iconMarkup(sensor.icon, { size: 15, cls: 'icon-lead' })}${esc(sensor.name)}</span>
+        <span class="tile-name" title="${esc(sensor.target)}">${iconMarkup(sensor.icon, { size: 16, cls: 'icon-lead' })}${esc(sensor.name)}</span>
       </header>
       ${heartbeat(beats, {
         empty: t('heartbeat.none'),

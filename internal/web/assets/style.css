@@ -86,11 +86,56 @@
   --map-district-name: #94a8c0;
   --map-water: #2b4257;
 
+  /* ------------------------------------------------------------- measurements
+   *
+   * Two scales, and nothing outside them.
+   *
+   * "The spacing is uneven" is what somebody says when every rule has been given
+   * the number that looked right in that one place — this file had fifteen
+   * distinct font sizes and eighteen distinct paddings, so two things that are
+   * the same kind of thing were never quite the same size. A scale is what stops
+   * that: there are six steps, a value is one of them, and a new rule picks the
+   * step that matches what it is rather than the one that looks good on its own.
+   *
+   * The steps are 4px apart up to 16 and coarser above, which is what a 4px grid
+   * costs: 4, 8, 12, 16, 24, 32 — and one step below it, 2px, for the places where
+   * two things have to be a hair apart rather than a gap apart: the vertical
+   * padding of a tag, the space between the rows of a small list. Two pixels is
+   * not a gap and does not pretend to be one; it is on the scale because a rule
+   * that invented its own 3px would be the beginning of the same mess.
+   *
+   * The type scale is five steps for the same reason. --text-1 is a heading,
+   * --text-2 the name of a thing, --text-3 running text, --text-4 the second
+   * sentence about it, --text-5 the label above a field. */
+  --sp-0: 2px;
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+
+  --text-0: 2rem;      /* a display figure: the clock face in the header */
+  --text-1: 1.3rem;    /* a page or a dialog title */
+  --text-2: 1rem;      /* the name of a thing: a card, a row, a heading */
+  --text-3: 0.9rem;    /* running text, controls, table cells */
+  --text-4: 0.82rem;   /* the second sentence: hints, counts, timestamps */
+  --text-5: 0.75rem;   /* the label above a field, a tag, a badge */
+
   --radius: 12px;
   --radius-sm: 8px;
-  --pad: 16px;
-  --pad-sm: 12px;
-  --gap: 16px;
+  --radius-xs: 6px;
+
+  /* One height for everything that is pressed or typed into, so that a button
+     beside an input inside a row is the same box as the field next to it. */
+  --ctl-h: 32px;
+  --ctl-h-sm: 26px;
+
+  /* The three older names, kept because most of this file still says them and
+     they mean exactly these steps. */
+  --pad: var(--sp-4);
+  --pad-sm: var(--sp-3);
+  --gap: var(--sp-4);
   --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
     "Helvetica Neue", Arial, sans-serif;
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
@@ -217,10 +262,13 @@
 :root[data-theme='light'][data-accent='slate'] { --accent: #475569; --accent-ink: #ffffff; }
 
 :root[data-density='compact'] {
-  --pad: 12px;
-  --pad-sm: 8px;
-  --gap: 10px;
-  --radius: 10px;
+  /* Compact is the same scale one step tighter rather than a second set of
+     numbers: the steps are the ones above, moved down where there is one to move
+     to. Nothing here is a value the scale does not have. */
+  --pad: var(--sp-3);
+  --pad-sm: var(--sp-2);
+  --gap: var(--sp-3);
+  --radius: var(--radius-sm);
 }
 
 /* ------------------------------------------------------------------- reset */
@@ -249,14 +297,14 @@ body {
 }
 
 h1, h2, h3 { margin: 0; font-weight: 600; line-height: 1.25; }
-h1 { font-size: 1.35rem; }
-h2 { font-size: 1.05rem; }
-h3 { font-size: 0.95rem; }
+h1 { font-size: var(--text-1); }
+h2 { font-size: var(--text-2); }
+h3 { font-size: var(--text-2); }
 p { margin: 0; }
 a { color: var(--accent); }
 
 .muted { color: var(--text-dim); }
-.small { font-size: 0.85rem; }
+.small { font-size: var(--text-3); }
 .num { text-align: right; font-variant-numeric: tabular-nums; }
 
 :focus-visible {
@@ -275,7 +323,7 @@ a { color: var(--accent); }
   display: grid;
   place-content: center;
   justify-items: center;
-  gap: 14px;
+  gap: var(--sp-4);
   min-height: 100vh;
   color: var(--text-dim);
 }
@@ -284,9 +332,9 @@ a { color: var(--accent); }
 .boot-error {
   display: grid;
   justify-items: start;
-  gap: 12px;
+  gap: var(--sp-3);
   max-width: 46rem;
-  padding: 24px;
+  padding: var(--sp-5);
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--surface);
@@ -296,7 +344,7 @@ a { color: var(--accent); }
 
 .boot-error h2 {
   margin: 0;
-  font-size: 1.1rem;
+  font-size: var(--text-1);
 }
 
 .boot-error p {
@@ -309,11 +357,11 @@ a { color: var(--accent); }
   max-height: 12rem;
   margin: 0;
   overflow: auto;
-  padding: 10px 12px;
+  padding: var(--sp-3) var(--sp-3);
   border-radius: 8px;
   background: var(--bg);
   color: var(--text-dim);
-  font-size: 0.8rem;
+  font-size: var(--text-4);
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -333,14 +381,14 @@ a { color: var(--accent); }
   display: grid;
   place-items: center;
   min-height: 100vh;
-  padding: 20px;
+  padding: var(--sp-5);
 }
 
 .auth-card {
   width: min(400px, 100%);
   display: grid;
-  gap: 14px;
-  padding: 28px;
+  gap: var(--sp-4);
+  padding: var(--sp-6);
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -350,12 +398,12 @@ a { color: var(--accent); }
 .brand {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--sp-3);
   font-weight: 650;
   letter-spacing: -0.01em;
 }
 
-.brand-lg { font-size: 1.15rem; }
+.brand-lg { font-size: var(--text-1); }
 
 /* ------------------------------------------------------------------ topbar */
 
@@ -380,22 +428,22 @@ a { color: var(--accent); }
   display: grid;
   grid-template-columns: 1fr 240px 1fr;
   align-items: center;
-  gap: 18px;
-  padding: 10px 20px;
+  gap: var(--sp-4);
+  padding: var(--sp-3) var(--sp-5);
   background: color-mix(in srgb, var(--bg) 88%, transparent);
   backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--border);
 }
 
-.topbar-side { display: flex; align-items: center; gap: 18px; min-width: 0; }
+.topbar-side { display: flex; align-items: center; gap: var(--sp-4); min-width: 0; }
 
-.tabs { display: flex; gap: 4px; }
+.tabs { display: flex; gap: var(--sp-1); }
 
 .tab {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 7px 13px;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
   border: 0;
   border-radius: 999px;
   background: transparent;
@@ -417,7 +465,7 @@ a { color: var(--accent); }
    Wrapping them inside their own column costs a taller bar instead, which is a
    visible nuisance rather than a silent one. The two breakpoints below are meant to
    keep it from ever coming to that. */
-.topbar-actions { justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
+.topbar-actions { justify-content: flex-end; gap: var(--sp-3); flex-wrap: wrap; }
 
 /* The row of working controls, and the two things that can stand in for it.
    At every width above 1133 the row is the row: `.topbar-extra` is a plain flex
@@ -428,7 +476,7 @@ a { color: var(--accent); }
    Nesting them in a container is what makes the row and the panel two layouts of
    one set, and a wider gap here would be a wider row than the bar had before —
    which at 1600px is the difference between one line and two. */
-.topbar-extra { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.topbar-extra { display: flex; align-items: center; gap: var(--sp-3); min-width: 0; }
 
 /* The two icon buttons the bar keeps in its row: the ⋮ and, below the width where
    the search field leaves the bar, the magnifier that brings the field back. The
@@ -464,14 +512,14 @@ a { color: var(--accent); }
 .live-chip {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  padding: 6px 11px;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
   border: 1px solid var(--border);
   border-radius: 999px;
   background: transparent;
   color: var(--text-dim);
   font: inherit;
-  font-size: 13px;
+  font-size: var(--text-4);
   font-weight: 500;
   cursor: pointer;
 }
@@ -549,8 +597,8 @@ a { color: var(--accent); }
      also broke inside itself — three rows at 600, four at 440. `nowrap` here is
      the whole point: the row cannot come apart, because there is nothing left in
      it that is wider than the space it has. */
-  .topbar { display: flex; flex-wrap: nowrap; gap: 10px; }
-  .topbar-side { flex: 0 1 auto; flex-wrap: nowrap; gap: 10px; min-width: 0; }
+  .topbar { display: flex; flex-wrap: nowrap; gap: var(--sp-3); }
+  .topbar-side { flex: 0 1 auto; flex-wrap: nowrap; gap: var(--sp-3); min-width: 0; }
   .topbar-actions { flex: 0 0 auto; }
   .brand { flex: none; }
   .tabs { overflow-x: auto; }
@@ -573,11 +621,11 @@ a { color: var(--accent); }
     display: flex;
     flex-direction: column;
     align-items: stretch;
-    gap: 2px;
+    gap: var(--sp-0);
     position: absolute;
     z-index: 30;
     top: calc(100% - 4px);
-    right: 10px;
+    right: var(--sp-3);
     min-width: 236px;
     max-width: calc(100vw - 20px);
     /* It is anchored under the bar and cannot go above it, so on a short window —
@@ -585,7 +633,7 @@ a { color: var(--accent); }
        last rows with it. */
     max-height: calc(100vh - 76px);
     overflow-y: auto;
-    padding: 8px;
+    padding: var(--sp-2);
     border: 1px solid var(--border-strong);
     border-radius: var(--radius);
     background: var(--surface-2);
@@ -607,10 +655,10 @@ a { color: var(--accent); }
   .topbar.menu-open .topbar-extra .seg-btn {
     width: 100%;
     justify-content: flex-start;
-    gap: 10px;
-    padding: 9px 11px;
+    gap: var(--sp-3);
+    padding: var(--sp-2) var(--sp-3);
     border-radius: var(--radius-sm);
-    font-size: 0.9rem;
+    font-size: var(--text-3);
   }
   .topbar.menu-open .topbar-extra .seg-btn[aria-pressed='true'] {
     background: var(--surface-3);
@@ -629,14 +677,14 @@ a { color: var(--accent); }
   .topbar.menu-open .topbar-extra .live-chip {
     width: 100%;
     justify-content: flex-start;
-    gap: 10px;
-    margin-top: 6px;
-    padding: 9px 11px;
+    gap: var(--sp-3);
+    margin-top: var(--sp-2);
+    padding: var(--sp-2) var(--sp-3);
     border: 0;
     border-radius: var(--radius-sm);
     background: transparent;
     color: var(--text);
-    font-size: 0.9rem;
+    font-size: var(--text-3);
   }
   .topbar.menu-open .topbar-extra #new-sensor:hover,
   .topbar.menu-open .topbar-extra .live-chip:hover { background: var(--surface-3); }
@@ -657,7 +705,7 @@ a { color: var(--accent); }
    field lands exactly where the bar's contents were and the bar's own padding stays
    around it. */
 @media (max-width: 619px) {
-  .topbar { padding: 10px 12px; }
+  .topbar { padding: var(--sp-3) var(--sp-3); }
   .search { display: none; }
   .topbar.search-open .topbar-side,
   .topbar.search-open .topbar-actions { display: none; }
@@ -681,7 +729,7 @@ a { color: var(--accent); }
    the 24 either side of them, which is 342 of 375. Above 380 there is room for the
    wider tab — 374 of 380 is the arithmetic — so the room goes to the tab. */
 @media (max-width: 379px) {
-  .tab { padding: 7px 9px; }
+  .tab { padding: var(--sp-2) var(--sp-2); }
 }
 
 /* And in the last stretch the mark goes with it. The four tabs and the two icon
@@ -698,7 +746,7 @@ a { color: var(--accent); }
 
 .search input {
   width: 100%;
-  padding: 7px 11px;
+  padding: var(--sp-2) var(--sp-3);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--surface);
@@ -720,18 +768,18 @@ a { color: var(--accent); }
   max-height: min(60vh, 520px);
   overflow-y: auto;
   z-index: 30;
-  padding: 6px;
+  padding: var(--sp-2);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface);
   box-shadow: 0 18px 40px color-mix(in srgb, #000 25%, transparent);
 }
 
-.search-group + .search-group { margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--border); }
+.search-group + .search-group { margin-top: var(--sp-1); padding-top: var(--sp-1); border-top: 1px solid var(--border); }
 
 .search-group-head {
-  margin: 4px 8px 2px;
-  font-size: 0.72rem;
+  margin: var(--sp-1) var(--sp-2) var(--sp-0);
+  font-size: var(--text-5);
   font-weight: 650;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -742,9 +790,9 @@ a { color: var(--accent); }
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: var(--sp-3);
   width: 100%;
-  padding: 7px 9px;
+  padding: var(--sp-2) var(--sp-2);
   border: 0;
   border-radius: var(--radius-sm);
   background: transparent;
@@ -759,18 +807,18 @@ a { color: var(--accent); }
 .search-hit-main { display: flex; flex-direction: column; min-width: 0; }
 
 .search-hit-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.search-hit-sub { font-size: 0.82rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.search-hit-sub { font-size: var(--text-4); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.search-hit-side { display: flex; align-items: center; gap: 8px; flex: none; }
+.search-hit-side { display: flex; align-items: center; gap: var(--sp-2); flex: none; }
 
-.search-note { margin: 8px; color: var(--text-dim); font-size: 0.88rem; }
+.search-note { margin: var(--sp-2); color: var(--text-dim); font-size: var(--text-3); }
 
 .pill.st-muted { color: var(--text-dim); background: var(--surface-2); }
 
-main { padding: 20px; max-width: 1500px; margin: 0 auto; }
-.view { display: grid; gap: 18px; }
+main { padding: var(--sp-5); max-width: 1500px; margin: 0 auto; }
+.view { display: grid; gap: var(--sp-4); }
 
-.view-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.view-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); }
 
 /* A view head that carries a filter line under its title. Wrapping is what puts
    the line on its own row: the bar asks for the whole width, so it cannot share
@@ -780,7 +828,7 @@ main { padding: 20px; max-width: 1500px; margin: 0 auto; }
 .filter-bar {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-2);
   flex: 1 1 100%;
   flex-wrap: wrap;
 }
@@ -795,8 +843,8 @@ main { padding: 20px; max-width: 1500px; margin: 0 auto; }
   flex: 1 1 150px;
   min-width: 0;
   max-width: 260px;
-  padding: 5px 10px;
-  font-size: 0.82rem;
+  padding: var(--sp-1) var(--sp-3);
+  font-size: var(--text-4);
 }
 
 .filter-bar > input[type='search'] { flex-basis: 190px; }
@@ -870,62 +918,62 @@ main { padding: 20px; max-width: 1500px; margin: 0 auto; }
 .summary-card {
   display: flex;
   align-items: center;
-  gap: 18px;
+  gap: var(--sp-4);
   padding: var(--pad);
 }
 
 .summary-ring { flex: 0 0 auto; }
-.summary-counts { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; }
-.summary-counts .count { color: var(--text-dim); font-size: 0.95rem; }
+.summary-counts { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--sp-0); }
+.summary-counts .count { color: var(--text-dim); font-size: var(--text-2); }
 .summary-counts .count-n { color: var(--text); font-weight: 650; font-variant-numeric: tabular-nums; }
 .count.s-ok .count-n { color: var(--ok); }
 .count.s-crit .count-n { color: var(--crit); }
 .count.s-warn .count-n { color: var(--warn); }
 .count.s-paused .count-n { color: var(--paused); }
 
-.stat { display: grid; align-content: center; gap: 4px; padding: var(--pad); }
-.stat-label { color: var(--text-dim); font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.04em; }
-.stat-value { font-size: 1.5rem; font-weight: 600; font-variant-numeric: tabular-nums; }
-.stat-value.small { font-size: 0.95rem; font-weight: 500; }
+.stat { display: grid; align-content: center; gap: var(--sp-1); padding: var(--pad); }
+.stat-label { color: var(--text-dim); font-size: var(--text-4); text-transform: uppercase; letter-spacing: 0.04em; }
+.stat-value { font-size: var(--text-1); font-weight: 600; font-variant-numeric: tabular-nums; }
+.stat-value.small { font-size: var(--text-2); font-weight: 500; }
 
 /* The two things under the number: what it usually is, and which way it has been
    going. The comparison is quieter than the number — it is the context for the
    figure, not a second figure — and the curve is as wide as the tile, because a
    shape is the one thing here that is worth all the width it can get. */
-.stat-sub { font-size: 0.8rem; }
-.stat-spark { display: block; margin-top: 2px; }
+.stat-sub { font-size: var(--text-4); }
+.stat-spark { display: block; margin-top: var(--sp-0); }
 .stat-spark svg { display: block; width: 100%; height: 24px; }
 
 /* The tiles that are not a figure: a list, a clock, a map, a row of buttons. */
 .widget-card {
   display: grid;
   align-content: start;
-  gap: 9px;
+  gap: var(--sp-2);
   padding: var(--pad);
 }
 
 .widget-head {
   margin: 0;
   color: var(--text-dim);
-  font-size: 0.8rem;
+  font-size: var(--text-4);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
 
-.widget-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.widget-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--sp-0); }
 
 .widget-row {
   display: flex;
   align-items: baseline;
-  gap: 10px;
+  gap: var(--sp-3);
   width: 100%;
-  padding: 4px 6px;
+  padding: var(--sp-1) var(--sp-2);
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   background: none;
   color: inherit;
   font: inherit;
-  font-size: 0.9rem;
+  font-size: var(--text-3);
   text-align: left;
 }
 
@@ -933,17 +981,17 @@ button.widget-row { cursor: pointer; }
 button.widget-row:hover { background: var(--surface-2); }
 .widget-row-main { display: grid; min-width: 0; flex: 1; }
 .widget-row-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.widget-row-sub { font-size: 0.8rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.widget-row-sub { font-size: var(--text-4); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .widget-row-side { flex: none; font-variant-numeric: tabular-nums; }
 
-.widget-clock { display: grid; align-content: center; gap: 2px; padding: var(--pad); }
-.clock-time { font-size: 2rem; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.1; }
-.clock-date { font-size: 0.9rem; }
+.widget-clock { display: grid; align-content: center; gap: var(--sp-0); padding: var(--pad); }
+.clock-time { font-size: var(--text-0); font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.clock-date { font-size: var(--text-3); }
 
 /* The map in a header: a picture, not a control. Its own chrome is hidden here
    rather than in map.js, because map.js draws the full view, where all of it is
    wanted. */
-.widget-map-card { gap: 8px; }
+.widget-map-card { gap: var(--sp-2); }
 .widget-map { position: relative; height: 150px; border-radius: var(--radius-sm); overflow: hidden; }
 .widget-map .map-controls,
 .widget-map .map-legend,
@@ -954,25 +1002,25 @@ button.widget-row:hover { background: var(--surface-2); }
 .widget-map-card .map-unplaced { display: none; }
 .widget-map canvas { pointer-events: none; }
 
-.widget-links { display: flex; flex-wrap: wrap; gap: 6px; }
+.widget-links { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
 
 .widget-empty { margin: 0; padding: var(--pad); }
 
 /* The same list as a checklist, on the settings page: the name spelled out, a
    box to switch it on, two arrows to move it. The arrows keep their place when
    they are disabled, so the rows do not jump as widgets come and go. */
-.widget-picks { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.widget-picks { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--sp-0); }
 
 .widget-pick {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 3px 6px;
+  gap: var(--sp-2);
+  padding: var(--sp-0) var(--sp-2);
   border-radius: var(--radius-sm);
 }
 
 .widget-pick:hover { background: var(--surface-2); }
-.widget-pick-label { display: flex; align-items: center; gap: 9px; flex: 1; min-width: 0; cursor: pointer; font-size: 0.9rem; }
+.widget-pick-label { display: flex; align-items: center; gap: var(--sp-2); flex: 1; min-width: 0; cursor: pointer; font-size: var(--text-3); }
 /* The same row in the picker window, where it is a button rather than a label:
    choosing a widget there is an action, not a switch to be ticked. It is spelled
    out as a button so it keeps the label's looks instead of the browser's. */
@@ -982,13 +1030,13 @@ button.widget-pick-label {
   background: none;
   color: inherit;
   font: inherit;
-  font-size: 0.9rem;
+  font-size: var(--text-3);
   text-align: left;
 }
 
 .widget-pick-icon { display: inline-flex; width: 16px; height: 16px; color: var(--text-dim); }
 .widget-pick-icon svg { width: 100%; height: 100%; }
-.widget-pick .icon-btn { padding: 2px 6px; font-size: 0.75rem; }
+.widget-pick .icon-btn { padding: var(--sp-0) var(--sp-2); font-size: var(--text-5); }
 
 /* --------------------------------------------------- arranging the widgets */
 
@@ -1010,16 +1058,16 @@ button.widget-pick-label {
 .widget-bar {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 2px;
+  gap: var(--sp-1);
+  padding: var(--sp-0);
   color: var(--text-dim);
-  font-size: 0.8rem;
+  font-size: var(--text-4);
 }
 
 .widget-grip { cursor: grab; letter-spacing: -1px; }
 .widget-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .widget-bar-space { flex: 1; }
-.widget-bar .icon-btn { padding: 2px 5px; font-size: 0.75rem; }
+.widget-bar .icon-btn { padding: var(--sp-0) var(--sp-1); font-size: var(--text-5); }
 
 .widget.is-dragging { opacity: 0.6; }
 .widget.is-dragging .widget-grip { cursor: grabbing; }
@@ -1027,8 +1075,36 @@ button.widget-pick-label {
 
 /* ------------------------------------------------------------------- cards */
 
-.groups { display: grid; gap: 22px; }
-.group-title { color: var(--text-dim); font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.06em; }
+/* The groups are a list of headings with cards under them, and the spacing has to
+   say which cards belong to which heading. The grid's own gap is the small step —
+   between a heading and its first row of cards — and the heading carries the large
+   one above it, so the distance to the next group is the sum of the two. Before
+   this, a heading sat exactly as far from its own cards as from the next group's. */
+.groups { display: grid; gap: var(--sp-3); }
+
+/* One heading for a group, whichever view draws it: the cards, the list, the tree
+   and the wall say the same thing in the same size, and only the indentation
+   differs — the tree draws its heading inside a place, so it is inset to where
+   that place's rows begin. These were three sets of numbers that nearly agreed:
+   0.85 against 0.75, --text-dim against --text-faint, .06em against .05em. Nearly
+   agreeing is what reads as sloppiness without anybody being able to say why. */
+.group-title,
+.group-label,
+.wall-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  color: var(--text-dim);
+  font-size: var(--text-4);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.group-title { margin: 0; }
+.groups > .group-title { margin-top: var(--sp-4); }
+.groups > .group-title:first-child { margin-top: 0; }
+.group-count { margin-left: auto; color: var(--text-faint); font-weight: 400;
+  text-transform: none; letter-spacing: 0; }
 
 .cards {
   display: grid;
@@ -1040,7 +1116,7 @@ button.widget-pick-label {
   position: relative;
   padding: var(--pad);
   display: grid;
-  gap: 8px;
+  gap: var(--sp-2);
   cursor: pointer;
   transition: border-color 0.15s, transform 0.15s;
 }
@@ -1075,59 +1151,89 @@ button.widget-pick-label {
    row came from, not that anything is wrong with it. */
 .card.is-example { border-color: color-mix(in srgb, var(--accent) 30%, var(--border)); }
 
-.card-head { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
-/* flex: 1 1 auto with a floor, and break-word rather than anywhere.
-   The head holds the status pill, the name and up to two badges — example data and
-   the maintenance marker — and `anywhere` let the name be squeezed to a couple of
-   characters, which broke it mid-word: "Internet gateway" came out as "Inter net
-   gate way". Wrapping the badges onto a second line costs a little height on the
-   cards that carry two; a name nobody can read costs more. */
-.card-name { font-size: 1rem; flex: 1 1 auto; min-width: 9ch; overflow-wrap: break-word; }
+/* One line, always.
+ *
+ * The head holds the status pill, the symbol, the name and up to two badges —
+ * example data and the maintenance marker — and it used to wrap: a long name with
+ * two badges put the badges on a second line, so two cards side by side were
+ * different heights and the grid went ragged. The name takes what is left and is
+ * cut off with an ellipsis when that is not enough, and it says its whole self in
+ * the tooltip. A name is the one thing on a card that is worth reading twice, so
+ * it is the thing that gets the tooltip; nothing else here needs one. */
+.card-head { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: nowrap; }
+.card-name {
+  font-size: var(--text-2);
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .card-target {
   font-family: var(--mono);
-  font-size: 0.8rem;
+  font-size: var(--text-4);
   color: var(--text-dim);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.card-message { font-size: 0.85rem; color: var(--text-dim); overflow-wrap: anywhere; }
-.card-spark { margin: 2px 0; }
+.card-message { font-size: var(--text-3); color: var(--text-dim); overflow-wrap: anywhere; }
+.card-spark { margin: var(--sp-0) 0; }
+/* The footer is two lines of one kind of thing: what the numbers are, and what
+   can be done about them. The buttons are held back to a third of their strength
+   and come forward when the card is pointed at, hovered or reached by keyboard.
+   They are never hidden — a card whose buttons appear from nowhere is a card that
+   has to be learnt — and the row keeps its height either way, so nothing moves
+   under the pointer. The acknowledge button is the exception and stays at full
+   strength: it says an outage has been dealt with, which is worth seeing from
+   across the room rather than on approach. */
 .card-foot {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--sp-3);
   flex-wrap: wrap;
-  padding-top: 6px;
+  padding-top: var(--sp-2);
   border-top: 1px solid var(--border);
 }
-.card-meta { margin-left: auto; font-size: 0.8rem; }
-.card-stats { display: flex; gap: 10px; font-size: 0.78rem; color: var(--text-dim); }
+.card-meta { margin-left: auto; font-size: var(--text-4); }
+.card-stats { display: flex; gap: var(--sp-3); font-size: var(--text-4); color: var(--text-dim); }
 .card-stats b { color: var(--text); font-variant-numeric: tabular-nums; }
-.card-actions { display: flex; gap: 2px; }
+.card-actions { display: flex; gap: var(--sp-0); opacity: 0.35; transition: opacity 0.15s; }
+.card:hover .card-actions,
+.card:focus-within .card-actions,
+.card.is-down .card-actions,
+.tile:hover .card-actions,
+.tile:focus-within .card-actions,
+.tree-row:hover .card-actions,
+.tree-row:focus-within .card-actions { opacity: 1; }
+.card-actions .icon-btn.is-acked { opacity: 1; }
+@media (hover: none) {
+  /* A touch screen has no hovering, so on one the buttons are simply there. */
+  .card-actions { opacity: 1; }
+}
 
 /* -------------------------------------------------------------- list layout */
 
 .sensors-table, .incidents-table, .results-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.9rem;
+  font-size: var(--text-3);
 }
 
 .sensors-table th, .incidents-table th, .results-table th {
   text-align: left;
-  font-size: 0.75rem;
+  font-size: var(--text-5);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--text-dim);
   font-weight: 600;
-  padding: 8px 10px;
+  padding: var(--sp-2) var(--sp-3);
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
 }
 
 .sensors-table td, .incidents-table td, .results-table td {
-  padding: 9px 10px;
+  padding: var(--sp-2) var(--sp-3);
   border-bottom: 1px solid var(--border);
   vertical-align: middle;
 }
@@ -1135,7 +1241,7 @@ button.widget-pick-label {
 .sensors-table tbody tr, .incidents-table tbody tr { cursor: pointer; }
 .sensors-table tbody tr:hover, .incidents-table tbody tr:hover { background: var(--surface-2); }
 .cell-name { display: grid; }
-.cell-name .muted { font-family: var(--mono); font-size: 0.78rem; }
+.cell-name .muted { font-family: var(--mono); font-size: var(--text-4); }
 
 .sensors-table tr.st-down { background: color-mix(in srgb, var(--crit) 6%, transparent); }
 .sensors-table tr.st-warn { background: color-mix(in srgb, var(--warn) 6%, transparent); }
@@ -1163,13 +1269,13 @@ button.widget-pick-label {
 .data-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.9rem;
+  font-size: var(--text-3);
 }
 
 .data-table th {
-  padding: 8px 12px;
+  padding: var(--sp-2) var(--sp-3);
   text-align: left;
-  font-size: 0.72rem;
+  font-size: var(--text-5);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -1179,7 +1285,7 @@ button.widget-pick-label {
 }
 
 .data-table td {
-  padding: 9px 12px;
+  padding: var(--sp-2) var(--sp-3);
   vertical-align: middle;
   border-bottom: 1px solid var(--border);
 }
@@ -1187,8 +1293,8 @@ button.widget-pick-label {
 /* The last row's rule would double the border the .table-wrap already draws. */
 .data-table tbody tr:last-child td { border-bottom: 0; }
 .data-table tbody tr:hover { background: var(--surface-2); }
-.data-table th:first-child, .data-table td:first-child { padding-left: 14px; }
-.data-table th:last-child, .data-table td:last-child { padding-right: 14px; }
+.data-table th:first-child, .data-table td:first-child { padding-left: var(--sp-4); }
+.data-table th:last-child, .data-table td:last-child { padding-right: var(--sp-4); }
 
 /* A count in a table is read by its column, not by its row, so the digits have
    to sit still: same width everywhere, aligned on the right edge. */
@@ -1218,21 +1324,21 @@ button.widget-pick-label {
 }
 
 .data-table .row-actions .btn {
-  padding: 4px 9px;
-  font-size: 0.8rem;
+  padding: var(--sp-1) var(--sp-2);
+  font-size: var(--text-4);
 }
 
-.data-table .row-actions .btn + .btn { margin-left: 6px; }
+.data-table .row-actions .btn + .btn { margin-left: var(--sp-2); }
 
 /* ------------------------------------------------------------------- pills */
 
 .pill {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 3px 9px 3px 7px;
+  gap: var(--sp-2);
+  padding: var(--sp-0) var(--sp-2) var(--sp-0) var(--sp-2);
   border-radius: 999px;
-  font-size: 0.75rem;
+  font-size: var(--text-5);
   font-weight: 600;
   white-space: nowrap;
   color: var(--unknown);
@@ -1241,6 +1347,9 @@ button.widget-pick-label {
 }
 
 .pill .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+/* A status pill and the badge that may follow it travel as one box, so that a row
+   laid out as a grid counts them once — see statusPill. */
+.pill-group { display: inline-flex; align-items: center; gap: var(--sp-1); min-width: 0; }
 /* The "Example" chip. Quieter than a status pill on purpose — it is a fact about
    where the sensor came from, not a state that can change. */
 .pill.badge-example {
@@ -1262,10 +1371,10 @@ button.widget-pick-label {
 /* ------------------------------------------------------------------ charts */
 
 .chart { display: block; max-width: 100%; }
-.chart-empty, .strip-empty { padding: 22px; text-align: center; }
+.chart-empty, .strip-empty { padding: var(--sp-5); text-align: center; }
 
 .chart .grid { stroke: var(--border); stroke-width: 1; }
-.chart .axis { fill: var(--text-faint); font-size: 10.5px; font-family: var(--font); }
+.chart .axis { fill: var(--text-faint); font-size: var(--text-5); font-family: var(--font); }
 .chart .line { fill: none; stroke: var(--accent); stroke-width: 1.8; stroke-linejoin: round; stroke-linecap: round; }
 .chart .band { fill: color-mix(in srgb, var(--accent) 20%, transparent); stroke: none; }
 .chart .dot { fill: var(--accent); }
@@ -1312,8 +1421,8 @@ button.widget-pick-label {
 /* A short list of one-line choices does not need the width a sensor's history
    does, and a window that wide for eleven names is mostly empty. */
 .sheet-narrow { width: min(420px, calc(100vw - 32px)); }
-.sheet-note { margin: 14px 18px 0; }
-.sheet-narrow .widget-picks { padding: 10px 12px 16px; }
+.sheet-note { margin: var(--sp-4) var(--sp-4) 0; }
+.sheet-narrow .widget-picks { padding: var(--sp-3) var(--sp-3) var(--sp-4); }
 
 /* The detail sheet is focused when it opens, on purpose — see openDetail. The ring
    that :focus-visible would draw is a rounded accent rectangle around the whole
@@ -1326,29 +1435,29 @@ button.widget-pick-label {
   top: 0;
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 14px 18px;
+  gap: var(--sp-3);
+  padding: var(--sp-4) var(--sp-4);
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   z-index: 2;
 }
 
 .sheet-head h2 { margin-right: auto; overflow-wrap: anywhere; }
-.sheet-body { padding: 18px; display: grid; gap: var(--gap); }
-.sheet-actions { padding: 12px 18px 0; }
+.sheet-body { padding: var(--sp-4); display: grid; gap: var(--gap); }
+.sheet-actions { padding: var(--sp-3) var(--sp-4) 0; }
 .sheet-foot {
   position: sticky;
   bottom: 0;
   display: flex;
-  gap: 8px;
+  gap: var(--sp-2);
   justify-content: flex-end;
-  padding: 14px 18px;
+  padding: var(--sp-4) var(--sp-4);
   background: var(--surface);
   border-top: 1px solid var(--border);
 }
 
-#detail-body { padding: 18px; display: grid; gap: 12px; }
-.detail-sub { font-family: var(--mono); font-size: 0.82rem; }
+#detail-body { padding: var(--sp-4); display: grid; gap: var(--sp-3); }
+.detail-sub { font-family: var(--mono); font-size: var(--text-4); }
 
 /* The offer to bring the open window up to date, which appears once a probe has
    landed behind it. It is a button because pressing it is what redraws the body —
@@ -1358,14 +1467,14 @@ button.widget-pick-label {
 .detail-notice {
   display: block;
   width: calc(100% - 36px);
-  margin: 12px 18px 0;
-  padding: 8px 11px;
+  margin: var(--sp-3) var(--sp-4) 0;
+  padding: var(--sp-2) var(--sp-3);
   border: 1px solid color-mix(in srgb, var(--accent) 38%, transparent);
   border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--accent) 10%, transparent);
   color: var(--text);
   font: inherit;
-  font-size: 0.85rem;
+  font-size: var(--text-3);
   text-align: center;
   cursor: pointer;
 }
@@ -1377,17 +1486,17 @@ button.widget-pick-label {
   gap: var(--gap);
 }
 .section-title {
-  margin-top: 8px;
+  margin-top: var(--sp-2);
   color: var(--text-dim);
-  font-size: 0.8rem;
+  font-size: var(--text-4);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
 
 .banner {
-  padding: 9px 12px;
+  padding: var(--sp-2) var(--sp-3);
   border-radius: var(--radius-sm);
-  font-size: 0.88rem;
+  font-size: var(--text-3);
 }
 
 .banner.crit {
@@ -1396,16 +1505,16 @@ button.widget-pick-label {
   border: 1px solid color-mix(in srgb, var(--crit) 38%, transparent);
 }
 
-.range-picker { display: flex; gap: 6px; flex-wrap: wrap; }
+.range-picker { display: flex; gap: var(--sp-2); flex-wrap: wrap; }
 
 .chip {
-  padding: 5px 11px;
+  padding: var(--sp-1) var(--sp-3);
   border: 1px solid var(--border);
   border-radius: 999px;
   background: var(--surface-2);
   color: var(--text-dim);
   font: inherit;
-  font-size: 0.82rem;
+  font-size: var(--text-4);
   cursor: pointer;
 }
 
@@ -1414,12 +1523,13 @@ button.widget-pick-label {
 
 /* ------------------------------------------------------------------- forms */
 
-label.field { display: grid; gap: 5px; align-content: start; }
-label.field > span { font-size: 0.85rem; color: var(--text-dim); font-weight: 500; }
+label.field { display: grid; gap: var(--sp-1); align-content: start; }
+label.field > span { font-size: var(--text-3); color: var(--text-dim); font-weight: 500; }
 
 input[type='text'], input[type='password'], input[type='number'], input[type='search'], select, textarea {
   width: 100%;
-  padding: 8px 10px;
+  min-height: var(--ctl-h);
+  padding: var(--sp-1) var(--sp-3);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--surface-2);
@@ -1427,33 +1537,33 @@ input[type='text'], input[type='password'], input[type='number'], input[type='se
   font: inherit;
 }
 
-textarea { font-family: var(--mono); font-size: 0.85rem; resize: vertical; }
+textarea { font-family: var(--mono); font-size: var(--text-3); resize: vertical; }
 input:disabled, select:disabled { opacity: 0.55; }
 
-.hint { color: var(--text-faint); font-size: 0.78rem; line-height: 1.4; }
+.hint { color: var(--text-faint); font-size: var(--text-4); line-height: 1.4; }
 
 .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: var(--gap); }
 .grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: var(--gap); }
 
 /* A checkbox that is a field like any other: label.field stacks its children, which
    is right above an input box and wrong next to a tick, so this one lies flat. */
-label.field.check { display: flex; align-items: center; gap: 8px; }
+label.field.check { display: flex; align-items: center; gap: var(--sp-2); }
 label.field.check input { width: auto; }
-label.field.check > span { color: var(--text); font-size: 0.88rem; }
+label.field.check > span { color: var(--text); font-size: var(--text-3); }
 
-.sensor-row { display: flex; align-items: center; gap: 8px; font-size: 0.88rem; }
+.sensor-row { display: flex; align-items: center; gap: var(--sp-2); font-size: var(--text-3); }
 .sensor-row input { width: auto; }
 
 .channels-pick {
   display: grid;
-  gap: 6px;
+  gap: var(--sp-2);
   margin: 0;
   padding: var(--pad);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
 }
 
-.channels-pick legend { padding: 0 6px; color: var(--text-dim); font-size: 0.85rem; }
+.channels-pick legend { padding: 0 var(--sp-2); color: var(--text-dim); font-size: var(--text-3); }
 
 /* The recipe under a channel type's fields. It is not a fold and not a hint: it is
    the part of the dialog that tells somebody who has never made a Telegram bot
@@ -1465,16 +1575,16 @@ label.field.check > span { color: var(--text); font-size: 0.88rem; }
   background: var(--surface-2);
   border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
 }
-.channel-setup h4 { margin: 0 0 6px; font-size: 0.85rem; color: var(--text-dim); font-weight: 500; }
-.channel-setup ol { margin: 0; padding-left: 1.15em; display: grid; gap: 5px; }
-.channel-setup li { font-size: 0.82rem; line-height: 1.45; color: var(--text-dim); }
+.channel-setup h4 { margin: 0 0 var(--sp-2); font-size: var(--text-3); color: var(--text-dim); font-weight: 500; }
+.channel-setup ol { margin: 0; padding-left: 1.15em; display: grid; gap: var(--sp-1); }
+.channel-setup li { font-size: var(--text-4); line-height: 1.45; color: var(--text-dim); }
 
 .options { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: var(--pad-sm); }
-.options summary { cursor: pointer; font-size: 0.88rem; color: var(--text-dim); }
+.options summary { cursor: pointer; font-size: var(--text-3); color: var(--text-dim); }
 .options > div { margin-top: var(--pad-sm); }
 
-.form-actions { display: flex; gap: 8px; align-items: end; }
-.form-error { color: var(--crit); font-size: 0.85rem; min-height: 1.1em; }
+.form-actions { display: flex; gap: var(--sp-2); align-items: end; }
+.form-error { color: var(--crit); font-size: var(--text-3); min-height: 1.1em; }
 
 /* The password form is a .grid-2 like every other pair of fields, but a button and
    an error line are not fields. Left alone, auto-fit puts the button in the next
@@ -1485,8 +1595,17 @@ label.field.check > span { color: var(--text); font-size: 0.88rem; }
 #password-form .form-actions,
 #password-form .form-error { grid-column: 1 / -1; }
 
+/* Every control is one height. A button, an input, a select and the icon buttons
+   that sit beside them in a row are all --ctl-h tall, so that a line of them lines
+   up instead of stepping up and down by the few pixels each font metric happened to
+   add. It was written as padding: 8px 14px on a button and 8px 10px in a field,
+   which is 37 pixels of box for both and looks like two different sizes anyway. */
 .btn {
-  padding: 8px 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--ctl-h);
+  padding: var(--sp-1) var(--sp-3);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--surface-2);
@@ -1511,12 +1630,12 @@ label.field.check > span { color: var(--text); font-size: 0.88rem; }
    their plain box is what every other measurement in here is taken against. The
    icon is what is left of such a button when the word goes, so it holds its size
    and refuses to shrink. */
-.btn:has(svg) { display: inline-flex; align-items: center; gap: 7px; }
+.btn:has(svg) { display: inline-flex; align-items: center; gap: var(--sp-2); }
 .btn svg { width: 16px; height: 16px; flex: none; }
 
 .icon-btn {
-  width: 30px;
-  height: 30px;
+  width: var(--ctl-h);
+  height: var(--ctl-h);
   display: inline-grid;
   place-items: center;
   border: 1px solid transparent;
@@ -1524,7 +1643,7 @@ label.field.check > span { color: var(--text); font-size: 0.88rem; }
   background: transparent;
   color: var(--text-dim);
   font: inherit;
-  font-size: 0.95rem;
+  font-size: var(--text-2);
   line-height: 1;
   cursor: pointer;
 }
@@ -1532,7 +1651,7 @@ label.field.check > span { color: var(--text); font-size: 0.88rem; }
 .icon-btn:hover { background: var(--surface-2); color: var(--text); border-color: var(--border); }
 .icon-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 
-.switch { display: flex; align-items: center; gap: 7px; font-size: 0.88rem; color: var(--text-dim); }
+.switch { display: flex; align-items: center; gap: var(--sp-2); font-size: var(--text-3); color: var(--text-dim); }
 .switch input { width: auto; }
 
 /* ------------------------------------------------------------------ panels */
@@ -1551,9 +1670,9 @@ label.field.check > span { color: var(--text); font-size: 0.88rem; }
    rather than wrapping, so that it is the same height at every width. */
 .settings-tabs {
   display: flex;
-  gap: 6px;
+  gap: var(--sp-2);
   overflow-x: auto;
-  padding: 5px;
+  padding: var(--sp-1);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface);
@@ -1562,15 +1681,15 @@ label.field.check > span { color: var(--text); font-size: 0.88rem; }
 .tab-btn {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: var(--sp-2);
   flex: none;
-  padding: 6px 12px;
+  padding: var(--sp-2) var(--sp-3);
   border: 0;
   border-radius: 999px;
   background: transparent;
   color: var(--text-dim);
   font: inherit;
-  font-size: 0.88rem;
+  font-size: var(--text-3);
   cursor: pointer;
   white-space: nowrap;
 }
@@ -1583,35 +1702,35 @@ label.field.check > span { color: var(--text); font-size: 0.88rem; }
    in, so there is no second copy of it to drift. */
 .tab-btn[aria-selected='true'] { background: var(--surface-3); color: var(--text); }
 
-.panel { padding: var(--pad) calc(var(--pad) + 2px); display: grid; gap: 14px; }
+.panel { padding: var(--pad) calc(var(--pad) + 2px); display: grid; gap: var(--sp-4); }
 /* A panel's heading is now a title rather than a label. It used to be 0.8rem of
    uppercase grey — the same treatment .section-title gets for the headings inside
    a panel — which made it read as one more line of the panel instead of as the
    thing that opens it. It is one size up and in the text colour; the headings
    inside a panel stay where they were, so the two levels are told apart by weight
    now and not by both being small and grey. */
-.panel h2 { color: var(--text); font-size: 0.95rem; font-weight: 600; letter-spacing: 0; }
+.panel h2 { color: var(--text); font-size: var(--text-2); font-weight: 600; letter-spacing: 0; }
 
 /* The heading and the sentence that says what the panel is for, held together.
    Without the wrapper the panel's own 14px gap would stand between them, and a
    hint that far from its heading reads as the first line of the panel's content
    rather than as part of its title. */
-.panel-head { display: grid; gap: 4px; }
-.panel-hint { margin: 0; color: var(--text-dim); font-size: 0.85rem; }
+.panel-head { display: grid; gap: var(--sp-1); }
+.panel-hint { margin: 0; color: var(--text-dim); font-size: var(--text-3); }
 
-.kv { display: grid; grid-template-columns: max-content 1fr; gap: 6px 18px; margin: 0; font-size: 0.9rem; }
+.kv { display: grid; grid-template-columns: max-content 1fr; gap: var(--sp-2) var(--sp-4); margin: 0; font-size: var(--text-3); }
 .kv dt { color: var(--text-dim); }
-.kv dd { margin: 0; font-family: var(--mono); font-size: 0.85rem; overflow-wrap: anywhere; }
+.kv dd { margin: 0; font-family: var(--mono); font-size: var(--text-3); overflow-wrap: anywhere; }
 
-.key-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.key-row { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
 .key-row code {
   flex: 1 1 260px;
-  padding: 9px 11px;
+  padding: var(--sp-2) var(--sp-3);
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   font-family: var(--mono);
-  font-size: 0.85rem;
+  font-size: var(--text-3);
   overflow-wrap: anywhere;
 }
 
@@ -1625,23 +1744,73 @@ label.field.check > span { color: var(--text); font-size: 0.88rem; }
    here, only something to read and something to click. */
 .settings-footer {
   display: grid;
-  gap: 8px;
+  gap: var(--sp-2);
   padding-top: var(--pad);
   border-top: 1px solid var(--border);
 }
 
-.settings-links { display: flex; flex-wrap: wrap; gap: 6px 20px; }
+.settings-links { display: flex; flex-wrap: wrap; gap: var(--sp-2) var(--sp-5); }
 
 /* Dimmed until it is pointed at, the way the rest of this page treats anything
    that is not the thing being worked on. The underline is the border rather than
    text-decoration so that it sits clear of the descenders at this size. */
 .settings-links a {
   color: var(--text-dim);
-  font-size: 0.85rem;
+  font-size: var(--text-3);
   text-decoration: none;
   border-bottom: 1px solid var(--border);
 }
 .settings-links a:hover { color: var(--text); border-bottom-color: currentColor; }
+
+/* ------------------------------------------------------- empty and loading */
+
+/* An empty state, and the line that stands in its place while something loads.
+ *
+ * Three of these blocks were already in the page — no sensors, no channels, no
+ * incidents — and not one of them had a rule: a heading, a sentence and sometimes
+ * a button, stacked at the top of a page that was otherwise blank. An empty view
+ * that looks like a mistake is read as one, which is why this is a box with an
+ * edge: it says the area is empty because there is nothing in it, and the sentence
+ * in it says what would put something there. */
+.empty {
+  display: grid;
+  justify-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-6) var(--sp-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  text-align: center;
+  /* A full-width sentence is a hard line to read and an empty state is one
+     sentence, so the box is as wide as a comfortable line of text and no wider. */
+  max-width: 720px;
+  margin-inline: auto;
+}
+.empty h2 { font-size: var(--text-2); font-weight: 600; }
+.empty p { max-width: 54ch; color: var(--text-dim); font-size: var(--text-4); line-height: 1.5; }
+.empty .btn { margin-top: var(--sp-1); }
+
+/* The same box inside a panel, a dialog or a grid cell: it stands among other
+   panels there, so it is framed like one and does not need the room a whole page
+   affords. It is also what a table shows when it has no rows. */
+.empty-inline {
+  padding: var(--sp-5) var(--sp-4);
+  background: var(--surface-2);
+}
+.empty-inline h2 { font-size: var(--text-3); }
+
+/* Where the thing will be, in the shape it will have: the same box, the same
+   padding, one quiet line in the middle, so that nothing jumps when the answer
+   arrives. Nothing spins: a spinner on a panel that answers in 200 ms is a
+   flicker, and on one that takes two seconds it says less than the word does. */
+.loading {
+  display: grid;
+  place-items: center;
+  padding: var(--sp-6) var(--sp-4);
+  color: var(--text-faint);
+  font-size: var(--text-4);
+}
+.loading-inline { padding: var(--sp-5) var(--sp-4); }
 
 /* ------------------------------------------------------------------ toasts */
 
@@ -1651,18 +1820,18 @@ label.field.check > span { color: var(--text); font-size: 0.88rem; }
   bottom: 18px;
   z-index: 60;
   display: grid;
-  gap: 8px;
+  gap: var(--sp-2);
   max-width: min(380px, calc(100vw - 36px));
 }
 
 .toast {
-  padding: 11px 14px;
+  padding: var(--sp-3) var(--sp-4);
   border: 1px solid var(--border);
   border-left: 3px solid var(--accent);
   border-radius: var(--radius-sm);
   background: var(--surface);
   box-shadow: var(--shadow);
-  font-size: 0.88rem;
+  font-size: var(--text-3);
   overflow-wrap: anywhere;
 }
 
@@ -1690,7 +1859,7 @@ label.field.check > span { color: var(--text); font-size: 0.88rem; }
   border-radius: 50%;
   background: var(--surface-2);
   color: var(--text-dim);
-  font: 600 10px/1 var(--font);
+  font: 600 var(--text-5)/1 var(--font);
   cursor: help;
   vertical-align: middle;
 }
@@ -1703,34 +1872,34 @@ label.field.check > span { color: var(--text); font-size: 0.88rem; }
   z-index: 90;
   max-width: min(320px, calc(100vw - 24px));
   display: grid;
-  gap: 7px;
-  padding: 10px 12px;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-3);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
   background: var(--surface-3);
   color: var(--text);
   box-shadow: var(--shadow);
-  font-size: 0.82rem;
+  font-size: var(--text-4);
   line-height: 1.45;
 }
 
 .help-body { margin: 0; }
-.help-eg { margin: 0; display: grid; gap: 3px; }
-.help-eg span { color: var(--text-dim); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; }
+.help-eg { margin: 0; display: grid; gap: var(--sp-0); }
+.help-eg span { color: var(--text-dim); font-size: var(--text-5); text-transform: uppercase; letter-spacing: 0.05em; }
 .help-eg code {
   display: block;
-  padding: 5px 7px;
+  padding: var(--sp-1) var(--sp-2);
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--bg);
   font-family: var(--mono);
-  font-size: 0.78rem;
+  font-size: var(--text-4);
   overflow-wrap: anywhere;
 }
 
 /* --------------------------------------------------------- password meter */
 
-.pw-meter { display: grid; gap: 5px; margin-top: 6px; }
+.pw-meter { display: grid; gap: var(--sp-1); margin-top: var(--sp-2); }
 
 .pw-bar { height: 5px; border-radius: 999px; background: var(--surface-3); overflow: hidden; }
 .pw-fill {
@@ -1742,7 +1911,7 @@ label.field.check > span { color: var(--text); font-size: 0.88rem; }
   transition: width 0.2s ease, background 0.2s ease;
 }
 
-.pw-line { display: flex; gap: 8px; align-items: baseline; font-size: 0.78rem; }
+.pw-line { display: flex; gap: var(--sp-2); align-items: baseline; font-size: var(--text-4); }
 .pw-word { font-weight: 600; color: var(--crit); }
 .pw-tip { color: var(--text-faint); }
 
@@ -1755,18 +1924,18 @@ label.field.check > span { color: var(--text); font-size: 0.88rem; }
 
 /* ------------------------------------------------- setups's mode question */
 
-.auth-step { display: grid; gap: 14px; }
-.auth-actions { display: flex; align-items: center; gap: 8px; }
+.auth-step { display: grid; gap: var(--sp-4); }
+.auth-actions { display: flex; align-items: center; gap: var(--sp-2); }
 
-.mode-pick { margin: 0; padding: 0; border: 0; display: grid; gap: 10px; }
-.mode-pick legend { padding: 0; color: var(--text-dim); font-size: 0.85rem; font-weight: 500; }
+.mode-pick { margin: 0; padding: 0; border: 0; display: grid; gap: var(--sp-3); }
+.mode-pick legend { padding: 0; color: var(--text-dim); font-size: var(--text-3); font-weight: 500; }
 
 .mode-card {
   display: grid;
   grid-template-columns: auto 1fr;
   grid-template-areas: 'radio name' 'radio body';
-  gap: 2px 10px;
-  padding: 12px 14px;
+  gap: var(--sp-0) var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--surface-2);
@@ -1774,10 +1943,10 @@ label.field.check > span { color: var(--text); font-size: 0.88rem; }
 }
 
 .mode-card:hover { border-color: var(--border-strong); }
-.mode-card input { grid-area: radio; width: auto; align-self: start; margin-top: 3px; }
+.mode-card input { grid-area: radio; width: auto; align-self: start; margin-top: var(--sp-0); }
 .mode-card:has(input:checked) { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--surface-2)); }
 .mode-name { grid-area: name; font-weight: 600; }
-.mode-body { grid-area: body; color: var(--text-dim); font-size: 0.82rem; line-height: 1.4; }
+.mode-body { grid-area: body; color: var(--text-dim); font-size: var(--text-4); line-height: 1.4; }
 
 /* ------------------------------------------------------- acknowledgement */
 
@@ -1790,48 +1959,48 @@ label.field.check > span { color: var(--text); font-size: 0.88rem; }
 .card.is-acked { border-color: color-mix(in srgb, var(--warn) 40%, var(--border)); }
 .card.is-acked::before { background: var(--warn); }
 
-.ack-note { color: var(--warn); font-size: 0.82rem; }
+.ack-note { color: var(--warn); font-size: var(--text-4); }
 .incident-actions { white-space: nowrap; text-align: right; }
-.detail-ack { margin-top: 10px; }
-.btn-small { padding: 4px 9px; font-size: 0.8rem; }
+.detail-ack { margin-top: var(--sp-3); }
+.btn-small { min-height: var(--ctl-h-sm); padding: var(--sp-0) var(--sp-2); font-size: var(--text-4); }
 
 /* ------------------------------------------------------------ diagnostics */
 
 #doctor-result:empty { display: none; }
 
-.doctor-summary { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.doctor-summary { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
 
 .pill.lv-ok { color: var(--ok); background: color-mix(in srgb, var(--ok) 15%, transparent); border-color: color-mix(in srgb, var(--ok) 38%, transparent); }
 .pill.lv-warn { color: var(--warn); background: color-mix(in srgb, var(--warn) 15%, transparent); border-color: color-mix(in srgb, var(--warn) 38%, transparent); }
 .pill.lv-fail { color: var(--crit); background: color-mix(in srgb, var(--crit) 15%, transparent); border-color: color-mix(in srgb, var(--crit) 40%, transparent); }
 
-.findings { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.findings { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--sp-2); }
 .finding {
   display: grid;
   grid-template-columns: auto auto 1fr;
-  gap: 4px 10px;
+  gap: var(--sp-1) var(--sp-3);
   align-items: baseline;
-  padding: 7px 10px;
+  padding: var(--sp-2) var(--sp-3);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--surface-2);
-  font-size: 0.86rem;
+  font-size: var(--text-3);
 }
 
 .finding-label { font-weight: 600; }
 .finding-detail { grid-column: 3; }
-.finding-hint { grid-column: 3; font-size: 0.8rem; }
+.finding-hint { grid-column: 3; font-size: var(--text-4); }
 
 .doctor-text {
-  margin: 8px 0 0;
-  padding: 12px;
+  margin: var(--sp-2) 0 0;
+  padding: var(--sp-3);
   max-height: 24rem;
   overflow: auto;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--bg);
   font-family: var(--mono);
-  font-size: 0.78rem;
+  font-size: var(--text-4);
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -1859,8 +2028,8 @@ label.field.check > span { color: var(--text); font-size: 0.88rem; }
   z-index: 2;
   width: min(340px, calc(100vw - 28px));
   display: grid;
-  gap: 8px;
-  padding: 16px 18px;
+  gap: var(--sp-2);
+  padding: var(--sp-4) var(--sp-4);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius);
   background: var(--surface);
@@ -1868,13 +2037,13 @@ label.field.check > span { color: var(--text); font-size: 0.88rem; }
   box-shadow: var(--shadow);
 }
 
-.tour-count { margin: 0; color: var(--text-faint); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; }
+.tour-count { margin: 0; color: var(--text-faint); font-size: var(--text-5); text-transform: uppercase; letter-spacing: 0.06em; }
 .tour-title { margin: 0; }
-.tour-body { margin: 0; color: var(--text-dim); font-size: 0.88rem; line-height: 1.5; }
+.tour-body { margin: 0; color: var(--text-dim); font-size: var(--text-3); line-height: 1.5; }
 /* The three-way offer at the end of the tour. It wraps rather than scrolls:
    the card is narrow and a button nobody can see is not an offer. */
-.tour-choice { display: flex; flex-wrap: wrap; gap: 8px; }
-.tour-nav { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.tour-choice { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.tour-nav { display: flex; align-items: center; gap: var(--sp-2); margin-top: var(--sp-1); }
 .tour-spacer { flex: 1; }
 
 /* --------------------------------------------------------- accounts and 2FA */
@@ -1886,19 +2055,19 @@ label.field.check > span { color: var(--text); font-size: 0.88rem; }
 .users-table td { vertical-align: middle; }
 .users-table .user-name { font-weight: 600; }
 .user-row.is-disabled { opacity: 0.55; }
-.row-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.row-actions { display: flex; gap: var(--sp-2); flex-wrap: wrap; justify-content: flex-end; }
 
 /* The QR image comes out of the server in module units — a few hundred pixels
    across — and is scaled down here. A whole-number multiple stays sharp, and
    `pixelated` is what keeps the browser from smoothing the module edges into
    something a phone camera has to guess at. */
-.qr-wrap { display: flex; justify-content: center; padding: 6px 0; }
+.qr-wrap { display: flex; justify-content: center; padding: var(--sp-2) 0; }
 .qr {
   width: 220px;
   height: 220px;
   image-rendering: pixelated;
   background: #fff;
-  padding: 8px;
+  padding: var(--sp-2);
   border-radius: var(--radius);
 }
 
@@ -1906,9 +2075,9 @@ label.field.check > span { color: var(--text); font-size: 0.88rem; }
    enough that breaking it anywhere is better than overflowing the dialog. */
 .secret-key {
   display: block;
-  padding: 10px 12px;
+  padding: var(--sp-3) var(--sp-3);
   font-family: var(--mono);
-  font-size: 0.95rem;
+  font-size: var(--text-2);
   letter-spacing: 0.08em;
   word-break: break-all;
   background: var(--surface-2);
@@ -1922,13 +2091,13 @@ label.field.check > span { color: var(--text); font-size: 0.88rem; }
 .recovery-codes {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 6px 18px;
+  gap: var(--sp-2) var(--sp-4);
   margin: 0;
-  padding-left: 22px;
+  padding-left: var(--sp-5);
 }
 .recovery-codes code {
   font-family: var(--mono);
-  font-size: 0.95rem;
+  font-size: var(--text-2);
   letter-spacing: 0.06em;
   user-select: all;
 }
@@ -1955,8 +2124,8 @@ label.field.check > span { color: var(--text); font-size: 0.88rem; }
    visible on the control itself rather than hidden behind its own label. */
 .segmented {
   display: flex;
-  gap: 2px;
-  padding: 3px;
+  gap: var(--sp-0);
+  padding: var(--sp-0);
   border: 1px solid var(--border);
   border-radius: 999px;
   background: var(--surface);
@@ -1965,14 +2134,14 @@ label.field.check > span { color: var(--text); font-size: 0.88rem; }
 .seg-btn {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 5px 11px;
+  gap: var(--sp-2);
+  padding: var(--sp-1) var(--sp-3);
   border: 0;
   border-radius: 999px;
   background: transparent;
   color: var(--text-dim);
   font: inherit;
-  font-size: 0.85rem;
+  font-size: var(--text-3);
   font-weight: 500;
   cursor: pointer;
   white-space: nowrap;
@@ -1993,8 +2162,8 @@ label.field.check > span { color: var(--text); font-size: 0.88rem; }
 .user-chip {
   display: flex;
   align-items: center;
-  gap: 9px;
-  padding: 4px 12px 4px 4px;
+  gap: var(--sp-2);
+  padding: var(--sp-1) var(--sp-3) var(--sp-1) var(--sp-1);
   border: 1px solid var(--border);
   border-radius: 999px;
   background: var(--surface);
@@ -2014,12 +2183,12 @@ label.field.check > span { color: var(--text); font-size: 0.88rem; }
   border-radius: 50%;
   background: var(--accent);
   color: var(--accent-ink);
-  font-size: 0.8rem;
+  font-size: var(--text-4);
   font-weight: 700;
   text-transform: uppercase;
 }
 
-.user-chip-name { font-size: 0.85rem; font-weight: 550; max-width: 120px;
+.user-chip-name { font-size: var(--text-3); font-weight: 550; max-width: 120px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* The menu is appended to the open dialog, or to the body, by user.js, and
@@ -2029,7 +2198,7 @@ label.field.check > span { color: var(--text); font-size: 0.88rem; }
   position: fixed;
   z-index: 60;
   min-width: 232px;
-  padding: 8px;
+  padding: var(--sp-2);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius);
   background: var(--surface-2);
@@ -2037,57 +2206,57 @@ label.field.check > span { color: var(--text); font-size: 0.88rem; }
 }
 
 .user-menu-head {
-  padding: 8px 10px 10px;
+  padding: var(--sp-2) var(--sp-3) var(--sp-3);
   border-bottom: 1px solid var(--border);
-  margin-bottom: 6px;
+  margin-bottom: var(--sp-2);
 }
 
 .user-menu-name { font-weight: 650; }
-.user-menu-role { color: var(--text-dim); font-size: 0.8rem; }
+.user-menu-role { color: var(--text-dim); font-size: var(--text-4); }
 
 .user-menu-item {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--sp-3);
   width: 100%;
-  padding: 8px 10px;
+  padding: var(--sp-2) var(--sp-3);
   border: 0;
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text);
   font: inherit;
-  font-size: 0.9rem;
+  font-size: var(--text-3);
   text-align: left;
   cursor: pointer;
 }
 
 .user-menu-item:hover { background: var(--surface-3); }
 .user-menu-item.is-danger { color: var(--crit); }
-.user-menu-sep { height: 1px; margin: 6px 0; background: var(--border); }
+.user-menu-sep { height: 1px; margin: var(--sp-2) 0; background: var(--border); }
 
 .user-menu-field {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  padding: 6px 10px;
-  font-size: 0.88rem;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  font-size: var(--text-3);
   color: var(--text-dim);
 }
 
 .user-menu-field select {
-  padding: 4px 8px;
+  padding: var(--sp-1) var(--sp-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--surface);
   color: var(--text);
   font: inherit;
-  font-size: 0.85rem;
+  font-size: var(--text-3);
 }
 
 @media (max-width: 860px) {
   .user-chip-name { display: none; }
-  .user-chip { padding: 4px; }
+  .user-chip { padding: var(--sp-1); }
 }
 
 /* ------------------------------------------------------------- tree layout */
@@ -2102,8 +2271,8 @@ label.field.check > span { color: var(--text); font-size: 0.88rem; }
 .site-head {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 11px 14px;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
   cursor: pointer;
   list-style: none;
   font-weight: 600;
@@ -2116,12 +2285,13 @@ label.field.check > span { color: var(--text); font-size: 0.88rem; }
 .site-caret { color: var(--text-faint); transition: transform 0.15s ease; }
 .site-node[open] > .site-head .site-caret { transform: rotate(90deg); }
 
-.site-count { margin-left: auto; color: var(--text-dim); font-weight: 400; font-size: 0.85rem; }
+.site-count { margin-left: auto; color: var(--text-faint); font-weight: 400;
+  font-size: var(--text-4); text-transform: none; letter-spacing: 0; }
 
 .kind-tag {
-  padding: 2px 9px;
+  padding: var(--sp-0) var(--sp-2);
   border-radius: 999px;
-  font-size: 0.72rem;
+  font-size: var(--text-5);
   font-weight: 600;
   letter-spacing: 0.02em;
   border: 1px solid var(--border-strong);
@@ -2130,44 +2300,43 @@ label.field.check > span { color: var(--text); font-size: 0.88rem; }
 
 .kind-tag.k-external { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
 
-.group-node { padding: 4px 0; }
-.group-label { padding: 7px 16px 3px; color: var(--text-faint); font-size: 0.75rem;
-  text-transform: uppercase; letter-spacing: 0.06em; }
+.group-node { padding: var(--sp-1) 0; }
+/* The tree's heading stands where the rows under it begin, and those rows are
+   inset past the status pill every one of them carries. */
+.group-label { padding: var(--sp-3) var(--sp-4) var(--sp-1) var(--sp-5); }
 
 .tree-row {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) 120px 92px auto;
   align-items: center;
-  gap: 12px;
-  padding: 8px 16px 8px 26px;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-4) var(--sp-2) var(--sp-5);
   border-top: 1px solid var(--border);
 }
 
 .site-body > .group-node:first-child .tree-row:first-child { border-top: 0; }
 .tree-row:hover { background: var(--surface-2); }
 .tree-row .row-name { font-weight: 550; }
-.tree-row .row-target { color: var(--text-dim); font-size: 0.82rem; overflow: hidden;
+.tree-row .row-target { color: var(--text-dim); font-size: var(--text-4); overflow: hidden;
   text-overflow: ellipsis; white-space: nowrap; }
-.tree-row .num { font-variant-numeric: tabular-nums; color: var(--text-dim); font-size: 0.85rem; }
+.tree-row .num { font-variant-numeric: tabular-nums; color: var(--text-dim); font-size: var(--text-3); }
 
 /* ------------------------------------------------------------- wall layout */
 
 /* One tile per sensor, sized to be scanned rather than read: the heartbeat is the
    point, so the name and the marks are what the eye lands on. */
-.wall-group { margin-bottom: 22px; }
-.wall-head { display: flex; align-items: center; gap: 10px; margin: 0 0 10px;
-  color: var(--text-dim); font-size: 0.85rem; font-weight: 600;
-  text-transform: uppercase; letter-spacing: 0.05em; }
+.wall-group { margin-bottom: var(--sp-5); }
+.wall-head { margin: 0 0 var(--sp-3); }
 .wall-count { margin-left: auto; color: var(--text-faint); font-weight: 400;
   text-transform: none; letter-spacing: 0; }
 
-.wall { display: grid; grid-template-columns: repeat(auto-fill, minmax(258px, 1fr)); gap: 12px; }
+.wall { display: grid; grid-template-columns: repeat(auto-fill, minmax(258px, 1fr)); gap: var(--sp-3); }
 
 .tile {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 13px 14px;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
   border: 1px solid var(--border);
   border-left: 3px solid var(--unknown);
   border-radius: var(--radius);
@@ -2183,10 +2352,10 @@ label.field.check > span { color: var(--text); font-size: 0.88rem; }
 .tile.st-paused { border-left-color: var(--paused); }
 .tile.is-down { background: color-mix(in srgb, var(--crit) 7%, var(--surface)); }
 
-.tile-head { display: flex; align-items: center; gap: 8px; }
+.tile-head { display: flex; align-items: center; gap: var(--sp-2); }
 .tile-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tile-meta { display: flex; justify-content: space-between; gap: 8px;
-  color: var(--text-dim); font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+.tile-meta { display: flex; justify-content: space-between; gap: var(--sp-2);
+  color: var(--text-dim); font-size: var(--text-4); font-variant-numeric: tabular-nums; }
 
 /* The heartbeat. One mark per check, oldest on the left, so a run of failures
    reads as a block — which is the thing the eye is looking for. The marks are an
@@ -2196,7 +2365,7 @@ label.field.check > span { color: var(--text); font-size: 0.88rem; }
 .heartbeat svg { display: block; width: 100%; height: 22px; }
 .heartbeat .beat { fill: var(--ok); }
 .heartbeat .beat.h-fail { fill: var(--crit); }
-.heartbeat-empty { color: var(--text-faint); font-size: 0.8rem; }
+.heartbeat-empty { color: var(--text-faint); font-size: var(--text-4); }
 
 /* -------------------------------------------------------------- map layout */
 
@@ -2272,14 +2441,14 @@ label.field.check > span { color: var(--text); font-size: 0.88rem; }
 .map-labels { position: absolute; inset: 0; pointer-events: none; }
 .map-label { position: absolute; white-space: nowrap; color: var(--map-label);
   line-height: 1; transform: translate(-50%, -50%); text-shadow: 0 0 3px rgba(0, 0, 0, .55); }
-.map-label.k-country { font-size: 11px; font-weight: 600; letter-spacing: .02em; }
-.map-label.k-region { font-size: 10px; opacity: .82; }
+.map-label.k-country { font-size: var(--text-5); font-weight: 600; letter-spacing: .02em; }
+.map-label.k-region { font-size: var(--text-5); opacity: .82; }
 /* A city name is the smallest and the quietest of the three, and it is the one that
    arrives in numbers: from zoom 8 a country view holds a dozen of them, and at the
    weight of a province name they would be the loudest thing on the map. It is the same
    size as a province name and dimmer rather than smaller, because smaller than 10px is
    where a name stops being readable at all. */
-.map-label.k-city { font-size: 10px; opacity: .68; }
+.map-label.k-city { font-size: var(--text-5); opacity: .68; }
 /* The district names are the one set of labels here that is not a name on a place. They
    sit on the middle of the area they name, over the fill that area is painted with, and
    the point of them is that the map underneath still reads: a little smaller than a city
@@ -2287,7 +2456,7 @@ label.field.check > span { color: var(--text); font-size: 0.88rem; }
    read as districts and as towns without one layer washing the other out. The text
    shadow the base rule carries is left out — it is there to lift a dark word off dark
    land, and a grey word with a shadow under it stops being grey. */
-.map-label.k-district { font-size: 9.5px; color: var(--map-district-name); opacity: .55;
+.map-label.k-district { font-size: var(--text-5); color: var(--map-district-name); opacity: .55;
   text-shadow: none; }
 .map-tile { position: absolute; width: 256px; height: 256px; user-select: none;
   pointer-events: none; }
@@ -2328,40 +2497,40 @@ label.field.check > span { color: var(--text); font-size: 0.88rem; }
   top: 20px;
   left: 50%;
   transform: translateX(-50%);
-  padding: 2px 7px;
+  padding: var(--sp-0) var(--sp-2);
   border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--bg) 82%, transparent);
   color: var(--text);
-  font-size: 0.75rem;
+  font-size: var(--text-5);
   white-space: nowrap;
   pointer-events: none;
 }
 
 .map-controls { position: absolute; top: 10px; right: 10px; display: flex;
-  flex-direction: column; gap: 5px; }
+  flex-direction: column; gap: var(--sp-1); }
 .map-controls button { width: 32px; height: 32px; display: grid; place-items: center;
   border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--surface) 92%, transparent); color: var(--text);
-  font: inherit; font-size: 1.05rem; line-height: 1; cursor: pointer; }
+  font: inherit; font-size: var(--text-2); line-height: 1; cursor: pointer; }
 .map-controls button:hover { background: var(--surface-3); }
 
 .map-attribution {
   position: absolute;
   right: 0;
   bottom: 0;
-  padding: 3px 9px;
+  padding: var(--sp-0) var(--sp-2);
   background: color-mix(in srgb, var(--bg) 78%, transparent);
   color: var(--text-dim);
-  font-size: 0.72rem;
+  font-size: var(--text-5);
   border-top-left-radius: var(--radius-sm);
 }
 .map-attribution a { color: inherit; }
 
 .map-legend { position: absolute; left: 10px; bottom: 10px; display: flex;
-  flex-wrap: wrap; gap: 12px; padding: 7px 12px; border-radius: var(--radius-sm);
+  flex-wrap: wrap; gap: var(--sp-3); padding: var(--sp-2) var(--sp-3); border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--bg) 80%, transparent); color: var(--text-dim);
-  font-size: 0.75rem; }
-.map-legend span { display: flex; align-items: center; gap: 6px; }
+  font-size: var(--text-5); }
+.map-legend span { display: flex; align-items: center; gap: var(--sp-2); }
 .legend-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--text-dim);
   flex: 0 0 auto; }
 .legend-dot.k-external { border-radius: 2px; transform: rotate(45deg); }
@@ -2378,16 +2547,16 @@ label.field.check > span { color: var(--text); font-size: 0.88rem; }
   top: 10px;
   left: 10px;
   max-width: min(420px, calc(100% - 80px));
-  padding: 8px 12px;
+  padding: var(--sp-2) var(--sp-3);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--surface) 94%, transparent);
   color: var(--text-dim);
-  font-size: 0.82rem;
+  font-size: var(--text-4);
 }
 
-.map-unplaced { margin-top: 10px; padding: 10px 14px; border: 1px dashed var(--border-strong);
-  border-radius: var(--radius); color: var(--text-dim); font-size: 0.85rem; }
+.map-unplaced { margin-top: var(--sp-3); padding: var(--sp-3) var(--sp-4); border: 1px dashed var(--border-strong);
+  border-radius: var(--radius); color: var(--text-dim); font-size: var(--text-3); }
 
 /* What is at one place. A marker stands for a site, and a site is usually more
    than one sensor, so this lists them rather than opening one at random. */
@@ -2396,26 +2565,26 @@ label.field.check > span { color: var(--text); font-size: 0.88rem; }
   z-index: 60;
   min-width: 190px;
   max-width: 300px;
-  padding: 8px;
+  padding: var(--sp-2);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius);
   background: var(--surface-2);
   box-shadow: var(--shadow);
 }
-.map-pop-head { padding: 4px 10px 8px; font-weight: 650; border-bottom: 1px solid var(--border);
-  margin-bottom: 4px; }
+.map-pop-head { padding: var(--sp-1) var(--sp-3) var(--sp-2); font-weight: 650; border-bottom: 1px solid var(--border);
+  margin-bottom: var(--sp-1); }
 .map-pop-item {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: var(--sp-2);
   width: 100%;
-  padding: 7px 10px;
+  padding: var(--sp-2) var(--sp-3);
   border: 0;
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text);
   font: inherit;
-  font-size: 0.88rem;
+  font-size: var(--text-3);
   text-align: left;
   cursor: pointer;
 }
@@ -2431,8 +2600,8 @@ label.field.check > span { color: var(--text); font-size: 0.88rem; }
 /* -------------------------------------------------------------- sites list */
 
 .sites-table td { vertical-align: middle; }
-.site-kind-cell { display: flex; align-items: center; gap: 8px; }
-.coord { font-family: var(--mono); font-size: 0.82rem; color: var(--text-dim); }
+.site-kind-cell { display: flex; align-items: center; gap: var(--sp-2); }
+.coord { font-family: var(--mono); font-size: var(--text-4); color: var(--text-dim); }
 
 /* ------------------------------------------------------------ live updates */
 
@@ -2466,7 +2635,7 @@ label.field.check > span { color: var(--text); font-size: 0.88rem; }
 
 /* A sentence that has to be read before a button is pressed, rather than after. */
 .warn-note {
-  padding: 9px 11px;
+  padding: var(--sp-2) var(--sp-3);
   border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent);
   border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--warn) 12%, transparent);
@@ -2494,7 +2663,7 @@ label.field.check > span { color: var(--text); font-size: 0.88rem; }
 
 /* Where a symbol leads a name: a card's title, a tree row, a list row. The gap is
    smaller than a word space would be, because the symbol belongs to the name. */
-.icon-lead { margin-right: 6px; }
+.icon-lead { margin-right: var(--sp-2); }
 
 /* "No icon" is a choice and not a gap, so it is drawn as one: a dashed square in
    the same slot, at the same size, so that a row of choices does not jump. */
@@ -2511,9 +2680,10 @@ label.field.check > span { color: var(--text); font-size: 0.88rem; }
 .icon-button {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-2);
   width: 100%;
-  padding: 7px 10px;
+  min-height: var(--ctl-h);
+  padding: var(--sp-1) var(--sp-3);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--surface-2);
@@ -2535,33 +2705,36 @@ label.field.check > span { color: var(--text); font-size: 0.88rem; }
   width: min(520px, 92vw);
   max-height: 380px;
   overflow-y: auto;
-  padding: 10px;
+  padding: var(--sp-3);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius);
   background: var(--surface);
   box-shadow: var(--shadow);
 }
 .icon-panel-title {
-  margin: 10px 2px 6px;
+  margin: var(--sp-3) var(--sp-0) var(--sp-2);
   color: var(--text-dim);
-  font-size: 12px;
+  font-size: var(--text-5);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
-.icon-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 4px; }
+.icon-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: var(--sp-1); }
 .icon-grid-uploads { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+/* The same empty box as everywhere else, with less air: it stands inside a panel
+   that is already a box, in a corner of it. */
+.icon-grid-uploads .empty { padding: var(--sp-4) var(--sp-3); justify-self: stretch; }
 
 .icon-choice {
   display: flex;
   align-items: center;
-  gap: 7px;
-  padding: 6px 8px;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-2);
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text);
   font: inherit;
-  font-size: 13px;
+  font-size: var(--text-4);
   line-height: 1.25;
   text-align: left;
   cursor: pointer;
@@ -2574,7 +2747,7 @@ label.field.check > span { color: var(--text); font-size: 0.88rem; }
 .icon-choice.is-current { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
 .icon-choice-none { width: 100%; }
 .icon-choice-wrap { position: relative; display: block; }
-.icon-choice-wide { width: 100%; padding-right: 24px; }
+.icon-choice-wide { width: 100%; padding-right: var(--sp-5); }
 /* The × sits inside the tile and only appears on hover or focus: a delete button
    beside every image is a row of crosses, and the thing being used here is the
    image. */
@@ -2589,7 +2762,7 @@ label.field.check > span { color: var(--text); font-size: 0.88rem; }
   border-radius: 50%;
   background: var(--surface-3);
   color: var(--text-dim);
-  font-size: 14px;
+  font-size: var(--text-3);
   line-height: 1;
   cursor: pointer;
   opacity: 0;
@@ -2602,9 +2775,9 @@ label.field.check > span { color: var(--text); font-size: 0.88rem; }
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  margin-top: 10px;
-  padding-top: 10px;
+  gap: var(--sp-2);
+  margin-top: var(--sp-3);
+  padding-top: var(--sp-3);
   border-top: 1px solid var(--border);
 }
 .icon-upload { cursor: pointer; }
@@ -2631,7 +2804,7 @@ label.field.check > span { color: var(--text); font-size: 0.88rem; }
 [data-colour='slate'] { --group-colour: var(--grp-slate); }
 
 /* The settings panel's group list: the symbol, the name, the colour dot. */
-.group-cell { display: inline-flex; align-items: center; gap: 8px; }
+.group-cell { display: inline-flex; align-items: center; gap: var(--sp-2); }
 .group-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--group-colour, var(--border-strong)); }
 
 /* -------------------------------------------------------------- responsive */
@@ -2644,7 +2817,7 @@ label.field.check > span { color: var(--text); font-size: 0.88rem; }
 }
 
 @media (max-width: 860px) {
-  main { padding: 14px; }
+  main { padding: var(--sp-4); }
 }
 
 @media (max-width: 680px) {

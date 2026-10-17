@@ -260,11 +260,15 @@ func TestTheGroupsPanelDressesAHeading(t *testing.T) {
 		capture(t, ctx, dir, "group-heading")
 		t.Fatalf("the dashboard did not come back: %v", err)
 	}
+	// The name and not the whole heading: the heading carries how many sensors are
+	// in the group as well, and that is its own element so that the two can be told
+	// apart here.
 	heading := read[map[string]string](t, ctx, `(() => {
 	  const h = document.querySelector('#groups .group-title');
 	  const icon = h ? h.querySelector('.icon-drawn') : null;
+	  const name = h ? h.querySelector('.group-name') : null;
 	  return {
-	    text: h ? h.textContent.trim() : '(none)',
+	    text: name ? name.textContent.trim() : '(none)',
 	    colour: h ? h.dataset.colour || '' : '',
 	    icon: icon ? getComputedStyle(icon).getPropertyValue('--icon').trim() : '',
 	  };

@@ -1772,7 +1772,7 @@ function renderDashboard() {
   }
   if (sensors.length === 0) {
     unmountMap();
-    groups.innerHTML = `<p class="muted">${esc(t('common.none'))}</p>`;
+    groups.innerHTML = emptyBlock(t('dashboard.noneMatching', { query: state.query }));
     return;
   }
 
@@ -1801,6 +1801,28 @@ function renderDashboard() {
 }
 
 /**
+ * emptyBlock is the one shape an empty panel, list or table has.
+ *
+ * The sentence is the one the panel already had — what would put something there —
+ * and this only decides how it is drawn. A table with no rows, a list with nothing
+ * in it and a form that has nothing to show all get the same box, so that "there is
+ * nothing here" looks the same everywhere rather than looking like a mistake in
+ * some places and like a sentence in others.
+ */
+function emptyBlock(text, { title = '', action = '' } = {}) {
+  return `<div class="empty empty-inline">
+    ${title ? `<h2>${esc(title)}</h2>` : ''}
+    <p>${esc(text)}</p>
+    ${action}
+  </div>`;
+}
+
+/** loadingLine is where something is about to be, in the shape it will have. */
+function loadingLine(text) {
+  return `<div class="loading loading-inline">${esc(text)}</div>`;
+}
+
+/**
  * renderByGroup lays sensors out under the heading of the group they belong to,
  * in the order they arrived. It is what the card and list views have always
  * done; the tree and the wall do their own, deeper, nesting.
@@ -1821,8 +1843,15 @@ function renderByGroup(sensors, render) {
   for (const [group, items] of byGroup) {
     if (group) {
       const settings = iconUI.groupOf(state.groups, group);
+      const down = items.filter((c) => c.status === 'down').length;
+      // The same sentence the tree and the wall put on their headings, so that a
+      // group says how much is in it the same way in all four views.
+      const count = down > 0
+        ? t('sites.sensorCountDown', { count: items.length, down })
+        : t('sites.sensorCount', { count: items.length });
       html += `<h2 class="group-title"${iconUI.colourAttr(settings)}>` +
-        `${iconUI.groupIcon(settings)}${esc(group)}</h2>`;
+        `${iconUI.groupIcon(settings)}<span class="group-name">${esc(group)}</span>` +
+        `<span class="group-count">${esc(count)}</span></h2>`;
     }
     html += render(items);
   }
@@ -1966,8 +1995,15 @@ function channelTone(channel) {
  */
 function statusPill(sensor) {
   const s = sensor || {};
-  return `<span class="pill st-${esc(s.status)}"><i class="dot"></i>${esc(statusWord(s.status))}</span>` +
-    excuseBadge(s);
+  // The pill and its badge are one box, and that is not tidiness: the tree draws a
+  // row as a five-column grid — status, name, sparkline, uptime, buttons — and two
+  // elements where the first column expected one pushed everything after it into
+  // the wrong column and wrapped the last one onto a second line. A sensor that was
+  // excused was therefore the one row in the tree that came apart, which is exactly
+  // the row somebody is looking at when something is wrong.
+  return `<span class="pill-group">` +
+    `<span class="pill st-${esc(s.status)}"><i class="dot"></i>${esc(statusWord(s.status))}</span>` +
+    excuseBadge(s) + `</span>`;
 }
 
 /**
@@ -2057,7 +2093,7 @@ function renderCard(sensor) {
     <article class="card st-${esc(sensor.status)}${down ? ' is-down' : ''}${sensor.excuse ? ' in-excused in-' + esc(sensor.excuse) : ''}${acked ? ' is-acked' : ''}${example ? ' is-example' : ''}" data-id="${sensor.id}" data-origin="${esc(sensor.origin || '')}" tabindex="0">
       <header class="card-head">
         ${statusPill(sensor)}
-        <h3 class="card-name">${iconUI.iconMarkup(sensor.icon, { size: 16, cls: 'icon-lead' })}${esc(sensor.name)}</h3>
+        <h3 class="card-name" title="${esc(sensor.name)}">${iconUI.iconMarkup(sensor.icon, { size: 16, cls: 'icon-lead' })}${esc(sensor.name)}</h3>
         ${example ? `<span class="pill badge-example" title="${esc(t('examples.badgeHint'))}">${esc(t('examples.badge'))}</span>` : ''}
         ${acked ? `<span class="pill st-acked" title="${esc(t('ack.badge'))}">🔕 ${esc(t('ack.short'))}</span>` : ''}
       </header>
@@ -2085,7 +2121,7 @@ function renderListRow(sensor) {
     <tr class="row st-${esc(sensor.status)}${sensor.status === 'down' ? ' is-down' : ''}${sensor.excuse ? ' in-excused in-' + esc(sensor.excuse) : ''}" data-id="${sensor.id}">
       <td>${statusPill(sensor)}</td>
       <td class="cell-name">
-        <b>${iconUI.iconMarkup(sensor.icon, { size: 15, cls: 'icon-lead' })}${esc(sensor.name)}</b>
+        <b>${iconUI.iconMarkup(sensor.icon, { size: 16, cls: 'icon-lead' })}${esc(sensor.name)}</b>
         <span class="muted">${esc(sensor.target)}</span>
       </td>
       <td>${C.sparkline(sensor.sparkline || [], { width: 140, height: 26 })}</td>
@@ -2214,7 +2250,7 @@ async function openDetail(id) {
       ${['1h', '24h', '7d', '30d', '90d'].map((r) => `<button class="chip${r === state.range ? ' active' : ''}" data-range="${r}">${esc(t(`range.${r}`))}</button>`).join('')}
     </div>
     ${ackButton ? `<div class="detail-ack">${ackButton}</div>` : ''}`;
-  $('#detail-body').innerHTML = `<p class="muted">${esc(t('incidents.loading'))}</p>`;
+  $('#detail-body').innerHTML = loadingLine(t('incidents.loading'));
   sheet.showModal();
   // The keystroke that opened this window must not land inside it. Enter in the
   // search box runs this from a keydown handler and the browser has not finished
@@ -2930,7 +2966,7 @@ function sensorFormMarkup(sensor) {
 
     <fieldset class="channels-pick adv-hide">
       <legend>${withHelp(t('sensor.channels'), 'help.sensor.channels')}</legend>
-      ${channels || `<p class="muted">${esc(t('channels.emptyBody'))}</p>`}
+      ${channels || emptyBlock(t('channels.emptyBody'))}
     </fieldset>
 
     <label class="sensor-row"><input type="checkbox" name="enabled"${sensor?.enabled === false ? '' : ' checked'}>
@@ -3659,7 +3695,7 @@ function sitesPanel() {
     <tr data-name="${esc(site.name)}" data-origin="${esc(site.origin || '')}">
       <td><span class="site-kind-cell">
         <i class="legend-dot k-${esc(site.kind)}" aria-hidden="true"></i>
-        ${iconUI.iconMarkup(site.icon, { size: 15 })}
+        ${iconUI.iconMarkup(site.icon, { size: 16 })}
         <b>${esc(site.name)}</b>
         ${site.origin === 'example' ? `<span class="pill badge-example" title="${esc(t('sites.exampleHint'))}">${esc(t('examples.badge'))}</span>` : ''}
       </span></td>
@@ -3692,7 +3728,7 @@ function sitesPanel() {
           </tr></thead>
           <tbody>${rows}</tbody>
         </table>
-      </div>` : `<p class="muted small">${esc(t('sites.emptyBody'))}</p>`}
+      </div>` : emptyBlock(t('sites.emptyBody'))}
       <div class="form-actions">
         <button class="btn btn-primary" data-action="site-new"${denied('admin')}>${esc(t('sites.new'))}</button>
       </div>
@@ -3717,7 +3753,7 @@ function groupsPanel() {
     <tr data-name="${esc(group.name)}"${iconUI.colourAttr(settings)}>
       <td><span class="group-cell">
         <i class="group-dot" aria-hidden="true"></i>
-        ${iconUI.groupIcon(settings, 16)}
+        ${iconUI.groupIcon(settings)}
         <b>${esc(group.name)}</b>
       </span></td>
       <td class="num">${group.sensor_count || 0}</td>
@@ -3744,7 +3780,7 @@ function groupsPanel() {
           </tr></thead>
           <tbody>${rows}</tbody>
         </table>
-      </div>` : `<p class="muted small">${esc(t('groups.empty'))}</p>`}
+      </div>` : emptyBlock(t('groups.empty'))}
     </section>`;
 }
 
@@ -4225,7 +4261,7 @@ function maintenancePanel() {
           </tr></thead>
           <tbody>${rows}</tbody>
         </table>
-      </div>` : `<p class="muted small">${esc(t('windows.emptyBody'))}</p>`}
+      </div>` : emptyBlock(t('windows.emptyBody'))}
       <div class="form-actions">
         <button class="btn btn-primary" data-action="window-new"${denied('admin')}>${esc(t('windows.new'))}</button>
       </div>

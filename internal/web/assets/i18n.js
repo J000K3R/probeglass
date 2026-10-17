@@ -191,6 +191,12 @@ const en = {
   'sensor.moveDown': 'Move down',
   'sensor.invalid': 'Please correct the highlighted fields.',
 
+  // The dashboard with nothing to show because the search box is filtering
+  // everything out. It is a different sentence from "there are no sensors", and the
+  // two used to be the same one — which told somebody with four sensors that they
+  // had none.
+  'dashboard.noneMatching': 'Nothing matches "{query}".',
+
   // Icons: the drawings that ship with the program, and the field that picks one.
   //
   // The names below are what the picker offers and what a symbol is announced as

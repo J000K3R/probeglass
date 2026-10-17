@@ -188,7 +188,7 @@ function panelMarkup(current) {
     const ref = BUILTIN + name;
     return `<button type="button" class="icon-choice${ref === current ? ' is-current' : ''}"
       data-icon-set="${esc(ref)}" title="${esc(t(`icons.name.${name}`))}">
-      ${iconMarkup(ref, { size: 22 })}<span>${esc(t(`icons.name.${name}`))}</span></button>`;
+      ${iconMarkup(ref, { size: 20 })}<span>${esc(t(`icons.name.${name}`))}</span></button>`;
   }).join('');
 
   const uploaded = catalogue.icons.length
@@ -196,12 +196,12 @@ function panelMarkup(current) {
       <span class="icon-choice-wrap">
         <button type="button" class="icon-choice icon-choice-wide${UPLOAD + ic.id === current ? ' is-current' : ''}"
           data-icon-set="${UPLOAD}${ic.id}" title="${esc(ic.name || String(ic.id))}">
-          ${iconMarkup(UPLOAD + ic.id, { size: 22 })}
+          ${iconMarkup(UPLOAD + ic.id, { size: 20 })}
           <span>${esc(ic.name || t('icons.uploadedGroup'))}</span></button>
         <button type="button" class="icon-choice-x" data-icon-delete="${ic.id}"
           title="${esc(t('icons.delete'))}" aria-label="${esc(t('icons.delete'))}">&times;</button>
       </span>`).join('')
-    : `<p class="muted small">${esc(t('icons.empty'))}</p>`;
+    : `<div class="empty empty-inline"><p>${esc(t('icons.empty'))}</p></div>`;
 
   // The accept list is the server's, so a format the upload route would refuse is
   // not offered by the file picker either.
@@ -360,7 +360,7 @@ export function mount(options) {
       }
       open.setAttribute('aria-expanded', 'true');
       panel.hidden = false;
-      panel.innerHTML = `<p class="muted small">${esc(t('icons.loading'))}</p>`;
+      panel.innerHTML = `<div class="loading loading-inline">${esc(t('icons.loading'))}</div>`;
       load()
         .then(() => renderPanel(field, valueOf(field)))
         .catch((err) => { panel.innerHTML = `<p class="form-error">${esc(err.message)}</p>`; });
