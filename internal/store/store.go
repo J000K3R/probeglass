@@ -638,6 +638,58 @@ ALTER TABLE sensors ADD COLUMN parent TEXT
 CREATE INDEX IF NOT EXISTS idx_sensors_parent ON sensors(parent);
 `,
 	},
+	{
+		version: 9,
+		name:    "groups-and-icons",
+		sql: `
+-- Settings for a group, which is still a word written on a sensor and not a row.
+--
+-- There is deliberately no foreign key from sensors.grp to this table, and that is the
+-- whole design: a group exists because somebody typed its name, exactly as it does today.
+-- This holds what is known *about* a group once somebody has said more — an icon, a colour,
+-- a place in the order — and a group nobody has said anything about simply has no row
+-- here. A sensor may therefore name a group this table has never heard of, which is the
+-- ordinary state of a fresh installation and has to stay cheap.
+--
+-- The alternative — a real table with sensors.grp referencing it — would turn creating a
+-- group into a step of its own and would reach into the configuration file, the backup,
+-- the example data and every delete path. That is a different feature.
+CREATE TABLE IF NOT EXISTS groups (
+    name       TEXT    NOT NULL PRIMARY KEY,
+    icon       TEXT    NOT NULL DEFAULT '',
+    colour     TEXT    NOT NULL DEFAULT '',
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT    NOT NULL,
+    updated_at TEXT    NOT NULL
+);
+
+-- Icons somebody uploaded, held as bytes in this database rather than as files beside it.
+--
+-- The bytes are the point. "One SQLite file, and copying it is the whole backup" is a
+-- promise this project makes in three places, and an icon kept on disk would quietly make
+-- it false — the copy would restore without them. They are small; see MaxIconBytes in the
+-- API, which caps what may be stored.
+--
+-- media_type and the two dimensions are recorded rather than worked out at read time.
+-- Nothing needs them to serve the bytes, but they are what makes listing uploaded icons
+-- possible without decoding every one, and what a later re-encode would want to know.
+CREATE TABLE IF NOT EXISTS icons (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    name       TEXT    NOT NULL DEFAULT '',
+    media_type TEXT    NOT NULL,
+    width      INTEGER NOT NULL,
+    height     INTEGER NOT NULL,
+    bytes      BLOB    NOT NULL,
+    created_at TEXT    NOT NULL
+);
+
+-- And a symbol on the things somebody makes. The empty string is "none", which is what
+-- every existing row gets and what the dashboard draws nothing for: an icon is never
+-- required, and an installation that ignores the feature looks exactly as it does today.
+ALTER TABLE sensors ADD COLUMN icon TEXT NOT NULL DEFAULT '';
+ALTER TABLE sites   ADD COLUMN icon TEXT NOT NULL DEFAULT '';
+`,
+	},
 }
 
 // rowExecer is the part of *sql.DB and *sql.Tx that the settings sweeps below use.
