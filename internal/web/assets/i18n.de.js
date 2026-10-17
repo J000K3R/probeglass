@@ -311,6 +311,12 @@ export const de = {
   // darüber. Eine Panel-Überschrift bleibt eine Panel-Überschrift; das hier sind
   // die Regale, in denen die Panels stehen, und es ist immer nur eines zu sehen.
   'settings.group.look': 'Aussehen',
+  'settings.group.widgets': 'Widgets',
+  'settings.clock': 'Uhr',
+  'settings.clock.auto': 'Automatisch',
+  'settings.clock.24': '24 Stunden',
+  'settings.clock.12': '12 Stunden',
+  'settings.clockHint': 'Automatisch folgt der Sprache der Oberfläche: Deutsch schreibt 14:30, Englisch 2:30 PM. Wähle eines der beiden anderen, wenn die Uhr an der Wand anders geht.',
   'settings.group.monitor': 'Überwachung',
   'settings.group.access': 'Zugang',
   'settings.group.backup': 'Sicherung',

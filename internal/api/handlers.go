@@ -1315,6 +1315,11 @@ var allowedUIValues = map[string][]string{
 	// person looking, not about the installation: the same dashboard is read on
 	// a desk and on a phone.
 	model.PrefLive: {"on", "off"},
+	// "auto" follows the language. The other two are here rather than only in the
+	// browser for the reason every value here is: the dashboard's picker and this list
+	// are the same decision written twice, and a value the server refuses would come
+	// back as a failed save.
+	model.PrefClock: {"auto", "24", "12"},
 }
 
 // validWidgetList checks the one preference whose value is a list.

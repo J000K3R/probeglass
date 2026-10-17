@@ -40,6 +40,8 @@ const DEBOUNCE_MS = 250;
 const SETTINGS_PANELS = [
   ['appearance', 'look', 'settings.appearance'],
   ['dashboard', 'monitor', 'settings.dashboard'],
+  ['widgets', 'widgets', 'settings.widgets'],
+  ['maintenance', 'monitor', 'windows.title'],
   ['sites', 'monitor', 'sites.title'],
   ['map', 'look', 'settings.map'],
   ['examples', 'monitor', 'examples.title'],

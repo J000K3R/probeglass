@@ -1824,6 +1824,10 @@ function unmountMap() {
 function mountWidgets() {
   widgetsUI.mount($('#summary'), $('#widgets-tools'), {
     state: () => state,
+    // The clock reads one of them — see clockTime in that module — and reads it through
+    // a getter rather than once, because the tile is drawn before any preference has
+    // been chosen and again after somebody changes one.
+    ui: () => ui,
     can,
     openDetail,
     setRoute,
@@ -3359,10 +3363,31 @@ function apiKeyText(key) {
  * Both write the same account preference, so the two views of it cannot disagree
  * — and a widget switched off here is off in the strip the moment it is clicked.
  */
+/**
+ * widgetsPanel is what the top of the dashboard shows, and how it is written.
+ *
+ * The clock is here rather than in Appearance because it is a widget's setting and not
+ * the dashboard's: the format it is written in belongs to the one tile that writes a
+ * time. It is a preference like the theme, so it goes through the same write path as the
+ * rest — see PrefClock, which is stored per account.
+ */
+function widgetsPanel() {
+  return `
+    <section class="panel" data-panel="widgets" data-group="widgets">
+      <div class="panel-head">
+        <h2>${esc(t('settings.widgets'))}</h2>
+        <p class="panel-hint">${esc(t('settings.widgetsHint'))}</p>
+      </div>
+      <div class="grid-2">
+        ${choice('clock', ui.clock, ['auto', '24', '12'])}
+      </div>
+      <p class="muted small">${esc(t('settings.clockHint'))}</p>
+      ${widgetPicker()}
+    </section>`;
+}
+
 function widgetPicker() {
   return `
-    <h3 class="section-title">${esc(t('settings.widgets'))}</h3>
-    <p class="muted small">${esc(t('settings.widgetsHint'))}</p>
     <ul class="widget-picks" id="widget-picks">${widgetPickRows()}</ul>
     <div class="form-actions">
       <button type="button" class="btn btn-small" data-pick-reset>${esc(t('widgets.reset'))}</button>
@@ -4086,6 +4111,10 @@ async function saveMap() {
 // lookup — see showSettingsCategory.
 const SETTINGS_GROUPS = [
   { key: 'look', panels: ['appearance', 'map'] },
+  // Its own category rather than a corner of Monitoring, which is where the header's
+  // arrangement used to sit: what the top of the dashboard shows is not what is being
+  // monitored, and Monitoring had grown to four panels.
+  { key: 'widgets', panels: ['widgets'] },
   { key: 'monitor', panels: ['dashboard', 'sites', 'maintenance', 'examples'] },
   { key: 'access', panels: ['access', 'users'] },
   { key: 'backup', panels: ['backup'] },
@@ -4099,6 +4128,7 @@ const SETTINGS_GROUPS = [
 const SETTINGS_ICONS = {
   look: '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8 2a6 6 0 0 1 0 12Z" fill="currentColor"/></svg>',
   monitor: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.5 8h3l2-4.5 3 9 2-4.5h3"/></svg>',
+  widgets: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="1.6" y="1.6" width="5.4" height="5.4" rx="1"/><rect x="9" y="1.6" width="5.4" height="5.4" rx="1"/><rect x="1.6" y="9" width="5.4" height="5.4" rx="1"/><rect x="9" y="9" width="5.4" height="5.4" rx="1"/></svg>',
   access: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="5.5" cy="5.5" r="3"/><path d="M7.8 7.8 14 14M11 11l-1.6 1.6M13 13l-1.6 1.6"/></svg>',
   backup: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="3.5" rx="1"/><path d="M3 6v6.5a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V6M6.5 9.2h3"/></svg>',
   help: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6.2"/><path d="M8 7.2v4M8 4.9v.1"/></svg>',
@@ -4206,6 +4236,8 @@ async function renderSettings() {
     </section>
 
     ${mapPanel()}
+
+    ${widgetsPanel()}
 
     <section class="panel" data-panel="dashboard" data-group="monitor">
       <div class="panel-head">

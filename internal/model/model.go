@@ -809,13 +809,19 @@ func (u User) Display() string {
 
 // Interface preference keys, held per user in User.Prefs.
 const (
-	PrefTheme       = "theme"    // auto | dark | light
-	PrefAccent      = "accent"   // accent colour name
-	PrefDensity     = "density"  // compact | comfortable
-	PrefLayout      = "layout"   // grid | list | tree | wall | map
-	PrefLanguage    = "language" // en | de — the catalogues the dashboard ships
-	PrefMode        = "mode"     // simple | advanced
-	PrefLive        = "live"     // on | off
+	PrefTheme    = "theme"    // auto | dark | light
+	PrefAccent   = "accent"   // accent colour name
+	PrefDensity  = "density"  // compact | comfortable
+	PrefLayout   = "layout"   // grid | list | tree | wall | map
+	PrefLanguage = "language" // en | de — the catalogues the dashboard ships
+	PrefMode     = "mode"     // simple | advanced
+	PrefLive     = "live"     // on | off
+	// PrefClock is how the header's clock writes the time: "auto" follows the
+	// interface language, "24" and "12" are the two conventions written down. It is a
+	// preference rather than a setting for the same reason the theme is: two people
+	// looking at one dashboard may want it written differently, and neither of them is
+	// wrong about what time it is.
+	PrefClock       = "clock" // auto | 24 | 12
 	PrefTourVersion = "tour_version"
 	// PrefWidgets is the dashboard header: which widgets are shown, and in what
 	// order. Both in one value, because they are one decision — a comma-separated
@@ -910,6 +916,10 @@ func DefaultPrefs() map[string]string {
 		// metered connection — and the slow refresh underneath it keeps running
 		// either way, so "off" means quiet, not stale.
 		PrefLive: "on",
+		// Following the language, so that an installation nobody has configured reads
+		// the way the language it is written in does — which is right far more often
+		// than either fixed answer.
+		PrefClock: "auto",
 		// Neither interface mode is a default in the sense of being recommended —
 		// the setup screen asks. This is only what a session that has no user
 		// behind it (an API key, or nobody at all) is told.
@@ -923,8 +933,8 @@ func DefaultPrefs() map[string]string {
 
 // PrefKeys lists the preference keys the API will accept.
 var PrefKeys = []string{
-	PrefTheme, PrefAccent, PrefDensity, PrefLayout, PrefLanguage, PrefMode, PrefLive, PrefTourVersion,
-	PrefWidgets,
+	PrefTheme, PrefAccent, PrefDensity, PrefLayout, PrefLanguage, PrefMode, PrefLive, PrefClock,
+	PrefTourVersion, PrefWidgets,
 }
 
 // Pref returns one of the user's preferences, falling back to the default when

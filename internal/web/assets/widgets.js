@@ -362,8 +362,24 @@ function ranked(state, measure, keep, ascending = false) {
     .slice(0, 5);
 }
 
+/**
+ * clockTime writes the time the way the person reading it expects to read it.
+ *
+ * The preference has three values and "auto" is the default, which leaves Intl alone:
+ * that is not indecision, it is the right answer most of the time, because the interface
+ * language already carries the convention — German reads 14:30 and English reads 2:30 PM,
+ * and somebody who chose German did not choose 12-hour time with it.
+ *
+ * The other two are for the case it is wrong, which is real: a homelab read in English by
+ * somebody who grew up with a 24-hour clock, or a German dashboard with a clock that has
+ * to match a wall of them.
+ */
 function clockTime() {
-  return new Date().toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit' });
+  const pref = (opts.ui && opts.ui().clock) || 'auto';
+  const options = { hour: '2-digit', minute: '2-digit' };
+  if (pref === '24') options.hour12 = false;
+  if (pref === '12') options.hour12 = true;
+  return new Date().toLocaleTimeString(locale(), options);
 }
 
 function clockDate() {

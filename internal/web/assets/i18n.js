@@ -315,6 +315,12 @@ const en = {
   // them. A panel heading stays a panel heading; these are the shelves the panels
   // stand on, and only the chosen one is on screen.
   'settings.group.look': 'Look',
+  'settings.group.widgets': 'Widgets',
+  'settings.clock': 'Clock',
+  'settings.clock.auto': 'Automatic',
+  'settings.clock.24': '24-hour',
+  'settings.clock.12': '12-hour',
+  'settings.clockHint': 'Automatic follows the interface language: German reads 14:30, English reads 2:30 PM. Choose one of the other two if the clock on the wall says otherwise.',
   'settings.group.monitor': 'Monitoring',
   'settings.group.access': 'Access',
   'settings.group.backup': 'Backup',
