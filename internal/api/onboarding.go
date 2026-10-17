@@ -334,16 +334,22 @@ func (s *Server) createExampleSensors(ctx context.Context, dialAddr string) (int
 		}
 	}
 
-	if err := s.store.Maintain(ctx, time.Now().UTC()); err != nil {
-		return len(created), fmt.Errorf("roll up the example history: %w", err)
-	}
-
 	// Reconcile reads the history back — it is what turns the gateway's last failed
 	// probe into the flaky status and the other three into green — and starts their
-	// probe loops. It is deliberately the last thing here: an example sensor that is
-	// enabled but not reconciled is a row nothing will ever probe.
+	// probe loops. An example sensor that is enabled but not reconciled is a row
+	// nothing will ever probe, so it belongs up here with the enabling and not below
+	// the rollups.
+	//
+	// It was below them, and that is the second half of the fault this order fixes:
+	// the sensors came out enabled, which is what one test noticed, and unknown to the
+	// scheduler, which is what the other one did. Both were the same mistake — doing
+	// the part that matters after the part that does not.
 	if err := s.sched.Reconcile(ctx); err != nil {
 		return len(created), fmt.Errorf("hand the example sensors to the scheduler: %w", err)
+	}
+
+	if err := s.store.Maintain(ctx, time.Now().UTC()); err != nil {
+		return len(created), fmt.Errorf("roll up the example history: %w", err)
 	}
 	return len(created), nil
 }
