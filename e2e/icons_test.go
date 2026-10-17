@@ -322,3 +322,78 @@ func writeTestPNG(t *testing.T, dir string) string {
 	}
 	return path
 }
+
+// TestTheSiteEditorCarriesASymbol closes the loop on the third place a symbol can be
+// set — and it is the one that was missing when this was first written: a site's icon
+// could be chosen and stored, and nothing drew it. The row in the settings list and the
+// heading in the tree are both checked here, because they are two different pieces of
+// drawing code and only one of them was written first.
+func TestTheSiteEditorCarriesASymbol(t *testing.T) {
+	browser := findBrowser(t)
+	base := startServer(t, buildBinary(t))
+	ctx, done := openBrowser(t, browser)
+	defer done()
+	dir := artifactsDir(t)
+
+	firstRun(t, ctx, base, dir)
+
+	// "Homelab" is one of the two places the example sensors stand on, so there is a
+	// row to edit without making one first.
+	if err := withTimeout(ctx, func(tctx context.Context) error {
+		return chromedp.Do(tctx,
+			goTo("#/settings", `!!document.querySelector('#settings-body .settings-tabs [data-category]')`),
+			openSettingsCategory("monitor"),
+			chromedp.WaitVisible(`#sites-panel [data-action="site-edit"]`),
+			chromedp.Click(`#sites-panel [data-action="site-edit"][data-name="Homelab"]`),
+			chromedp.WaitVisible(`#site-form [data-icon-open]`),
+			chooseBuiltin("builtin:server"),
+			chromedp.Click(`#site-save`),
+			chromedp.WaitNotPresent(`#modal-site[open]`),
+		)
+	}); err != nil {
+		capture(t, ctx, dir, "site-icon-editor")
+		t.Fatalf("the site editor did not save: %v\nIt said: %s", err, siteError(ctx))
+	}
+
+	// The row in the panel. The place is drawn with a kind dot already, so the
+	// drawing is looked for by the file it is served through rather than by "there is
+	// an icon somewhere in this row".
+	row := read[string](t, ctx, `(() => {
+	  const tr = document.querySelector('#sites-panel tr[data-name="Homelab"]');
+	  const icon = tr ? tr.querySelector('.icon-drawn') : null;
+	  return icon ? getComputedStyle(icon).getPropertyValue('--icon').trim() : '(none)';
+	})()`, "the icon on the site's row")
+	if !strings.Contains(row, "/assets/icons/server.svg") {
+		t.Errorf("the settings row draws %q, want the server drawing", row)
+	}
+
+	// And the heading in the tree, which is a different function in a different file.
+	if err := withTimeout(ctx, func(tctx context.Context) error {
+		return chromedp.Do(tctx,
+			goTo("#/dashboard", `!!document.querySelector('#layout-switcher')`),
+			chromedp.Click(`#layout-switcher [data-layout="tree"]`),
+			chromedp.WaitVisible(`.site-node .site-head`),
+		)
+	}); err != nil {
+		capture(t, ctx, dir, "site-icon-tree")
+		t.Fatalf("the tree did not come up: %v", err)
+	}
+	heading := read[string](t, ctx, `(() => {
+	  const head = document.querySelector('.site-node .site-head');
+	  const icon = head ? head.querySelector('.icon-drawn') : null;
+	  return icon ? getComputedStyle(icon).getPropertyValue('--icon').trim() : '(none)';
+	})()`, "the icon on the tree's heading")
+	if !strings.Contains(heading, "/assets/icons/server.svg") {
+		t.Errorf("the place's heading draws %q, want the server drawing", heading)
+	}
+}
+
+// siteError reads the message the site dialog is showing.
+func siteError(ctx context.Context) string {
+	value, err := chromedp.Run(ctx, chromedp.Evaluate[string](
+		`document.querySelector('#site-error')?.textContent.trim() || '(nothing)'`))
+	if err != nil {
+		return "(could not read it)"
+	}
+	return value
+}
