@@ -134,6 +134,29 @@ func TestThePickerPutsASymbolOnASensor(t *testing.T) {
 	if !strings.Contains(card.Drawn, "/assets/icons/router.svg") {
 		t.Errorf("the card draws %q, want the router drawing", card.Drawn)
 	}
+
+	// And in the window the card opens. The detail dialog is the one place a sensor
+	// appears without its card around it, so a symbol that stops at the dashboard
+	// leaves the window looking like a different sensor from the one it describes.
+	if err := withTimeout(ctx, func(tctx context.Context) error {
+		return chromedp.Do(tctx,
+			chromedp.Evaluate[chromedp.Void](`(() => {
+			  const card = [...document.querySelectorAll('#groups .card')]
+			    .find((c) => c.querySelector('.card-name')?.textContent.trim() === 'Picked router');
+			  if (card) card.click();
+			})()`),
+			chromedp.WaitVisible(`#detail[open] #detail-title .icon-drawn`),
+		)
+	}); err != nil {
+		capture(t, ctx, dir, "icon-detail")
+		t.Fatalf("the sensor's window does not carry the symbol: %v", err)
+	}
+	detailIcon := read[string](t, ctx,
+		`getComputedStyle(document.querySelector('#detail-title .icon-drawn')).getPropertyValue('--icon').trim()`,
+		"the symbol in the sensor's window")
+	if !strings.Contains(detailIcon, "/assets/icons/router.svg") {
+		t.Errorf("the window's heading draws %q, want the router drawing", detailIcon)
+	}
 }
 
 // TestAnUploadedIconIsDrawnAsAnImage is the other half of the picker: a file goes up,

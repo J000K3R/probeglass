@@ -2672,8 +2672,9 @@ label.field.check > span { color: var(--text); font-size: var(--text-3); }
 }
 .icon-image { object-fit: contain; }
 
-/* Where a symbol leads a name: a card's title, a tree row, a list row. The gap is
-   smaller than a word space would be, because the symbol belongs to the name. */
+/* Where a symbol leads a name: a card's title, a tree row, a list row, and the
+   heading of the sensor's own dialog. The gap is smaller than a word space would
+   be, because the symbol belongs to the name. */
 .icon-lead { margin-right: var(--sp-2); }
 
 /* "No icon" is a choice and not a gap, so it is drawn as one: a dashed square in

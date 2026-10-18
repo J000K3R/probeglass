@@ -2235,7 +2235,12 @@ async function openDetail(id) {
   if (location.hash !== `#/sensor/${id}`) history.replaceState(null, '', `#/sensor/${id}`);
 
   const sheet = $('#detail');
-  $('#detail-title').textContent = sensor.name;
+  // The symbol the card and the tree already draw, in the window's own heading.
+  // Without it the dialog is the one place a sensor appears without the thing that
+  // tells it apart at a glance, and a window that opens on a bare name reads like a
+  // different sensor from the card it was opened from.
+  $('#detail-title').innerHTML =
+    iconUI.iconMarkup(sensor.icon, { size: 20, cls: 'icon-lead' }) + esc(sensor.name);
   detailProbes = 0;
   syncDetailStatus(sensor);
   hideDetailNotice();
