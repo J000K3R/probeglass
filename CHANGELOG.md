@@ -134,7 +134,10 @@ here and what the release says are the same document.
     result into an error. An imported picture is reduced to what the dashboard draws
     (an area average, never enlarged); a file somebody picked themselves is still
     refused when it is too big, because shrinking their own file without asking
-    would be a surprise.
+    would be a surprise. The same goes for a picture over the byte limit: it is read
+    from the CDN whole and reduced until it fits, rather than cut off at the icon
+    limit — a file cut in half cannot be decoded at all, and the refusal then quotes
+    the length of the cut instead of the picture's.
 
   The catalogue is the work of [Dashboard Icons](https://github.com/homarr-labs/dashboard-icons)
   (Apache-2.0); the pictures are the logos of the projects they belong to, and the

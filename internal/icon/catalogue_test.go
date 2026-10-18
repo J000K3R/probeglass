@@ -1,6 +1,7 @@
 package icon
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"net/http"
@@ -32,9 +33,16 @@ func catalogueServer(t *testing.T) (*httptest.Server, *atomic.Int64) {
 	})
 	mux.HandleFunc("/png/", func(w http.ResponseWriter, r *http.Request) {
 		name := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/png/"), ".png")
-		if name == "missing" {
+		switch name {
+		case "missing":
 			w.WriteHeader(http.StatusNotFound)
 			_, _ = w.Write([]byte("Couldn't find the requested file"))
+			return
+		case "big":
+			// Bigger than an icon may be, and therefore a picture Fit has to be able
+			// to work on. If this came back truncated at the icon limit, Fit would be
+			// handed half a file and could not decode it at all.
+			_, _ = w.Write(bytes.Repeat([]byte("p"), 3*MaxBytes))
 			return
 		}
 		w.Header().Set("Content-Type", "image/png")
@@ -157,5 +165,22 @@ func TestCatalogueRefusesANameThatIsNotOne(t *testing.T) {
 		if _, err := c.Fetch(context.Background(), bad); !errors.Is(err, ErrBadIconName) {
 			t.Errorf("Fetch(%q) answered %v, want ErrBadIconName", bad, err)
 		}
+	}
+}
+
+// The catalogue's pictures are not written to this program's limits: one of them
+// can be larger than the 64 KiB an icon may be. It has to arrive whole, because Fit
+// is what turns it into an icon — and a file cut at the icon limit cannot be decoded
+// at all, which is how "the picture is 65537 bytes" came to be an error.
+func TestCatalogueHandsOverAPictureLargerThanAnIcon(t *testing.T) {
+	srv, _ := catalogueServer(t)
+	c := newTestCatalogue(srv)
+
+	data, err := c.Fetch(context.Background(), "big")
+	if err != nil {
+		t.Fatalf("fetching a large picture: %v", err)
+	}
+	if len(data) != 3*MaxBytes {
+		t.Fatalf("the picture arrived as %d bytes, want the whole %d", len(data), 3*MaxBytes)
 	}
 }

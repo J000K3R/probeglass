@@ -433,6 +433,12 @@ func onlineCatalogue(t *testing.T) (*httptest.Server, []byte) {
 		w.Header().Set("Content-Type", "image/png")
 		_, _ = w.Write(pngBytes(t, 623, 512))
 	})
+	// And a picture that is over the byte limit rather than the pixel one. It has to
+	// arrive whole: cut to the icon limit it could not be decoded, let alone reduced.
+	mux.HandleFunc("/png/heavy.png", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write(noisyPNG(t, 800, 800))
+	})
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	return srv, picture
@@ -604,5 +610,53 @@ func TestImportingAWideOnlineIconShrinksIt(t *testing.T) {
 	}
 	if stored.Height < 419 || stored.Height > 423 {
 		t.Errorf("the stored picture is %d pixels high, want the 512-wide logo's proportion", stored.Height)
+	}
+}
+
+// noisyPNG is a real PNG that will not compress: every pixel differs, which is how a
+// picture of the right shape still ends up over the byte limit.
+func noisyPNG(t *testing.T, w, h int) []byte {
+	t.Helper()
+	img := image.NewRGBA(image.Rect(0, 0, w, h))
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			at := img.PixOffset(x, y)
+			img.Pix[at] = uint8(x*7 + y*13)
+			img.Pix[at+1] = uint8(x*x + y*3)
+			img.Pix[at+2] = uint8(x*11 ^ y*5)
+			img.Pix[at+3] = uint8(200 + (x+y)%56)
+		}
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatalf("encode a noisy %dx%d PNG: %v", w, h, err)
+	}
+	return buf.Bytes()
+}
+
+// A picture over the byte limit is the other way the catalogue does not fit this
+// program's rules. It used to come back cut in half — fetch stopped reading at the
+// icon limit — and the refusal said "this one is 65537 bytes", which is the length of
+// the cut, not of the picture.
+func TestImportingAHeavyOnlineIconShrinksIt(t *testing.T) {
+	h := newHarness(t)
+	h.setup()
+	srv, _ := onlineCatalogue(t)
+	h.useCatalogue(srv.URL)
+
+	resp := h.do(http.MethodPost, "/api/icons/import", map[string]string{"name": "heavy"}, nil)
+	if resp.StatusCode != http.StatusCreated {
+		body := new(strings.Builder)
+		_, _ = io.Copy(body, resp.Body)
+		resp.Body.Close()
+		t.Fatalf("importing a heavy picture returned %d: %s", resp.StatusCode, body)
+	}
+	var stored model.Icon
+	decode(t, resp, &stored)
+	if stored.Size > icon.MaxBytes {
+		t.Errorf("the stored picture is %d bytes, and the limit is %d", stored.Size, icon.MaxBytes)
+	}
+	if stored.Width > icon.MaxSide || stored.Height > icon.MaxSide {
+		t.Errorf("the stored picture is %dx%d", stored.Width, stored.Height)
 	}
 }

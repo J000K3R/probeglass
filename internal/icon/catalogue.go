@@ -42,6 +42,13 @@ const (
 	// response that is not the index at all cannot be read into memory.
 	catalogueMaxIndex = 8 << 20
 
+	// catalogueMaxImage bounds one picture read from the CDN. It is deliberately
+	// larger than the 64 KiB an icon may be: the catalogue is not written to this
+	// program's limits, a 90 KiB logo is ordinary, and Fit exists to make one into
+	// an icon. Reading only the icon limit here would hand Fit a truncated PNG and
+	// turn a picture that could have been kept into "this one is 65537 bytes".
+	catalogueMaxImage = 8 << 20
+
 	// catalogueTimeout is how long one lookup may take, both for the index and for
 	// one picture. A homelab whose DNS is slow should get the "not right now"
 	// answer, not a dashboard that waits.
@@ -211,11 +218,15 @@ func (c *Catalogue) Fetch(ctx context.Context, name string) ([]byte, error) {
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("%w: the catalogue answered %s", ErrCatalogueUnavailable, resp.Status)
 	}
-	// One byte over the limit, so that Decode can say how large the file really is
-	// rather than only that it is too large.
-	data, err := io.ReadAll(io.LimitReader(resp.Body, MaxBytes+1))
+	// One byte over the bound, so that a response that is not a picture can be
+	// refused with a sentence rather than read into memory at whatever size it is.
+	data, err := io.ReadAll(io.LimitReader(resp.Body, catalogueMaxImage+1))
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrCatalogueUnavailable, err)
+	}
+	if len(data) > catalogueMaxImage {
+		return nil, fmt.Errorf("the catalogue's picture is larger than %s, which is not an icon",
+			formatBytes(catalogueMaxImage))
 	}
 	return data, nil
 }
