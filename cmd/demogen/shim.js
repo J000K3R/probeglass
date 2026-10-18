@@ -232,6 +232,14 @@
       // while the demo was built. An empty result is a true answer — it is what the
       // server says for a query that matches nothing.
       if (key.indexOf('GET /api/search?') === 0) return answer({ hits: [], truncated: false });
+      // The online icon search, answered the way a machine with no route out
+      // answers it. A demo is static files with no server behind them, so there is
+      // nothing that could ask dashboardicons.com — and the picker's sentence for
+      // that case ("the icons are on ...") is the true one here, rather than the
+      // generic "this was not recorded".
+      if (key.indexOf('GET /api/icons/search') === 0) {
+        return answer({ source: 'dashboardicons.com', offline: true, results: [] });
+      }
       console.warn('demo: nothing was recorded for', key);
       return refuse(NOT_RECORDED);
     }
