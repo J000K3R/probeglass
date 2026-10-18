@@ -194,12 +194,28 @@ func TestAnUploadedIconIsDrawnAsAnImage(t *testing.T) {
 			// The label and not the input: the input is hidden behind it, and WaitVisible
 			// on something that is never visible waits forever.
 			chromedp.WaitVisible(`.icon-upload`),
+		)
+	}); err != nil {
+		capture(t, ctx, dir, "icon-picker")
+		t.Fatalf("the picker did not open: %v", err)
+	}
+
+	// The example data uploads pictures of its own, so the grid is not empty before
+	// this file goes up. What has to be true afterwards is that there is one more
+	// tile than there was — not that a tile appeared at all.
+	const uploadTiles = `[...document.querySelectorAll('.icon-grid-uploads [data-icon-set^="upload:"]')]`
+	before := read[[]string](t, ctx, uploadTiles+`.map((e) => e.dataset.iconSet)`,
+		"the uploaded icons before this one")
+
+	if err := withTimeout(ctx, func(tctx context.Context) error {
+		return chromedp.Do(tctx,
 			// The file input is hidden behind the label that draws the button, which
 			// is how a file input is styled without losing the browser's own picker.
 			chromedp.SetUploadFiles(`[data-icon-upload]`, []string{picture}),
 			// The upload is a request of its own, so the tile appears when the server
 			// has answered rather than when the file was chosen.
-			chromedp.Poll[chromedp.Void](`!!document.querySelector('.icon-grid-uploads [data-icon-set^="upload:"]')`,
+			chromedp.Poll[chromedp.Void](
+				fmt.Sprintf(`%s.length > %d`, uploadTiles, len(before)),
 				chromedp.WithPollingTimeout(20*time.Second)),
 		)
 	}); err != nil {
@@ -207,8 +223,10 @@ func TestAnUploadedIconIsDrawnAsAnImage(t *testing.T) {
 		t.Fatalf("the upload did not come back as an icon: %v", err)
 	}
 
+	// The one that was not there before: the list is newest first, so the new tile is
+	// the first one.
 	ref := read[string](t, ctx,
-		`document.querySelector('.icon-grid-uploads [data-icon-set^="upload:"]').dataset.iconSet`,
+		`(() => { const tiles = `+uploadTiles+`; return tiles.length ? tiles[0].dataset.iconSet : '' })()`,
 		"the reference of the uploaded icon")
 	if ref == "" {
 		t.Fatal("the uploaded tile carries no reference")
