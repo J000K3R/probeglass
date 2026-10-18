@@ -125,6 +125,13 @@ here and what the release says are the same document.
     uploaded keep working.
   - **Only PNGs are taken**, and they go through the same decode an upload does — no
     SVG, ever, and a picture that would be refused as an upload is refused here too.
+  - **A picture larger than an icon may be is made to fit, not refused.** The
+    catalogue's logos are not all 512 square — a wide one is 623×512, one is
+    1123×512 — and the limit that keeps uploads small would otherwise turn a search
+    result into an error. An imported picture is reduced to what the dashboard draws
+    (an area average, never enlarged); a file somebody picked themselves is still
+    refused when it is too big, because shrinking their own file without asking
+    would be a surprise.
 
   The catalogue is the work of [Dashboard Icons](https://github.com/homarr-labs/dashboard-icons)
   (Apache-2.0); the pictures are the logos of the projects they belong to, and the

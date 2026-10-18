@@ -255,10 +255,14 @@ func (s *Server) handleSearchIcons(w http.ResponseWriter, r *http.Request) {
 // and it answers from this server rather than sending the browser to the CDN for
 // two reasons. The content policy allows images from this origin and from nowhere
 // else, and a search field that only works after widening that policy would be a
-// third party deciding what this dashboard may load. And the bytes are run through
-// icon.Decode before they are served, so a preview is always something the import
-// behind it would also accept — a picture that cannot be stored is not shown as
-// though it could be.
+// third party deciding what this dashboard may load. And the bytes go through
+// icon.Fit and icon.Decode before they are served, so a preview is always something
+// the import behind it would also accept — a picture that cannot be stored is not
+// shown as though it could be.
+//
+// Fit rather than Decode because the catalogue's pictures are not all the size this
+// program draws: a wide logo is 623×512, and refusing to show it would leave a
+// broken picture where the search result is.
 func (s *Server) handleIconPreview(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	data, err := s.catalogue.Fetch(r.Context(), name)
@@ -273,17 +277,17 @@ func (s *Server) handleIconPreview(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "%s", err.Error())
 		return
 	}
-	info, err := icon.Decode(data)
+	fitted, info, err := icon.Fit(data)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, "the catalogue's picture is not an image this dashboard can keep: %s", err.Error())
 		return
 	}
 	h := w.Header()
 	h.Set("Content-Type", info.MediaType)
-	h.Set("Content-Length", strconv.Itoa(len(data)))
+	h.Set("Content-Length", strconv.Itoa(len(fitted)))
 	h.Set("ETag", `"preview-`+name+`"`)
 	h.Set("Cache-Control", "private, max-age=86400")
-	if _, err := w.Write(data); err != nil {
+	if _, err := w.Write(fitted); err != nil {
 		s.log.Error("writing an icon preview", "name", name, "error", err)
 	}
 }
@@ -301,6 +305,11 @@ type importInput struct {
 // installation's database that draws without any network at all. The alternative —
 // drawing it from the CDN — would put a third party in the path of every page load
 // and take the image out of the one file a backup copies.
+//
+// Fit rather than Decode because the catalogue is not written to this program's
+// limits: a wide logo is 623×512, and refusing it would mean the search offered a
+// symbol that could not be taken. The picture is reduced to what the dashboard
+// draws; a file somebody uploaded is still held to the limits as they are.
 func (s *Server) handleImportIcon(w http.ResponseWriter, r *http.Request) {
 	var in importInput
 	if err := decodeJSON(r, &in); err != nil {
@@ -325,8 +334,14 @@ func (s *Server) handleImportIcon(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "%s", err.Error())
 		return
 	}
+	fitted, _, err := icon.Fit(data)
+	if err != nil {
+		writeError(w, http.StatusBadRequest,
+			"the catalogue's picture is not an image this dashboard can keep: %s", err.Error())
+		return
+	}
 	ic := model.Icon{Name: name}
-	if err := s.store.CreateIcon(ctx, &ic, data); err != nil {
+	if err := s.store.CreateIcon(ctx, &ic, fitted); err != nil {
 		if isValidationError(err) {
 			writeError(w, http.StatusBadRequest, "%s", err.Error())
 			return

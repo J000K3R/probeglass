@@ -427,6 +427,12 @@ func onlineCatalogue(t *testing.T) (*httptest.Server, []byte) {
 		w.Header().Set("Content-Type", "image/png")
 		_, _ = w.Write(picture)
 	})
+	// A wide logo, which is the shape the catalogue really has and which this
+	// program's own limit would refuse as it stands.
+	mux.HandleFunc("/png/wide-logo.png", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write(pngBytes(t, 623, 512))
+	})
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	return srv, picture
@@ -564,5 +570,39 @@ func TestThePreviewShowsAPictureWithoutStoringIt(t *testing.T) {
 	decode(t, h.do(http.MethodGet, "/api/icons", nil, nil), &listed)
 	if len(listed.Icons) != 0 {
 		t.Fatalf("a preview stored %d icon(s); it is a look, not an import", len(listed.Icons))
+	}
+}
+
+// A picture from the catalogue that is bigger than this program's limit is made to
+// fit instead of being refused. The catalogue holds 623×512 logos, and a search that
+// offers a symbol the import then refuses is a search nobody can use.
+func TestImportingAWideOnlineIconShrinksIt(t *testing.T) {
+	h := newHarness(t)
+	h.setup()
+	srv, _ := onlineCatalogue(t)
+	h.useCatalogue(srv.URL)
+
+	// It can be looked at first: a preview of a picture too wide to store is exactly
+	// the case where the browser would otherwise draw a broken image.
+	preview := h.do(http.MethodGet, "/api/icons/preview/wide-logo", nil, nil)
+	preview.Body.Close()
+	if preview.StatusCode != http.StatusOK {
+		t.Fatalf("previewing a wide logo returned %d", preview.StatusCode)
+	}
+
+	resp := h.do(http.MethodPost, "/api/icons/import", map[string]string{"name": "wide-logo"}, nil)
+	if resp.StatusCode != http.StatusCreated {
+		body := new(strings.Builder)
+		_, _ = io.Copy(body, resp.Body)
+		resp.Body.Close()
+		t.Fatalf("importing a wide logo returned %d: %s", resp.StatusCode, body)
+	}
+	var stored model.Icon
+	decode(t, resp, &stored)
+	if stored.Width != 512 {
+		t.Errorf("the stored picture is %d pixels wide, want 512", stored.Width)
+	}
+	if stored.Height < 419 || stored.Height > 423 {
+		t.Errorf("the stored picture is %d pixels high, want the 512-wide logo's proportion", stored.Height)
 	}
 }
