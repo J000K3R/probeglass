@@ -1526,6 +1526,16 @@ button.widget-pick-label {
 label.field { display: grid; gap: var(--sp-1); align-content: start; }
 label.field > span { font-size: var(--text-3); color: var(--text-dim); font-weight: 500; }
 
+/* The sensor editor's name row: the symbol stands in the row itself, to the left of
+   the name, the way it stands beside the name on a card. The row is a div and not a
+   label because it holds a button — a label forwards its click to the first
+   labelable thing inside it, so "Name" would open the picker — and the label above
+   is tied to the input with `for` instead. */
+.field-row { display: grid; gap: var(--sp-1); align-content: start; }
+.field-row > label { font-size: var(--text-3); color: var(--text-dim); font-weight: 500; }
+.field-row-input { display: flex; align-items: center; gap: var(--sp-2); }
+.field-row-input > input { flex: 1 1 auto; min-width: 0; }
+
 input[type='text'], input[type='password'], input[type='number'], input[type='search'], select, textarea {
   width: 100%;
   min-height: var(--ctl-h);
@@ -2678,8 +2688,11 @@ label.field.check > span { color: var(--text); font-size: var(--text-3); }
 .icon-lead { margin-right: var(--sp-2); }
 
 /* "No icon" is a choice and not a gap, so it is drawn as one: a dashed square in
-   the same slot, at the same size, so that a row of choices does not jump. */
+   the same slot, at the same size, so that a row of choices does not jump. The
+   size is the slot's, because an empty span has none of its own. */
 .icon-empty {
+  width: 18px;
+  height: 18px;
   border: 1px dashed var(--border-strong);
   border-radius: 5px;
   box-sizing: border-box;
@@ -2689,6 +2702,10 @@ label.field.check > span { color: var(--text); font-size: var(--text-3); }
    that opens under it — not a select, because the choice is a picture and a native
    select cannot hold one. */
 .icon-field { position: relative; display: inline-block; min-width: 210px; }
+/* The symbol as a button the size of a field, for the row that puts it beside the
+   name. The picture is the label, so nothing is written beside it. */
+.icon-field-compact { min-width: 0; }
+.icon-button-compact { width: var(--ctl-h); padding: 0; justify-content: center; }
 .icon-button {
   display: flex;
   align-items: center;

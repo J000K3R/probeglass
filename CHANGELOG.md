@@ -51,7 +51,9 @@ here and what the release says are the same document.
 - **A symbol on every sensor, place and group — one of ours, or a picture of your own.**
   A sensor, a site and a group's heading can each carry an icon, drawn beside the name
   in every view: the cards, the list, the tree and the wall, and in the heading of the
-  sensor's own window.
+  sensor's own window. In the sensor editor the symbol stands in the name row itself,
+  as a button the size of the field: choosing one is a click on the picture that will
+  be drawn, not a trip to a field called "Icon" further down the form.
 
   - **Two kinds of symbol.** Twenty-six drawings ship inside the binary — router,
     switch, server, NAS, container, cloud, printer, camera — and they follow the theme,

@@ -112,11 +112,19 @@ func TestThePickerPutsASymbolOnASensor(t *testing.T) {
 	if got := read[string](t, ctx, pickerValue, "what the picker holds"); got != "builtin:router" {
 		t.Fatalf("the picker holds %q after choosing the router, want builtin:router", got)
 	}
-	// And it says what it holds: a picker that sets the value and leaves the button
-	// reading "No icon" is a form that looks like it forgot.
-	label := read[string](t, ctx, `document.querySelector('#modal [data-icon-label]').textContent.trim()`, "the picker's label")
-	if label != "Router" {
-		t.Errorf("the picker's label reads %q, want Router", label)
+	// And it says what it holds. The sensor editor's picker is the symbol alone —
+	// the picture is the label — so the word it is announced with is the thing to
+	// check: a button that keeps saying "Choose an icon" after one was chosen is a
+	// form that looks like it forgot.
+	button := read[map[string]string](t, ctx, `(() => {
+	  const b = document.querySelector('#modal [data-icon-open]');
+	  return {
+	    label: b ? b.getAttribute('aria-label') : '(none)',
+	    title: b ? b.getAttribute('title') : '(none)',
+	  };
+	})()`, "the picker's button")
+	if button["label"] != "Router" || button["title"] != "Router" {
+		t.Errorf("the picker's button is announced as %q / %q, want Router", button["label"], button["title"])
 	}
 
 	if err := withTimeout(ctx, func(tctx context.Context) error {

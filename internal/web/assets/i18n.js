@@ -816,8 +816,6 @@ const en = {
   'help.sensor.enabled': 'Untick to stop probing. A paused sensor keeps its history and shows grey. Pausing is not acknowledging: acknowledging keeps the probing and stops only the reminders.',
   'help.sensor.enabledExample': 'ticked',
 
-  'help.sensor.icon': 'Optional. The symbol drawn beside this sensor\'s name on every view. Built-in drawings follow the theme; an image you upload keeps its own colours.',
-  'help.sensor.iconExample': 'Router',
   'help.sites.icon': 'Optional. The symbol for this place, drawn beside its name in the tree and in the settings list. The map keeps the pin its kind gives it.',
   'help.sites.iconExample': 'Server',
   'help.groups.icon': 'Optional. The symbol drawn before the group\'s heading on the dashboard.',

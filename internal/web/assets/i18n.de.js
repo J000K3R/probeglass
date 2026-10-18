@@ -815,8 +815,6 @@ export const de = {
   'help.sensor.enabled': 'Häkchen weg, um nicht mehr zu prüfen. Ein pausierter Sensor behält seinen Verlauf und erscheint grau. Pausieren ist nicht Quittieren: Quittieren lässt die Prüfungen weiterlaufen und stoppt nur die Erinnerungen.',
   'help.sensor.enabledExample': 'angehakt',
 
-  'help.sensor.icon': 'Optional. Das Symbol neben dem Namen dieses Sensors, in jeder Ansicht. Mitgelieferte Zeichnungen folgen dem Theme; ein hochgeladenes Bild behält seine eigenen Farben.',
-  'help.sensor.iconExample': 'Router',
   'help.sites.icon': 'Optional. Das Symbol für diesen Standort, neben seinem Namen im Baum und in der Einstellungsliste. Auf der Karte bleibt der Pin, den die Art vorgibt.',
   'help.sites.iconExample': 'Server',
   'help.groups.icon': 'Optional. Das Symbol vor der Überschrift der Gruppe auf dem Dashboard.',

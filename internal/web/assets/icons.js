@@ -110,8 +110,28 @@ export function iconMarkup(ref, { size = 18, cls = '', title = '' } = {}) {
  *
  * The value travels in a hidden input named like any other field, so a form reads
  * it the way it reads everything else and readSensorForm needs no special case.
+ *
+ * `compact` draws it as the symbol alone — a button the size of a field, with no
+ * word beside it. That is what the sensor editor uses, where the symbol stands to
+ * the left of the name it belongs to: a labelled field there would be a second
+ * "Icon" heading in a row that already says "Name", and the picture is the label.
  */
-export function iconFieldMarkup(ref = '', { name = 'icon' } = {}) {
+export function iconFieldMarkup(ref = '', { name = 'icon', compact = false } = {}) {
+  if (compact) {
+    // The word the button is announced with: what it holds when it holds
+    // something, and what pressing it does when it does not.
+    const spoken = iconLabel(ref) || t('icons.choose');
+    return `
+      <div class="icon-field icon-field-compact" data-icon-field>
+        <button type="button" class="icon-button icon-button-compact" data-icon-open
+                aria-haspopup="true" aria-expanded="false"
+                title="${esc(spoken)}" aria-label="${esc(spoken)}">
+          <span class="icon-slot">${iconMarkup(ref, { size: 20 }) || EMPTY_SLOT}</span>
+        </button>
+        <input type="hidden" name="${esc(name)}" value="${esc(ref)}">
+        <div class="icon-panel" hidden></div>
+      </div>`;
+  }
   const label = ref ? iconLabel(ref) : t('icons.none');
   return `
     <div class="icon-field" data-icon-field>
@@ -280,6 +300,15 @@ function setField(field, ref) {
   if (slot) slot.innerHTML = iconMarkup(ref, { size: 18 }) || EMPTY_SLOT;
   const label = field.querySelector('[data-icon-label]');
   if (label) label.textContent = ref ? iconLabel(ref) : t('icons.none');
+  // The compact picker has no word beside it, so the button's own name is what has
+  // to follow the choice — otherwise a screen reader keeps saying "Choose an icon"
+  // about a field that already holds one.
+  const button = field.querySelector('[data-icon-open]');
+  if (button && !label) {
+    const spoken = iconLabel(ref) || t('icons.choose');
+    button.setAttribute('aria-label', spoken);
+    button.setAttribute('title', spoken);
+  }
 }
 
 /** renderPanel fills an open picker with the catalogue. */

@@ -2917,14 +2917,19 @@ function sensorFormMarkup(sensor) {
       <span>${esc(c.name)} <small class="muted">${esc(c.type)}</small></span></label>`;
   }).join('');
 
-  // The icon field is a div rather than a label, unlike every field around it, and
-  // that is not an oversight: it holds a button, and a label forwards a click to the
-  // first labelable element inside it — so a click on "Icon" would open the picker
-  // and close it again in the same breath.
+  // The name row: the symbol first, then the name. The symbol is a button and not
+  // part of the label, because a label forwards its click to the first labelable
+  // thing inside it — the button — and then pressing "Name" would open the picker.
+  // The label is tied to the input with `for` instead, which is what it was for.
   return `
     <div class="grid-2">
-      <label class="field"><span>${withHelp(t('sensor.name'), 'help.sensor.name')}</span>
-        <input name="name" type="text" required value="${esc(sensor?.name || '')}" autocomplete="off"></label>
+      <div class="field-row">
+        <label for="sensor-name">${withHelp(t('sensor.name'), 'help.sensor.name')}</label>
+        <div class="field-row-input">
+          ${iconUI.iconFieldMarkup(sensor?.icon || '', { compact: true })}
+          <input id="sensor-name" name="name" type="text" required value="${esc(sensor?.name || '')}" autocomplete="off">
+        </div>
+      </div>
       <label class="field"><span>${withHelp(t('sensor.type'), 'help.sensor.type')}</span>
         <select name="type" id="sensor-type">
           ${SENSOR_TYPES.map((c) => `<option value="${c.value}"${c.value === def.value ? ' selected' : ''}>${esc(t(c.labelKey))}</option>`).join('')}
@@ -2953,9 +2958,6 @@ function sensorFormMarkup(sensor) {
       <label class="field"><span>${withHelp(t('sensor.parent'), 'help.sensor.parent')}</span>
         <select name="parent" id="sensor-parent">${parentOptions(sensor?.parent, sensor?.name)}</select></label>
     </div>
-
-    <div class="field adv-hide"><span>${withHelp(t('icons.label'), 'help.sensor.icon')}</span>
-      ${iconUI.iconFieldMarkup(sensor?.icon || '')}</div>
 
     <datalist id="group-list">
       ${[...new Set(state.sensors.map((c) => c.group).filter(Boolean))].map((g) => `<option value="${esc(g)}">`).join('')}
