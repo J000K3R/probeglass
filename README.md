@@ -233,10 +233,10 @@ docker run -d \
   -p 8080:8080 \
   -v probeglass-data:/data \
   --cap-add NET_RAW \
-  ghcr.io/j000k3r/probeglass:0.2.1
+  ghcr.io/j000k3r/probeglass:0.2.2
 ```
 
-Every release is published under three tags: `0.2.1`, the exact version;
+Every release is published under three tags: `0.2.2`, the exact version;
 `0.1`, which follows the 0.1.x patch releases; and `latest`, which follows the
 newest release of all. `dev` is a build of whatever is in the tree today.
 
@@ -263,9 +263,9 @@ make test         # runs the test suite
 
 ```bash
 docker run --rm -p 8080:8080 -v probeglass-demo:/data \
-  ghcr.io/j000k3r/probeglass:0.2.1 seed --demo --days 7
+  ghcr.io/j000k3r/probeglass:0.2.2 seed --demo --days 7
 docker run --rm -p 8080:8080 -v probeglass-demo:/data \
-  ghcr.io/j000k3r/probeglass:0.2.1 serve --listen :8080
+  ghcr.io/j000k3r/probeglass:0.2.2 serve --listen :8080
 ```
 
 The demo set brings invented sensors of several types, a week of plausible
@@ -515,7 +515,7 @@ GitHub Container Registry, `ghcr.io/j000k3r/probeglass`, by the release workflow
 
 ## Status
 
-Version 0.2.1 — the foundation is in place and works, the feature set is still
+Version 0.2.2 — the foundation is in place and works, the feature set is still
 growing. The dashboard ships in English and German, the switch is in Settings and
 in the account menu, and the UI is built on a message catalogue, so the next
 language is a dictionary file and a picker entry. The container image is the only
