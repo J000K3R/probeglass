@@ -22,6 +22,7 @@ import (
 
 	"github.com/j000k3r/probeglass/internal/config"
 	"github.com/j000k3r/probeglass/internal/event"
+	"github.com/j000k3r/probeglass/internal/icon"
 	"github.com/j000k3r/probeglass/internal/model"
 	"github.com/j000k3r/probeglass/internal/notify"
 	"github.com/j000k3r/probeglass/internal/scheduler"
@@ -64,6 +65,12 @@ type Server struct {
 	// database and dials the daemon's own health endpoint, and repeated clicks
 	// must not turn into repeated full passes.
 	doctor doctorCache
+
+	// catalogue is the online icon set at dashboardicons.com. It answers searches
+	// and hands back one picture at a time, which is then stored like an upload —
+	// see internal/icon/catalogue.go. It keeps its index in memory and nothing on
+	// disk: an installation that never searches never downloads anything.
+	catalogue *icon.Catalogue
 }
 
 // Options configures a Server.
@@ -81,6 +88,10 @@ type Options struct {
 	// the dashboard gets away with when the map is a few kilobytes — but the
 	// shipped dashboard is not, so main passes it in.
 	AssetETags map[string]string
+	// Catalogue is the online icon set. Nil means the default, pointed at
+	// dashboardicons.com; a test passes one pointed at its own server so that no
+	// test depends on somebody else's website being up.
+	Catalogue *icon.Catalogue
 }
 
 // New builds a Server and loads its authentication state.
@@ -100,6 +111,10 @@ func New(ctx context.Context, opts Options) (*Server, error) {
 		assetETags: opts.AssetETags,
 		logins:     newLoginLimiter(5, time.Minute),
 		totpLogins: newLoginLimiter(5, time.Minute),
+		catalogue:  opts.Catalogue,
+	}
+	if s.catalogue == nil {
+		s.catalogue = icon.NewCatalogue()
 	}
 	if err := s.loadAuth(ctx); err != nil {
 		return nil, err
@@ -187,6 +202,11 @@ func (s *Server) Handler() http.Handler {
 	// much as for an administrator, and a symbol is not a secret. The bytes are a
 	// separate route because that is what an `<img src>` can point at.
 	view("GET /api/icons", s.handleListIcons)
+	// Before the {id} route in this file, though not in the routing tree: a
+	// literal segment beats a wildcard there, so "search" and "preview" are never
+	// read as an id.
+	view("GET /api/icons/search", s.handleSearchIcons)
+	view("GET /api/icons/preview/{name}", s.handleIconPreview)
 	view("GET /api/icons/{id}", s.handleIconBytes)
 	view("GET /api/groups", s.handleListGroups)
 
@@ -240,6 +260,7 @@ func (s *Server) Handler() http.Handler {
 	// off: which symbol a box wears is a decision about the installation, not an
 	// action taken during an outage.
 	adm("POST /api/icons", s.handleUploadIcon)
+	adm("POST /api/icons/import", s.handleImportIcon)
 	adm("DELETE /api/icons/{id}", s.handleDeleteIcon)
 	adm("PUT /api/groups/{name}", s.handleSetGroup)
 	adm("DELETE /api/groups/{name}", s.handleForgetGroup)

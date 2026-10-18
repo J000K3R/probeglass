@@ -514,7 +514,10 @@ func capture(ctx context.Context, base, out string) error {
 	// dialog, so that the picture after this one is the form as it always was.
 	if err := do(ctx, "the icon picker",
 		chromedp.Click(`#modal [data-icon-open]`),
-		chromedp.WaitVisible(`.icon-panel .icon-grid`),
+		// The choice tiles rather than ".icon-grid": the first grid in the panel is
+		// the online results, hidden until a search is typed, and waiting on that
+		// one waits for something that is never going to appear.
+		chromedp.WaitVisible(`.icon-panel .icon-choice`),
 	); err != nil {
 		return err
 	}

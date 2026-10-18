@@ -197,6 +197,148 @@ func (s *Server) handleDeleteIcon(w http.ResponseWriter, r *http.Request) {
 }
 
 // ---------------------------------------------------------------------------
+// the online catalogue
+// ---------------------------------------------------------------------------
+
+// catalogueSource is the site the online search looks at, named in the answer so
+// that the dashboard can credit it without a second place to keep in step.
+const catalogueSource = "dashboardicons.com"
+
+// searchLimit is how many results one search returns. A person choosing a symbol
+// does not read more than this, and the grid that draws them does not want to.
+const searchLimit = 40
+
+// handleSearchIcons answers GET /api/icons/search?q=.
+//
+// The answer is a result list with a flag rather than an error status when the
+// catalogue could not be reached: "no network" is not a fault in the request, and
+// the dashboard shows it as a sentence beside the search field rather than as a
+// toast that says something went wrong. The flag is the whole of what separates
+// the two cases — an empty list with offline=false is "nothing matched", which is
+// a different sentence.
+//
+// Every call revalidates the online index, so an icon the project added since this
+// process started is found by the search that is looking for it.
+func (s *Server) handleSearchIcons(w http.ResponseWriter, r *http.Request) {
+	query := strings.TrimSpace(r.URL.Query().Get("q"))
+	if len(query) > 64 {
+		query = query[:64]
+	}
+	results, err := s.catalogue.Search(r.Context(), query, searchLimit)
+	if err == nil {
+		if results == nil {
+			results = []icon.CatalogueIcon{}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"source":  catalogueSource,
+			"offline": false,
+			"results": results,
+		})
+		return
+	}
+	if errors.Is(err, icon.ErrCatalogueUnavailable) {
+		s.log.Info("online icon search unavailable", "error", err)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"source":  catalogueSource,
+			"offline": true,
+			"results": []icon.CatalogueIcon{},
+		})
+		return
+	}
+	s.fail(w, err, http.StatusInternalServerError, "could not search the icon catalogue")
+}
+
+// handleIconPreview answers GET /api/icons/preview/{name} with the online picture,
+// without storing it.
+//
+// It exists so that the search can show what it found before anything is imported,
+// and it answers from this server rather than sending the browser to the CDN for
+// two reasons. The content policy allows images from this origin and from nowhere
+// else, and a search field that only works after widening that policy would be a
+// third party deciding what this dashboard may load. And the bytes are run through
+// icon.Decode before they are served, so a preview is always something the import
+// behind it would also accept — a picture that cannot be stored is not shown as
+// though it could be.
+func (s *Server) handleIconPreview(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	data, err := s.catalogue.Fetch(r.Context(), name)
+	switch {
+	case errors.Is(err, icon.ErrBadIconName):
+		writeError(w, http.StatusBadRequest, "%s", err.Error())
+		return
+	case errors.Is(err, icon.ErrCatalogueUnavailable):
+		writeError(w, http.StatusBadGateway, "the online icon catalogue could not be reached")
+		return
+	case err != nil:
+		writeError(w, http.StatusNotFound, "%s", err.Error())
+		return
+	}
+	info, err := icon.Decode(data)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "the catalogue's picture is not an image this dashboard can keep: %s", err.Error())
+		return
+	}
+	h := w.Header()
+	h.Set("Content-Type", info.MediaType)
+	h.Set("Content-Length", strconv.Itoa(len(data)))
+	h.Set("ETag", `"preview-`+name+`"`)
+	h.Set("Cache-Control", "private, max-age=86400")
+	if _, err := w.Write(data); err != nil {
+		s.log.Error("writing an icon preview", "name", name, "error", err)
+	}
+}
+
+// importInput is the body of an import: the name of an icon from the catalogue.
+type importInput struct {
+	Name string `json:"name"`
+}
+
+// handleImportIcon answers POST /api/icons/import and stores the online picture as
+// an ordinary uploaded icon.
+//
+// This is the whole of what "taking it from dashboardicons" means here: one fetch,
+// one row in the icons table, and from then on it is a picture in this
+// installation's database that draws without any network at all. The alternative —
+// drawing it from the CDN — would put a third party in the path of every page load
+// and take the image out of the one file a backup copies.
+func (s *Server) handleImportIcon(w http.ResponseWriter, r *http.Request) {
+	var in importInput
+	if err := decodeJSON(r, &in); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body: %s", err.Error())
+		return
+	}
+	name := strings.TrimSpace(in.Name)
+	if name == "" {
+		writeError(w, http.StatusBadRequest, "the request names no icon")
+		return
+	}
+	ctx := r.Context()
+	data, err := s.catalogue.Fetch(ctx, name)
+	switch {
+	case errors.Is(err, icon.ErrBadIconName):
+		writeError(w, http.StatusBadRequest, "%s", err.Error())
+		return
+	case errors.Is(err, icon.ErrCatalogueUnavailable):
+		writeError(w, http.StatusBadGateway, "the online icon catalogue could not be reached")
+		return
+	case err != nil:
+		writeError(w, http.StatusNotFound, "%s", err.Error())
+		return
+	}
+	ic := model.Icon{Name: name}
+	if err := s.store.CreateIcon(ctx, &ic, data); err != nil {
+		if isValidationError(err) {
+			writeError(w, http.StatusBadRequest, "%s", err.Error())
+			return
+		}
+		s.fail(w, err, http.StatusInternalServerError, "could not store the icon")
+		return
+	}
+	s.log.Info("icon imported", "id", ic.ID, "name", name, "bytes", ic.Size)
+	writeJSON(w, http.StatusCreated, ic)
+}
+
+// ---------------------------------------------------------------------------
 // groups
 // ---------------------------------------------------------------------------
 

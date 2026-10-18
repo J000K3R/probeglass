@@ -220,6 +220,17 @@ const en = {
   'icons.deleteConfirm': 'Delete the image "{name}" from the list?',
   'icons.deleteInUse': 'The image "{name}" is still used. Delete it and take it off everything that wears it?',
   'icons.deleted': 'Image deleted.',
+  // The online catalogue at dashboardicons.com. The search reaches it every time,
+  // and the sentence for the case where it cannot be reached says where the icons
+  // are rather than only that something failed — a homelab with no route out will
+  // read it on every search.
+  'icons.search': 'Search by name',
+  'icons.searchPlaceholder': 'pi-hole, plex, router…',
+  'icons.searching': 'Searching…',
+  'icons.searchEmpty': 'Nothing in the online catalogue matches that.',
+  'icons.searchOffline': 'Online search is not available right now — the icons are on',
+  'icons.importDone': '"{name}" was added to your icons.',
+  'icons.credit': 'Online icons from',
   'icons.name.router': 'Router',
   'icons.name.switch': 'Switch',
   'icons.name.server': 'Server',

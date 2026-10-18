@@ -1824,6 +1824,17 @@ label.field.check > span { color: var(--text); font-size: var(--text-3); }
   max-width: min(380px, calc(100vw - 36px));
 }
 
+/* Inside a dialog the toasts stand above its footer.
+ *
+ * The footer is where Save lives, and a toast in the ordinary corner sits directly
+ * on top of it: uploading an icon and pressing Save three seconds later did
+ * nothing, and the toast then faded as though the click had never happened. The
+ * footer is a button tall plus its padding; this clears it and leaves the toast
+ * where the person who pressed Test is already looking. */
+.sheet .toasts {
+  bottom: calc(var(--ctl-h) + var(--sp-6) + var(--sp-2));
+}
+
 .toast {
   padding: var(--sp-3) var(--sp-4);
   border: 1px solid var(--border);
@@ -2723,6 +2734,17 @@ label.field.check > span { color: var(--text); font-size: var(--text-3); }
 /* The same empty box as everywhere else, with less air: it stands inside a panel
    that is already a box, in a corner of it. */
 .icon-grid-uploads .empty { padding: var(--sp-4) var(--sp-3); justify-self: stretch; }
+
+/* The search over the online catalogue, at the top of the picker because it is the
+   answer to "my thing is not in this list". The note under it is where "the
+   catalogue could not be reached" is said — beside the field that asked, not in a
+   toast that disappears before the sentence has been read. */
+.icon-search { display: flex; flex-direction: column; gap: var(--sp-1); margin-bottom: var(--sp-3); }
+.icon-search-label { color: var(--text-dim); font-size: var(--text-5); text-transform: uppercase; letter-spacing: 0.04em; }
+.icon-grid-online { max-height: 176px; overflow-y: auto; }
+.icon-search-note { margin: var(--sp-1) 0 0; color: var(--text-dim); font-size: var(--text-4); line-height: 1.4; }
+.icon-search-note a, .icon-credit a { color: var(--accent); }
+.icon-credit { margin: var(--sp-3) 0 0; color: var(--text-faint); font-size: var(--text-5); }
 
 .icon-choice {
   display: flex;

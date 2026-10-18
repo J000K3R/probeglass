@@ -222,6 +222,17 @@ export const de = {
   'icons.deleteConfirm': 'Das Bild „{name}" aus der Liste löschen?',
   'icons.deleteInUse': 'Das Bild „{name}" wird noch verwendet. Löschen und überall abnehmen?',
   'icons.deleted': 'Bild gelöscht.',
+  // Der Online-Katalog unter dashboardicons.com. Jede Suche fragt ihn, und der
+  // Satz für den Fall, dass er nicht erreichbar ist, sagt, wo die Icons liegen,
+  // statt nur dass etwas schiefging — ein Homelab ohne Weg nach draußen liest ihn
+  // bei jeder Suche.
+  'icons.search': 'Nach Namen suchen',
+  'icons.searchPlaceholder': 'pi-hole, plex, router …',
+  'icons.searching': 'Wird gesucht …',
+  'icons.searchEmpty': 'Im Online-Katalog passt nichts dazu.',
+  'icons.searchOffline': 'Online-Suche ist gerade nicht erreichbar — die Icons findest du auf',
+  'icons.importDone': '„{name}" wurde zu deinen Icons hinzugefügt.',
+  'icons.credit': 'Online-Icons von',
   'icons.name.router': 'Router',
   'icons.name.switch': 'Switch',
   'icons.name.server': 'Server',

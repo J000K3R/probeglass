@@ -5,8 +5,11 @@ import (
 	"context"
 	"image"
 	"image/png"
+	"io"
 	"mime/multipart"
 	"net/http"
+	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -401,4 +404,165 @@ func sensorID(t *testing.T, h *harness, name string) int64 {
 	}
 	t.Fatalf("no sensor called %q", name)
 	return 0
+}
+
+// ---------------------------------------------------------------------------
+// the online catalogue
+// ---------------------------------------------------------------------------
+
+// onlineCatalogue stands in for dashboardicons.com: an index of two icons and a
+// real PNG for one of them. The picture has to decode, because the import runs it
+// through the same check an upload does.
+func onlineCatalogue(t *testing.T) (*httptest.Server, []byte) {
+	t.Helper()
+	picture := pngBytes(t, 32, 32)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/metadata.json", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{
+		  "pi-hole": {"base": "svg", "aliases": ["pihole", "dns"], "categories": ["Network"]},
+		  "plex":    {"base": "png", "aliases": [], "categories": ["Media"]}
+		}`))
+	})
+	mux.HandleFunc("/png/pi-hole.png", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write(picture)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	return srv, picture
+}
+
+// useCatalogue points the harness's server at a stand-in for the online catalogue.
+// It has to happen before the first request to the search routes: a handler reads
+// the field per request.
+func (h *harness) useCatalogue(url string) {
+	h.t.Helper()
+	cat := icon.NewCatalogue()
+	cat.IndexURL = url + "/metadata.json"
+	cat.ImageURL = url + "/png/"
+	h.server.catalogue = cat
+}
+
+// searchAnswer is what GET /api/icons/search answers with.
+type searchAnswer struct {
+	Source  string               `json:"source"`
+	Offline bool                 `json:"offline"`
+	Results []icon.CatalogueIcon `json:"results"`
+}
+
+func TestTheOnlineSearchFindsAnIconByItsAlias(t *testing.T) {
+	h := newHarness(t)
+	h.setup()
+	srv, _ := onlineCatalogue(t)
+	h.useCatalogue(srv.URL)
+
+	resp := h.do(http.MethodGet, "/api/icons/search?q=pihole", nil, nil)
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+		t.Fatalf("search returned %d", resp.StatusCode)
+	}
+	var got searchAnswer
+	decode(t, resp, &got)
+	if got.Offline {
+		t.Fatal("the search said the catalogue was unreachable, and it was not")
+	}
+	if got.Source != "dashboardicons.com" {
+		t.Errorf("the answer credits %q, want dashboardicons.com", got.Source)
+	}
+	if len(got.Results) != 1 || got.Results[0].Name != "pi-hole" {
+		t.Fatalf("searching for pihole answered %+v, want pi-hole", got.Results)
+	}
+}
+
+func TestTheOnlineSearchSaysSoWhenTheCatalogueIsUnreachable(t *testing.T) {
+	h := newHarness(t)
+	h.setup()
+	srv, _ := onlineCatalogue(t)
+	srv.Close()
+	h.useCatalogue(srv.URL)
+
+	resp := h.do(http.MethodGet, "/api/icons/search?q=plex", nil, nil)
+	defer resp.Body.Close()
+	// Not an error status: a network the container cannot reach is a state, not a
+	// fault in the request, and the dashboard draws it as a sentence.
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("a search with no network returned %d, want 200 with offline set", resp.StatusCode)
+	}
+	var got searchAnswer
+	decode(t, resp, &got)
+	if !got.Offline {
+		t.Fatal("the answer did not say that the catalogue was unreachable")
+	}
+	if len(got.Results) != 0 {
+		t.Errorf("an unreachable catalogue answered with %d results", len(got.Results))
+	}
+}
+
+func TestImportingAnOnlineIconStoresItLikeAnUpload(t *testing.T) {
+	h := newHarness(t)
+	h.setup()
+	srv, picture := onlineCatalogue(t)
+	h.useCatalogue(srv.URL)
+
+	resp := h.do(http.MethodPost, "/api/icons/import", map[string]string{"name": "pi-hole"}, nil)
+	if resp.StatusCode != http.StatusCreated {
+		body := new(strings.Builder)
+		_, _ = io.Copy(body, resp.Body)
+		resp.Body.Close()
+		t.Fatalf("import returned %d: %s", resp.StatusCode, body)
+	}
+	var stored model.Icon
+	decode(t, resp, &stored)
+	if stored.Name != "pi-hole" {
+		t.Errorf("the imported icon is called %q", stored.Name)
+	}
+	if stored.ID == 0 {
+		t.Fatal("the imported icon has no id")
+	}
+
+	// And it is an ordinary uploaded icon from here on: served by the same route,
+	// listed with the rest, with nothing left that points at the internet.
+	bytesResp := h.do(http.MethodGet, "/api/icons/"+strconv.FormatInt(stored.ID, 10), nil, nil)
+	defer bytesResp.Body.Close()
+	got, err := io.ReadAll(bytesResp.Body)
+	if err != nil {
+		t.Fatalf("read the stored icon: %v", err)
+	}
+	if !bytes.Equal(got, picture) {
+		t.Fatal("the stored icon is not the picture the catalogue served")
+	}
+	if ct := bytesResp.Header.Get("Content-Type"); ct != "image/png" {
+		t.Errorf("the stored icon is served as %q", ct)
+	}
+}
+
+func TestThePreviewShowsAPictureWithoutStoringIt(t *testing.T) {
+	h := newHarness(t)
+	h.setup()
+	srv, picture := onlineCatalogue(t)
+	h.useCatalogue(srv.URL)
+
+	resp := h.do(http.MethodGet, "/api/icons/preview/pi-hole", nil, nil)
+	got, err := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if err != nil {
+		t.Fatalf("read the preview: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("preview returned %d", resp.StatusCode)
+	}
+	if !bytes.Equal(got, picture) {
+		t.Fatal("the preview is not the picture the catalogue served")
+	}
+	if ct := resp.Header.Get("Content-Type"); ct != "image/png" {
+		t.Errorf("the preview is served as %q", ct)
+	}
+
+	var listed struct {
+		Icons []model.Icon `json:"icons"`
+	}
+	decode(t, h.do(http.MethodGet, "/api/icons", nil, nil), &listed)
+	if len(listed.Icons) != 0 {
+		t.Fatalf("a preview stored %d icon(s); it is a look, not an import", len(listed.Icons))
+	}
 }

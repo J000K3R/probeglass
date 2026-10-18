@@ -11,7 +11,7 @@ here and what the release says are the same document.
 
 | Version | Released | In one line |
 | --- | --- | --- |
-| [Unreleased] | — | A symbol on a sensor, a place or a group's heading, and one set of measurements for the whole dashboard |
+| [Unreleased] | — | A symbol on every sensor, place and group — ours, yours, or searched for online — and one set of measurements for the whole dashboard |
 | [0.2.1] | 2026-10-16 | A sensor under maintenance says so |
 | [0.2.0] | 2026-10-16 | Maintenance windows, a second interface language, and the container as the only thing that ships |
 | [0.1.0] | 2026-10-12 | The first release: sensors, history, incidents, alerts, accounts, and the dashboard |
@@ -102,6 +102,34 @@ here and what the release says are the same document.
   step of its own and reach into the configuration file, the backup, the example data
   and every delete path, and a heading somebody typed is not worth that.
 
+- **The picker searches [Dashboard Icons](https://dashboardicons.com/) when the symbol
+  you want is not one of the twenty-six.** A field at the top of the picker takes a
+  name, and the results come back with their pictures beside them.
+
+  Choosing one **imports** it: the picture is downloaded once and stored as an ordinary
+  uploaded icon — same table, same limits, same backup. That is the whole design and it
+  is deliberate. Drawing it from the CDN would put somebody else's server in the path
+  of every page load and take the image out of the one SQLite file a backup copies, so
+  what is taken from the catalogue is a picture, once, and nothing after that depends
+  on it being reachable.
+
+  - **The server asks, the browser never does.** The catalogue's index is fetched and
+    cached in memory by the daemon and revalidated with a conditional request on every
+    search, so an icon added upstream is found by the search looking for it and the
+    usual search costs an empty response rather than 1.2 MB. The previews are served
+    through this installation's own route, which is also why the content policy still
+    allows images from this origin and nowhere else.
+  - **A container with no route out says so.** The answer to a search carries an
+    offline flag rather than failing, and the field says the catalogue cannot be
+    reached and points at the site. The built-in drawings and everything already
+    uploaded keep working.
+  - **Only PNGs are taken**, and they go through the same decode an upload does — no
+    SVG, ever, and a picture that would be refused as an upload is refused here too.
+
+  The catalogue is the work of [Dashboard Icons](https://github.com/homarr-labs/dashboard-icons)
+  (Apache-2.0); the pictures are the logos of the projects they belong to, and the
+  picker credits both.
+
 ### Changed
 
 - **The settings say which channel the installation is on.** Settings → Help and
@@ -178,6 +206,12 @@ here and what the release says are the same document.
   second says what it is now, and names the search.
 
 ### Fixed
+
+- **A toast no longer swallows the click under it.** Notifications are fixed to the
+  bottom-right corner, which is exactly where a dialog's **Save** button is — so
+  uploading an icon and then pressing Save, three seconds apart, did nothing at all,
+  and the toast disappeared a moment later as though the click had never happened.
+  Toasts take no pointer events now; they were never a thing to press.
 
 - **The wall's heartbeat strip was a black bar.** The marks are painted green or red
   by `.heartbeat .beat`, and the strip was returned as a bare `<svg>`, which matched

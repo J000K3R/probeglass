@@ -36,6 +36,12 @@ let catalogue = { icons: [], builtin: [], mediaTypes: [], maxBytes: 0, maxSide: 
 let loading = null;
 let loaded = false;
 
+// panelSeq numbers the search field's label id, and searchSeq orders the answers
+// so that a slow reply to "pi" cannot overwrite a fast one to "pihole".
+let panelSeq = 0;
+let searchSeq = 0;
+let searchTimer = null;
+
 // api, toast and confirmDialog arrive from app.js in mount(), the way the other
 // modules get them: the dashboard has one request function with one timeout policy
 // and one way of asking a question, and a second of either here would be a second
@@ -184,6 +190,11 @@ async function load(force = false) {
  * in.
  */
 function panelMarkup(current) {
+  // An id for the search field's label. It is made per render rather than fixed
+  // because two forms with a picker can be in the document at once — the sensor
+  // dialog and the group editor — and two elements sharing an id is the kind of
+  // mistake that only shows up as a label pointing at the wrong field.
+  const panelID = `icon-search-${++panelSeq}`;
   const builtin = catalogue.builtin.map((name) => {
     const ref = BUILTIN + name;
     return `<button type="button" class="icon-choice${ref === current ? ' is-current' : ''}"
@@ -207,6 +218,13 @@ function panelMarkup(current) {
   // not offered by the file picker either.
   const accept = catalogue.mediaTypes.join(',');
   return `
+    <div class="icon-search">
+      <label class="icon-search-label" for="${esc(panelID)}">${esc(t('icons.search'))}</label>
+      <input type="search" id="${esc(panelID)}" data-icon-query
+             placeholder="${esc(t('icons.searchPlaceholder'))}" autocomplete="off" spellcheck="false">
+      <div class="icon-grid icon-grid-online" data-icon-results hidden></div>
+      <p class="icon-search-note" data-icon-note hidden></p>
+    </div>
     <div class="icon-grid">
       <button type="button" class="icon-choice icon-choice-none${current ? '' : ' is-current'}"
         data-icon-set="">${EMPTY_SLOT}<span>${esc(t('icons.none'))}</span></button>
@@ -223,7 +241,9 @@ function panelMarkup(current) {
       <span class="muted small">${esc(t('icons.hint', {
         kb: Math.round(catalogue.maxBytes / 1024), px: catalogue.maxSide,
       }))}</span>
-    </div>`;
+    </div>
+    <p class="icon-credit">${esc(t('icons.credit'))}
+      <a href="https://dashboardicons.com/" target="_blank" rel="noopener noreferrer">dashboardicons.com</a></p>`;
 }
 
 /** fieldOf is the picker a node belongs to. */
@@ -335,6 +355,88 @@ async function remove(field, id) {
 }
 
 /**
+ * search looks the term up in the online catalogue and draws what comes back.
+ *
+ * The catalogue is the one at dashboardicons.com, and the server asks it — not the
+ * browser. That is what keeps the dashboard's content policy as it is, and it means
+ * an installation with no route out gets one sentence instead of a grid of broken
+ * images: the answer carries an `offline` flag, and the sentence under the field
+ * says where the icons are instead.
+ *
+ * Choosing one is an import, not a reference. The picture is fetched once and
+ * stored as an ordinary uploaded icon, so from then on it draws with no network at
+ * all and travels in the one SQLite file a backup copies.
+ *
+ * Only the last search may answer: the sequence number is compared after the await,
+ * because typing "pihole" sends a request per prefix and the answers do not
+ * necessarily arrive in order.
+ */
+async function search(field, term) {
+  const results = field.querySelector('[data-icon-results]');
+  const note = field.querySelector('[data-icon-note]');
+  if (!results || !note) return;
+  const seq = ++searchSeq;
+  if (term.length < 2) {
+    results.hidden = true;
+    results.innerHTML = '';
+    note.hidden = true;
+    return;
+  }
+  results.hidden = false;
+  results.innerHTML = `<div class="loading loading-inline">${esc(t('icons.searching'))}</div>`;
+  try {
+    const data = await api(`/api/icons/search?q=${encodeURIComponent(term)}`);
+    if (seq !== searchSeq) return;
+    if (data.offline) {
+      results.hidden = true;
+      results.innerHTML = '';
+      note.hidden = false;
+      note.innerHTML = `${esc(t('icons.searchOffline'))} ` +
+        `<a href="https://dashboardicons.com/" target="_blank" rel="noopener noreferrer">dashboardicons.com</a>`;
+      return;
+    }
+    note.hidden = true;
+    if (!data.results.length) {
+      results.innerHTML = `<div class="empty empty-inline"><p>${esc(t('icons.searchEmpty'))}</p></div>`;
+      return;
+    }
+    results.innerHTML = data.results.map((icon) => `
+      <button type="button" class="icon-choice icon-choice-wide"
+        data-icon-import="${esc(icon.name)}" title="${esc(icon.name)}">
+        <img class="icon icon-image" src="/api/icons/preview/${encodeURIComponent(icon.name)}"
+             width="20" height="20" alt="" loading="lazy">
+        <span>${esc(icon.name)}</span>
+      </button>`).join('');
+  } catch (err) {
+    if (seq !== searchSeq) return;
+    results.hidden = true;
+    note.hidden = false;
+    note.textContent = err.message;
+  }
+}
+
+/**
+ * importOnline takes one icon out of the catalogue and stores it like an upload.
+ *
+ * The button it was clicked on is disabled while the request is out, because the
+ * import is a network round trip and a second click would store the picture twice.
+ */
+async function importOnline(field, name, button) {
+  if (button) button.disabled = true;
+  try {
+    const answer = await api('/api/icons/import', { method: 'POST', body: { name } });
+    await load(true);
+    setField(field, UPLOAD + answer.id);
+    closePanel(field);
+    toast(t('icons.importDone', { name }));
+  } catch (err) {
+    toast(err.message, 'error');
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
+/**
  * mount wires the pickers up.
  *
  * One listener set on the document rather than one per field, because the fields are
@@ -375,6 +477,14 @@ export function mount(options) {
       return;
     }
 
+    // An icon from the online catalogue: stored first, then chosen. It becomes an
+    // upload in every sense, so the rest of the picker treats it as one.
+    const online = event.target.closest('[data-icon-import]');
+    if (online) {
+      importOnline(fieldOf(online), online.dataset.iconImport, online);
+      return;
+    }
+
     const drop = event.target.closest('[data-icon-delete]');
     if (drop) {
       remove(fieldOf(drop), Number(drop.dataset.iconDelete));
@@ -394,7 +504,27 @@ export function mount(options) {
     input.value = '';
   });
 
-  document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') closeAllPanels(null);
+  // Typing searches the online catalogue, a moment after the typing stops. Two
+  // characters is the floor: one letter matches most of the catalogue and would be
+  // a request per keystroke for a list nobody can read.
+  document.addEventListener('input', (event) => {
+    const input = event.target.closest('[data-icon-query]');
+    if (!input) return;
+    const field = fieldOf(input);
+    const term = input.value.trim();
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => search(field, term), 350);
   });
-}
+
+  document.addEventListener('keydown', (event) => {
+    // Enter in the search field is a search, not the dialog's save: the picker
+    // lives inside a form, and a form submits on Enter unless somebody says no.
+    const query = event.target.closest('[data-icon-query]');
+    if (query && event.key === 'Enter') {
+      event.preventDefault();
+      clearTimeout(searchTimer);
+      search(fieldOf(query), query.value.trim());
+      return;
+    }
+    if (event.key === 'Escape') closeAllPanels(null);
+  });}
