@@ -1116,6 +1116,11 @@ button.widget-pick-label {
   position: relative;
   padding: var(--pad);
   display: grid;
+  /* One column, and it may shrink below its contents. Without the minmax the
+     implicit column sizes to max-content — the widest row, which is the head once
+     a card carries two pills beside its name — and the card's contents overflow
+     their own border instead of the name giving way with an ellipsis. */
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--sp-2);
   cursor: pointer;
   transition: border-color 0.15s, transform 0.15s;
@@ -1349,7 +1354,7 @@ button.widget-pick-label {
 .pill .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
 /* A status pill and the badge that may follow it travel as one box, so that a row
    laid out as a grid counts them once — see statusPill. */
-.pill-group { display: inline-flex; align-items: center; gap: var(--sp-1); min-width: 0; }
+.pill-group { display: inline-flex; align-items: center; gap: var(--sp-1); min-width: 0; flex: none; }
 /* The "Example" chip. Quieter than a status pill on purpose — it is a fact about
    where the sensor came from, not a state that can change. */
 .pill.badge-example {

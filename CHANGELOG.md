@@ -11,7 +11,7 @@ here and what the release says are the same document.
 
 | Version | Released | In one line |
 | --- | --- | --- |
-| [Unreleased] | — | Uploaded example pictures, so both kinds of symbol are on the first dashboard |
+| [Unreleased] | — | Uploaded example pictures and two maintenance windows, so both are on the first dashboard |
 | [0.2.2] | 2026-10-18 | A symbol on every sensor, place and group — ours, yours, or searched for online — and one set of measurements for the whole dashboard |
 | [0.2.1] | 2026-10-16 | A sensor under maintenance says so |
 | [0.2.0] | 2026-10-16 | Maintenance windows, a second interface language, and the container as the only thing that ships |
@@ -41,6 +41,18 @@ here and what the release says are the same document.
   The website's demo is a folder of static files and draws an uploaded icon with
   `<img src="/api/icons/7">` — a route only a server can answer. There the recording
   uses the drawing each picture stands for instead, through `demo.RecordBuiltinIcons`.
+
+- **The example data arranges two maintenance windows, so the feature is visible
+  without setting one up.** One is in force on *Example website* — the badge on its
+  card is what a window looks like from the dashboard — and one is weekly, Sunday
+  02:00 to 04:00 in Berlin, which is what the settings list shows. Both are marked as
+  example data and go with the rest of it, including the weekly one: it names a group
+  rather than a sensor, so it has no row to cascade from and is removed by that mark.
+
+  And a card that carried two pills beside its name overflowed its own border. The
+  cards are a grid whose one column sized to its widest row, so a longer heading set
+  the width and the name had nothing left to give up. That column may shrink now, and
+  a name that does not fit ends in an ellipsis with the whole of it in the tooltip.
 
 ## [0.2.2] - 2026-10-18
 

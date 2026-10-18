@@ -651,3 +651,76 @@ func uploadID(t *testing.T, ref string) int64 {
 	}
 	return id
 }
+
+// The demo carries maintenance windows: one in force, which is what the card's
+// "maintenance" badge is drawn from, and one weekly, which is what the settings
+// panel lists. Neither is visible in a dataset that does not write them.
+func TestSeedWritesMaintenanceWindows(t *testing.T) {
+	st := testStore(t)
+	ctx := context.Background()
+	if _, err := Seed(ctx, st, 7); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	got, err := st.ListWindows(ctx)
+	if err != nil {
+		t.Fatalf("list windows: %v", err)
+	}
+	if len(got) != len(windows) {
+		t.Fatalf("the seed wrote %d window(s), want %d", len(got), len(windows))
+	}
+
+	var once, weekly *model.MaintenanceWindow
+	for i := range got {
+		switch got[i].Kind {
+		case model.WindowOnce:
+			once = &got[i]
+		case model.WindowWeekly:
+			weekly = &got[i]
+		}
+	}
+	if once == nil || weekly == nil {
+		t.Fatalf("the seed wrote one of each kind, and this is %+v", got)
+	}
+
+	// The one-off window is in force now, which is the whole reason it is written
+	// relative to the seed rather than as a date.
+	var covered model.Sensor
+	for _, c := range mustSensors(t, st) {
+		if store.ActiveWindows([]model.MaintenanceWindow{*once}, c, time.Now().UTC()) {
+			covered = c
+		}
+	}
+	if covered.Name == "" {
+		t.Fatal("the one-off window covers no sensor at the moment it was seeded")
+	}
+
+	if weekly.Group == "" || len(weekly.Weekdays) == 0 || weekly.Timezone == "" {
+		t.Errorf("the weekly window is not a weekly window: %+v", weekly)
+	}
+
+	// A second seed adds no second set.
+	if _, err := Seed(ctx, st, 7); err != nil {
+		t.Fatalf("second seed: %v", err)
+	}
+	again, err := st.ListWindows(ctx)
+	if err != nil {
+		t.Fatalf("list windows again: %v", err)
+	}
+	if len(again) != len(got) {
+		t.Errorf("the second seed left %d window(s), want the same %d", len(again), len(got))
+	}
+
+	// And removing the example data takes them with it — including the weekly one,
+	// which names a group and has no sensor to cascade from.
+	if _, err := st.DeleteExampleData(ctx); err != nil {
+		t.Fatalf("remove example data: %v", err)
+	}
+	left, err := st.ListWindows(ctx)
+	if err != nil {
+		t.Fatalf("list windows after removal: %v", err)
+	}
+	if len(left) != 0 {
+		t.Errorf("%d window(s) survived the removal: %+v", len(left), left)
+	}
+}

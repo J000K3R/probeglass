@@ -99,10 +99,17 @@ func (s *Store) DeleteExampleData(ctx context.Context) (ExampleData, error) {
 		}
 		// After the sensors, so the NOT EXISTS above is evaluated against the state
 		// it was counted in and the two cannot disagree.
-		_, err := tx.ExecContext(ctx,
+		if _, err := tx.ExecContext(ctx,
 			`DELETE FROM sites WHERE origin = ? AND NOT EXISTS
 				(SELECT 1 FROM sensors WHERE sensors.site = sites.name)`,
-			model.OriginExample)
+			model.OriginExample); err != nil {
+			return err
+		}
+		// And the windows the dataset arranged. A window that names a sensor has
+		// already gone with it through the foreign key; one that names a group has
+		// nothing to follow, which is what the marker is for.
+		_, err := tx.ExecContext(ctx,
+			`DELETE FROM maintenance_windows WHERE origin = ?`, model.OriginExample)
 		return err
 	})
 	return removed, err

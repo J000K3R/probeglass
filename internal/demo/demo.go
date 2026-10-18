@@ -462,6 +462,14 @@ func Seed(ctx context.Context, st *store.Store, days int) (Result, error) {
 		return Result{}, err
 	}
 
+	// The maintenance windows, after the sensors they name: a one-off window holds a
+	// sensor id, and the id only exists once the row does. They are written before
+	// the history, so that a dashboard asked for a status a moment later already
+	// carries the badge the dataset is here to show.
+	if _, err := ensureWindows(ctx, st); err != nil {
+		return Result{}, err
+	}
+
 	byName := make(map[string]sensor, len(sensors))
 	for _, d := range sensors {
 		byName[d.name] = d

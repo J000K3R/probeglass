@@ -396,6 +396,10 @@ func (r *recorder) recordDashboard(ctx context.Context, st *store.Store) error {
 		// mouse rather than one that quietly shows less.
 		"/api/groups",
 		"/api/icons",
+		// The maintenance windows the dataset arranges. The panel is two clicks
+		// from the dashboard, and one of the two is in force, so its timestamps are
+		// what the cards' badges are drawn from as well.
+		"/api/maintenance",
 	}
 	for _, raw := range fixed {
 		if err := r.get(ctx, raw); err != nil {
