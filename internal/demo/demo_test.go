@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/url"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -564,4 +565,89 @@ func privateTarget(t *testing.T, target string) bool {
 			strings.HasSuffix(host, ".local") || strings.HasSuffix(host, ".lan")
 	}
 	return ip.IsPrivate() || ip.IsLoopback() || ip.IsUnspecified() || ip.IsLinkLocalUnicast()
+}
+
+// The example data shows both kinds of symbol: the drawings that ship in the binary,
+// and pictures that have been uploaded. The second kind is what makes the picker's
+// upload half discoverable at all, and it is the one thing a dataset inside the
+// binary could not do before.
+func TestSeedUploadsTheExamplePictures(t *testing.T) {
+	st := testStore(t)
+	if _, err := Seed(context.Background(), st, 7); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	icons, err := st.ListIcons(context.Background())
+	if err != nil {
+		t.Fatalf("list icons: %v", err)
+	}
+	if len(icons) != len(logos) {
+		t.Fatalf("the seed made %d icon(s), want the %d example pictures", len(icons), len(logos))
+	}
+	byID := make(map[int64]string, len(icons))
+	for _, ic := range icons {
+		byID[ic.ID] = ic.Name
+	}
+
+	uploaded := 0
+	for _, c := range mustSensors(t, st) {
+		if !strings.HasPrefix(c.Icon, "upload:") {
+			continue
+		}
+		uploaded++
+		if byID[uploadID(t, c.Icon)] == "" {
+			t.Errorf("%q wears %q, which names no icon", c.Name, c.Icon)
+		}
+	}
+	if uploaded != 4 {
+		t.Errorf("%d sensor(s) wear an uploaded picture, want the four the dataset gives one",
+			uploaded)
+	}
+
+	// And running it again adds no second set of pictures.
+	if _, err := Seed(context.Background(), st, 7); err != nil {
+		t.Fatalf("second seed: %v", err)
+	}
+	again, err := st.ListIcons(context.Background())
+	if err != nil {
+		t.Fatalf("list icons again: %v", err)
+	}
+	if len(again) != len(icons) {
+		t.Errorf("the second seed left %d icon(s), want the same %d", len(again), len(icons))
+	}
+}
+
+// RecordBuiltinIcons is what the website's demo needs: a recording has no server to
+// answer /api/icons/{id}, so the pictures become the drawings they stand for.
+func TestRecordBuiltinIconsTurnsUploadsIntoDrawings(t *testing.T) {
+	st := testStore(t)
+	if _, err := Seed(context.Background(), st, 7); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if err := RecordBuiltinIcons(context.Background(), st); err != nil {
+		t.Fatalf("record built-ins: %v", err)
+	}
+	for _, c := range mustSensors(t, st) {
+		if strings.HasPrefix(c.Icon, "upload:") {
+			t.Errorf("%q still wears %q after recording", c.Name, c.Icon)
+		}
+	}
+}
+
+func mustSensors(t *testing.T, st *store.Store) []model.Sensor {
+	t.Helper()
+	sensors, err := st.ListSensors(context.Background())
+	if err != nil {
+		t.Fatalf("list sensors: %v", err)
+	}
+	return sensors
+}
+
+func uploadID(t *testing.T, ref string) int64 {
+	t.Helper()
+	id, err := strconv.ParseInt(strings.TrimPrefix(ref, "upload:"), 10, 64)
+	if err != nil {
+		t.Fatalf("icon reference %q: %v", ref, err)
+	}
+	return id
 }

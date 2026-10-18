@@ -141,9 +141,13 @@ type sensor struct {
 	// icon is the symbol this entry wears, as a built-in reference. The demo set
 	// carries them because it is what the documentation's pictures and the website's
 	// clickable demo are drawn from, and a feature that appears in none of those is a
-	// feature nobody discovers. Every one is a built-in: an upload would name a row in
-	// somebody's database, which a dataset that ships inside the binary cannot do.
+	// feature nobody discovers.
 	icon string
+	// logo names one of the pictures in logos.go, when this entry should wear one of
+	// those instead: the picker offers drawings and uploaded images, and a dataset of
+	// drawings only would show half of it. Seed writes the upload reference — the row
+	// the picture lands in is one only the database can number.
+	logo string
 	// paused is for the entries a fresh installation cannot reach. See above.
 	paused     bool
 	tags       []string
@@ -191,6 +195,7 @@ var sensors = []sensor{
 	{
 		name: "Public resolver", sensorType: model.SensorDNS, target: "one.one.one.one",
 		group: "Internet", site: "Frankfurt", tags: []string{"dns"}, icon: icon.BuiltinRef("globe"),
+		logo:   "cloudflare",
 		baseMS: 24, jitterMS: 11, intervalS: 60,
 		options:    model.Options{"record_type": "A"},
 		successMsg: "1 A record", failMsg: "no such host",
@@ -229,6 +234,7 @@ var sensors = []sensor{
 	{
 		name: "Package mirror", sensorType: model.SensorHTTP, target: "https://deb.debian.org",
 		group: "Internet", site: "Frankfurt", tags: []string{"web", "public"}, icon: icon.BuiltinRef("database"),
+		logo:   "debian",
 		baseMS: 121, jitterMS: 38, intervalS: 300,
 		options:    model.Options{"expected_status": "200-399", "body_contains": "Debian"},
 		successMsg: "HTTP 200 OK", failMsg: "body does not contain \"Debian\"",
@@ -268,6 +274,7 @@ var sensors = []sensor{
 	{
 		name: "NAS: web interface", sensorType: model.SensorHTTP, target: "http://192.168.1.10",
 		group: "Homelab", site: "Homelab", paused: true, tags: []string{"web", "storage"}, icon: icon.BuiltinRef("nas"),
+		logo:   "truenas",
 		baseMS: 38, jitterMS: 12, intervalS: 300,
 		options:    model.Options{"expected_status": "200-399"},
 		successMsg: "HTTP 200 OK", failMsg: "dial tcp: i/o timeout",
@@ -296,6 +303,7 @@ var sensors = []sensor{
 		// every machine this dataset is ever loaded onto.
 		name: "NAS: container", sensorType: model.SensorDocker, target: "nextcloud",
 		group: "Homelab", site: "Homelab", paused: true, tags: []string{"docker", "storage"}, icon: icon.BuiltinRef("container"),
+		logo:   "docker",
 		baseMS: 9, jitterMS: 3, intervalS: 300,
 		successMsg: "running, healthy", failMsg: "container not running",
 		outages: []Outage{
@@ -433,7 +441,23 @@ func Seed(ctx context.Context, st *store.Store, days int) (Result, error) {
 		return Result{}, err
 	}
 
-	created, err := st.CreateMissingSensors(ctx, Sensors())
+	// The uploaded pictures before the sensors that wear them: an icon column holds
+	// upload:<id>, and a row the dataset has not added yet is a reference to nothing.
+	logoRefs, err := EnsureLogos(ctx, st)
+	if err != nil {
+		return Result{}, err
+	}
+	wanted := Sensors()
+	for i := range sensors {
+		if sensors[i].logo == "" {
+			continue
+		}
+		if ref, ok := logoRefs[sensors[i].logo]; ok {
+			wanted[i].Icon = ref
+		}
+	}
+
+	created, err := st.CreateMissingSensors(ctx, wanted)
 	if err != nil {
 		return Result{}, err
 	}

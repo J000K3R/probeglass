@@ -124,6 +124,14 @@ func run() error {
 	fmt.Printf("seeded %d sensor(s), %d probe(s), %d site(s)\n",
 		seeded.Sensors, seeded.Samples, seeded.Sites)
 
+	// The demo is a folder of static files, and an uploaded icon is drawn with
+	// <img src="/api/icons/7"> — a route only a server can answer. Recording the
+	// drawing each uploaded example stands for keeps the demo from showing broken
+	// pictures where the logos are supposed to be.
+	if err := demo.RecordBuiltinIcons(ctx, st); err != nil {
+		return err
+	}
+
 	// The scheduler is started and stopped, which is not the same as running it.
 	//
 	// Start restores, for every enabled sensor, the state a daemon would restore

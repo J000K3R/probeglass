@@ -119,7 +119,15 @@ func TestIconUploadListAndServe(t *testing.T) {
 		MaxSide    int          `json:"max_side"`
 	}
 	decode(t, resp, &list)
-	if len(list.Icons) != 1 || list.Icons[0].ID != ic.ID {
+	// The example data the first-run setup wrote is in the list as well, so the
+	// question is whether this upload is, not whether it is the only one.
+	found := false
+	for _, item := range list.Icons {
+		if item.ID == ic.ID {
+			found = true
+		}
+	}
+	if !found {
 		t.Errorf("the listing does not hold the uploaded icon: %+v", list.Icons)
 	}
 	if len(list.Builtin) != len(icon.Names) || list.MaxBytes != icon.MaxBytes {
@@ -198,6 +206,9 @@ func TestIconUploadListAndServe(t *testing.T) {
 func TestIconUploadRefusesWhatIsNotAnImage(t *testing.T) {
 	h := newHarness(t)
 	h.setup()
+	// The first-run setup writes example pictures, so "nothing was stored" is a
+	// question about the length of the list rather than about it being empty.
+	before := len(listIcons(t, h))
 
 	for _, tc := range []struct {
 		name string
@@ -221,13 +232,8 @@ func TestIconUploadRefusesWhatIsNotAnImage(t *testing.T) {
 
 	// Nothing was stored: a refused upload must not leave a row the picker then
 	// offers as a broken image.
-	resp := h.do(http.MethodGet, "/api/icons", nil, nil)
-	var list struct {
-		Icons []model.Icon `json:"icons"`
-	}
-	decode(t, resp, &list)
-	if len(list.Icons) != 0 {
-		t.Errorf("a refused upload was stored: %+v", list.Icons)
+	if got, want := len(listIcons(t, h)), before; got != want {
+		t.Errorf("the list holds %d icon(s) after refusals, want the %d it held before", got, want)
 	}
 }
 
@@ -554,6 +560,8 @@ func TestThePreviewShowsAPictureWithoutStoringIt(t *testing.T) {
 	srv, picture := onlineCatalogue(t)
 	h.useCatalogue(srv.URL)
 
+	before := len(listIcons(t, h))
+
 	resp := h.do(http.MethodGet, "/api/icons/preview/pi-hole", nil, nil)
 	got, err := io.ReadAll(resp.Body)
 	resp.Body.Close()
@@ -570,13 +578,28 @@ func TestThePreviewShowsAPictureWithoutStoringIt(t *testing.T) {
 		t.Errorf("the preview is served as %q", ct)
 	}
 
+	// The first-run setup already put the example pictures in the list; a preview
+	// must not make it any longer.
+	listed := listIcons(t, h)
+	for _, ic := range listed {
+		if ic.Name == "pi-hole" {
+			t.Fatal("the preview stored the picture it only should have shown")
+		}
+	}
+	if len(listed) != before {
+		t.Fatalf("the list holds %d icon(s) after a preview, want the %d it held before",
+			len(listed), before)
+	}
+}
+
+// listIcons is the picker's list, for the tests that care how long it is.
+func listIcons(t *testing.T, h *harness) []model.Icon {
+	t.Helper()
 	var listed struct {
 		Icons []model.Icon `json:"icons"`
 	}
 	decode(t, h.do(http.MethodGet, "/api/icons", nil, nil), &listed)
-	if len(listed.Icons) != 0 {
-		t.Fatalf("a preview stored %d icon(s); it is a look, not an import", len(listed.Icons))
-	}
+	return listed.Icons
 }
 
 // A picture from the catalogue that is bigger than this program's limit is made to

@@ -82,9 +82,14 @@ type exampleSensor struct {
 	// Icon is the symbol the example wears. The examples carry one for the same
 	// reason they carry a site: the alternative is a first-run dashboard that shows
 	// the feature nowhere at all, and a picture of a router beside the gateway is
-	// what tells somebody the field exists. A built-in and never an upload — an
-	// example cannot name a row in somebody's database, and must not need one.
+	// what tells somebody the field exists.
 	Icon string
+	// Logo names one of the pictures in demo's logo set when this example should wear
+	// one of those instead of a drawing. It is here for the same reason as Icon — a
+	// first-run picker that offers only drawings leaves half the feature unseen — and
+	// the reference is worked out at write time, because upload:<id> is a row only
+	// the database can number.
+	Logo string
 }
 
 // exampleSensorInterval is how often the examples probe. Five minutes is slow
@@ -173,7 +178,7 @@ func exampleSensors(dialAddr string) []exampleSensor {
 		{
 			Name: "Public DNS (example)", Type: model.SensorDNS,
 			Target: "one.one.one.one",
-			Site:   other, Icon: icon.BuiltinRef("globe"),
+			Site:   other, Icon: icon.BuiltinRef("globe"), Logo: "cloudflare",
 			History: demo.History{
 				Window: window, BaseMS: 24, JitterMS: 11,
 				SuccessMsg: "1 A record", FailMsg: "no such host",
@@ -289,8 +294,21 @@ func (s *Server) createExampleSensors(ctx context.Context, dialAddr string) (int
 	}
 
 	examples := exampleSensors(dialAddr)
+	// The uploaded pictures before the sensors that wear them: an icon column holds
+	// upload:<id>, and the row it names has to exist first. This is also what makes
+	// a fresh picker show both kinds of symbol rather than only the drawings.
+	logoRefs, err := demo.EnsureLogos(ctx, s.store)
+	if err != nil {
+		return 0, err
+	}
 	created := make([]model.Sensor, 0, len(examples))
 	for _, ex := range examples {
+		iconRef := ex.Icon
+		if ex.Logo != "" {
+			if ref, ok := logoRefs[ex.Logo]; ok {
+				iconRef = ref
+			}
+		}
 		c := model.Sensor{
 			Name:     ex.Name,
 			Type:     ex.Type,
@@ -301,7 +319,7 @@ func (s *Server) createExampleSensors(ctx context.Context, dialAddr string) (int
 			Retries:  2,
 			Enabled:  false,
 			Group:    "Examples",
-			Icon:     ex.Icon,
+			Icon:     iconRef,
 			Options:  model.Options{},
 			// The mark that makes "remove all the example data" possible later. It
 			// is set here and by `seed --demo`, and by nothing else; a sensor the
