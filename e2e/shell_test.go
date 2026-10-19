@@ -50,10 +50,19 @@ const (
 // artifactsDir is where a failing phase leaves its screenshot. It is the same
 // environment variable the other browser tests use, so one CI job collects all
 // of them.
+//
+// The directory is made here rather than by whoever writes first. CI names
+// `$RUNNER_TEMP/e2e-artifacts`, which nothing creates: the upload step treats a
+// missing folder as "no screenshots". A test that wrote a fixture there before
+// any screenshot was taken failed on the missing folder, on the runner and
+// nowhere else.
 func artifactsDir(t *testing.T) string {
 	t.Helper()
 	//nolint:misspell // "artifacts" is the spelling GitHub uses for the uploaded files
 	if dir := os.Getenv("PROBEGLASS_E2E_ARTIFACTS"); dir != "" {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("create the artifact directory %s: %v", dir, err)
+		}
 		return dir
 	}
 	return t.TempDir()
