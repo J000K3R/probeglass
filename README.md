@@ -172,7 +172,7 @@ frontend pipeline to keep alive.
   message — with a reset that puts the whole list back. An open incident can be
   **acknowledged** with a note: the reminders stop, the probing and the history do
   not, and the recovery alert still arrives.
-- **Alerts** — Telegram, Discord, Matrix, ntfy, Slack, and generic webhooks with
+- **Alerts** — Telegram, Discord, Matrix, ntfy, Gotify, Slack, and generic webhooks with
   an HMAC signature. Per-sensor channel selection, per-sensor reminder intervals,
   custom message templates.
 - **Two interfaces, one program** — choose a **simple** or **advanced** interface
@@ -326,6 +326,7 @@ sensors:
 | Discord | webhook URL |
 | Matrix | homeserver URL, access token, room ID |
 | ntfy | topic (plus server URL, optional token and priority) |
+| Gotify | server URL and app token (plus optional priority) |
 | Slack | webhook URL |
 | Webhook | URL (plus optional method and HMAC secret) |
 

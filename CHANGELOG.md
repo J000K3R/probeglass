@@ -11,7 +11,7 @@ here and what the release says are the same document.
 
 | Version | Released | In one line |
 | --- | --- | --- |
-| [Unreleased] | — | Uploaded example pictures and two maintenance windows, so both are on the first dashboard |
+| [Unreleased] | — | Gotify as a seventh channel, and example pictures and maintenance windows on the first dashboard |
 | [0.2.2] | 2026-10-18 | A symbol on every sensor, place and group — ours, yours, or searched for online — and one set of measurements for the whole dashboard |
 | [0.2.1] | 2026-10-16 | A sensor under maintenance says so |
 | [0.2.0] | 2026-10-16 | Maintenance windows, a second interface language, and the container as the only thing that ships |
@@ -20,6 +20,18 @@ here and what the release says are the same document.
 ## [Unreleased]
 
 ### Added
+
+- **Gotify is a channel.** The self-hosted push server a homelab often already runs:
+  the base address and an app token from one of its applications, and the message
+  arrives in its phone app the way an ntfy one does. It is the seventh channel, and
+  the one the roadmap had been carrying as a suggestion.
+
+  The token travels in the `X-Gotify-Key` header rather than in the query string the
+  server also accepts, because a URL is the part of a request that ends up in proxy
+  logs. An unset priority follows the event — 8 for a down alert, 6 for a reminder, 4
+  for a recovery — and a priority set in the form is used for every event, 0
+  included: "this recovery should not make a sound" is a real choice, and a zero that
+  meant "unset" could not express it.
 
 - **The example data uploads four pictures, so both kinds of symbol are on the first
   dashboard anybody sees.** Cloudflare, Debian, Docker and TrueNAS, worn by the sensors

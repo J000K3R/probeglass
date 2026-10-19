@@ -26,6 +26,7 @@ func validConfigs() map[string]map[string]string {
 		"discord":  {"webhook_url": "https://discord.com/api/webhooks/1/abc"},
 		"matrix":   {"homeserver_url": "https://matrix.example.org", "access_token": "tok", "room_id": "!r:example.org"},
 		"ntfy":     {"topic": "homelab-alerts"},
+		"gotify":   {"server_url": "https://gotify.example.org", "token": "A1b2C3"},
 		"slack":    {"webhook_url": "https://hooks.slack.com/services/T/B/X"},
 		"webhook":  {"url": "https://example.org/hook"},
 	}
@@ -56,6 +57,10 @@ func TestValidateChannelRejectsBadConfigs(t *testing.T) {
 		{"webhook with a bad URL", model.Channel{Name: "x", Type: "webhook", Config: map[string]string{"url": "example.org/hook"}}, "http://"},
 		{"webhook with a bad method", model.Channel{Name: "x", Type: "webhook", Config: map[string]string{"url": "https://example.org", "method": "DELETE"}}, "POST, PUT or PATCH"},
 		{"ntfy with a bad server URL", model.Channel{Name: "x", Type: "ntfy", Config: map[string]string{"topic": "t", "server_url": "ntfy.sh"}}, "http://"},
+		{"gotify without a server", model.Channel{Name: "x", Type: "gotify", Config: map[string]string{"token": "t"}}, "Server URL"},
+		{"gotify with a bad server URL", model.Channel{Name: "x", Type: "gotify", Config: map[string]string{"token": "t", "server_url": "gotify.example.org"}}, "http://"},
+		{"gotify without a token", model.Channel{Name: "x", Type: "gotify", Config: map[string]string{"server_url": "https://gotify.example.org"}}, "App token"},
+		{"gotify with a bad priority", model.Channel{Name: "x", Type: "gotify", Config: map[string]string{"server_url": "https://gotify.example.org", "token": "t", "priority": "11"}}, "0 to 10"},
 		{"broken title template", model.Channel{Name: "x", Type: "ntfy", Config: map[string]string{"topic": "t", "title_template": "{{.Name"}}, "not a valid template"},
 		{"broken body template", model.Channel{Name: "x", Type: "ntfy", Config: map[string]string{"topic": "t", "body_template": "{{.Nope"}}, "not a valid template"},
 	}
@@ -137,7 +142,7 @@ func TestEveryChannelTypeIsFullyDescribed(t *testing.T) {
 
 func dummyValue(key string) string {
 	switch key {
-	case "webhook_url", "url", "homeserver_url":
+	case "webhook_url", "url", "homeserver_url", "server_url":
 		return "https://example.org/hook"
 	case "room_id":
 		return "!room:example.org"
@@ -153,6 +158,7 @@ func TestIsSecretMarksCredentials(t *testing.T) {
 		{"matrix", "access_token"},
 		{"slack", "webhook_url"},
 		{"ntfy", "token"},
+		{"gotify", "token"},
 		{"webhook", "hmac_secret"},
 	}
 	for _, s := range secrets {
@@ -163,6 +169,7 @@ func TestIsSecretMarksCredentials(t *testing.T) {
 	public := []struct{ typ, key string }{
 		{"telegram", "chat_id"},
 		{"ntfy", "topic"},
+		{"gotify", "server_url"},
 		{"ntfy", "server_url"},
 		{"webhook", "url"},
 		{"matrix", "room_id"},
@@ -480,5 +487,94 @@ func TestFailureClassification(t *testing.T) {
 	long := statusError(500, strings.Repeat("x", 5000)).Error()
 	if len(long) > 300 {
 		t.Errorf("status error kept %d bytes of the response body", len(long))
+	}
+}
+
+// Gotify takes one JSON POST per message. The token goes in a header rather than
+// in the query string the server also accepts, because a URL is the part of a
+// request that ends up in somebody's proxy log.
+func TestGotifyPostsToItsMessageEndpoint(t *testing.T) {
+	type received struct {
+		path   string
+		header http.Header
+		body   map[string]any
+	}
+	got := make(chan received, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		got <- received{path: r.URL.Path, header: r.Header.Clone(), body: body}
+	}))
+	defer srv.Close()
+
+	notifier, err := newGotify(map[string]string{"server_url": srv.URL + "/", "token": "A1b2C3d4"})
+	if err != nil {
+		t.Fatalf("build notifier: %v", err)
+	}
+	msg := sampleMessage(EventDown)
+	msg.Title = "🔴 DOWN: Gateway ping"
+	msg.Body = "Gateway ping is DOWN."
+	if err := notifier.Send(context.Background(), msg); err != nil {
+		t.Fatalf("send: %v", err)
+	}
+
+	select {
+	case r := <-got:
+		if r.path != "/message" {
+			t.Errorf("posted to %q, want /message", r.path)
+		}
+		if key := r.header.Get("X-Gotify-Key"); key != "A1b2C3d4" {
+			t.Errorf("X-Gotify-Key = %q", key)
+		}
+		if ct := r.header.Get("Content-Type"); ct != "application/json" {
+			t.Errorf("Content-Type = %q", ct)
+		}
+		if title, _ := r.body["title"].(string); title != msg.Title {
+			t.Errorf("title = %q, want %q", title, msg.Title)
+		}
+		if body, _ := r.body["message"].(string); body != msg.Body {
+			t.Errorf("message = %q, want %q", body, msg.Body)
+		}
+		// Down is the loudest of the three, on Gotify's own 0-to-10 scale.
+		if p, _ := r.body["priority"].(float64); p != 8 {
+			t.Errorf("priority = %v, want 8 for a down alert", p)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Gotify was never called")
+	}
+}
+
+func TestGotifyPriorityCanBeChosen(t *testing.T) {
+	got := make(chan float64, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Priority float64 `json:"priority"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		got <- body.Priority
+	}))
+	defer srv.Close()
+
+	notifier, err := newGotify(map[string]string{
+		"server_url": srv.URL, "token": "t", "priority": "2",
+	})
+	if err != nil {
+		t.Fatalf("build notifier: %v", err)
+	}
+	// Even a down alert takes the chosen priority: an explicit number is the
+	// operator's, not the event's.
+	if err := notifier.Send(context.Background(), sampleMessage(EventDown)); err != nil {
+		t.Fatalf("send: %v", err)
+	}
+	select {
+	case p := <-got:
+		if p != 2 {
+			t.Errorf("priority = %v, want the configured 2", p)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Gotify was never called")
 	}
 }

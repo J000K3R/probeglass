@@ -14,8 +14,8 @@ promises; the ordering is what the design already supports cheaply.
 - [x] Incident lifecycle with retries before an incident opens, reminder
   intervals while it stays open, recovery alerts, and per-incident
   acknowledgement with a note.
-- [x] Six alert channels: Telegram, Discord, Matrix, ntfy, Slack, and signed
-  generic webhooks, with custom message templates.
+- [x] Seven alert channels: Telegram, Discord, Matrix, ntfy, Gotify, Slack, and
+  signed generic webhooks, with custom message templates.
 - [x] First-run setup, bcrypt passwords, hardened session cookies, API key, and
   cross-site protection for cookie-authenticated writes.
 - [x] Sensors and channels declared in YAML, re-applied on every start.

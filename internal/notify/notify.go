@@ -59,6 +59,7 @@ var constructors = map[string]Constructor{
 	"discord":  func(c map[string]string) (Notifier, error) { return newDiscord(c) },
 	"matrix":   func(c map[string]string) (Notifier, error) { return newMatrix(c) },
 	"ntfy":     func(c map[string]string) (Notifier, error) { return newNtfy(c) },
+	"gotify":   func(c map[string]string) (Notifier, error) { return newGotify(c) },
 	"slack":    func(c map[string]string) (Notifier, error) { return newSlack(c) },
 	"webhook":  func(c map[string]string) (Notifier, error) { return newWebhook(c) },
 }
@@ -101,7 +102,7 @@ type TypeInfo struct {
 
 // TypeInfos returns every channel type the UI should offer, in a stable order.
 func TypeInfos() []TypeInfo {
-	order := []string{"telegram", "discord", "matrix", "ntfy", "slack", "webhook"}
+	order := []string{"telegram", "discord", "matrix", "ntfy", "gotify", "slack", "webhook"}
 	out := make([]TypeInfo, 0, len(order))
 	for _, t := range order {
 		if info, ok := typeInfos[t]; ok {
