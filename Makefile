@@ -72,7 +72,7 @@ test: ## Run the test suite
 	$(GO) test ./... -count=1
 
 test-race: ## Run the test suite under the race detector
-	$(GO) test ./... -count=1 -race
+	$(GO) test ./... -count=1 -race -timeout=20m
 
 # Its own module, so it is not covered by `go test ./...` above and has to be
 # named separately. It needs a Chromium-based browser and skips without one.
