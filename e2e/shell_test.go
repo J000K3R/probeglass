@@ -51,8 +51,8 @@ const (
 // environment variable the other browser tests use, so one CI job collects all
 // of them.
 //
-// The directory is made here rather than by whoever writes first. CI names
-// `$RUNNER_TEMP/e2e-artifacts`, which nothing creates: the upload step treats a
+// The directory is made here rather than by whoever writes first. CI names a
+// folder under $RUNNER_TEMP that nothing creates: the upload step treats a
 // missing folder as "no screenshots". A test that wrote a fixture there before
 // any screenshot was taken failed on the missing folder, on the runner and
 // nowhere else.
