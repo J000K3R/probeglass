@@ -76,6 +76,12 @@ Two things follow from it being in its own module. `go test ./...` in the
 repository root does not descend into it, so CI runs it by name; and the browser
 driver stays out of the product's dependency list, which is the point.
 
+CI runs it a second time when the first attempt fails. The suite waits on
+animation and layout windows, and a busy runner can fail a commit that passes on
+the same machine and in a Linux container — it was red for seven commits in a row
+that way. A second run tells the two cases apart: a runner that tripped is green,
+and a change that really broke something fails twice and the job stays red.
+
 ## Project layout
 
 - `cmd/probeglass` — the program entrypoint.

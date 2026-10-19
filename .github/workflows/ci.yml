@@ -101,6 +101,14 @@ jobs:
       # showing a spinner over a page that had loaded perfectly. A CSS rule that
       # outranks the hidden attribute is invisible to a check that never lays
       # anything out, so it has to be looked at.
+      #
+      # Once more if it fails, and only then. The suite drives a real browser and
+      # several tests wait on animation and layout windows; on a busy runner that
+      # produces a failure the same commit does not produce on a laptop or in a
+      # Linux container (it was red for seven commits in a row while passing in
+      # both). A second run separates the two cases for the price of a minute: a
+      # runner that tripped is green the second time, and a change that really
+      # broke something fails twice and the job stays red.
       - name: Dashboard renders in a real browser
         env:
           PROBEGLASS_E2E_BROWSER: ${{ steps.chrome.outputs.chrome }}
@@ -108,7 +116,12 @@ jobs:
           # skipped test in a green job reads exactly like a passing one.
           PROBEGLASS_E2E_REQUIRE_BROWSER: "1"
           PROBEGLASS_E2E_ARTIFACTS: ${{ runner.temp }}/e2e-artifacts
-        run: cd e2e && go test ./... -count=1 -v -timeout=10m
+        run: |
+          cd e2e
+          go test ./... -count=1 -v -timeout=10m || {
+            echo "::warning title=Browser test::failed once; running the suite again before calling it broken"
+            go test ./... -count=1 -v -timeout=10m
+          }
 
       # Worth more than the stack trace when the failure is "the spinner is
       # still on screen", which is hard to picture and easy to misread.
