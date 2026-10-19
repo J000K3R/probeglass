@@ -713,6 +713,29 @@ CREATE TABLE IF NOT EXISTS tags (
 );
 `,
 	},
+	{
+		version: 11,
+		name:    "escalation",
+		sql: `
+-- How long an incident may stay open before a second set of channels is told,
+-- and which channels those are. The value is seconds; 0 is off, which is what
+-- every sensor gets and what makes an installation that ignores the feature
+-- behave exactly as it did.
+ALTER TABLE sensors ADD COLUMN escalate_after_s INTEGER NOT NULL DEFAULT 0;
+
+-- The second list. A separate table rather than a column so that the ordinary
+-- channel list and this one are written, read and cascaded the same way.
+CREATE TABLE IF NOT EXISTS sensor_escalation_channels (
+    sensor_id  INTEGER NOT NULL REFERENCES sensors(id)  ON DELETE CASCADE,
+    channel_id INTEGER NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+    PRIMARY KEY (sensor_id, channel_id)
+);
+
+-- When the escalation went out. Written once per incident, so a restart or a
+-- second sweep cannot send the same message again.
+ALTER TABLE incidents ADD COLUMN escalated_at TEXT;
+`,
+	},
 }
 
 // rowExecer is the part of *sql.DB and *sql.Tx that the settings sweeps below use.

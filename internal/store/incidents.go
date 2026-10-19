@@ -12,22 +12,24 @@ import (
 )
 
 const incidentColumns = `id, sensor_id, started_at, resolved_at, cause,
-	acked_at, acked_by, ack_note`
+	acked_at, acked_by, ack_note, escalated_at`
 
 func scanIncident(sc rowScanner) (model.Incident, error) {
 	var (
-		i          model.Incident
-		startedAt  string
-		resolvedAt sql.NullString
-		ackedAt    sql.NullString
+		i           model.Incident
+		startedAt   string
+		resolvedAt  sql.NullString
+		ackedAt     sql.NullString
+		escalatedAt sql.NullString
 	)
 	if err := sc.Scan(&i.ID, &i.SensorID, &startedAt, &resolvedAt, &i.Cause,
-		&ackedAt, &i.AckedBy, &i.AckNote); err != nil {
+		&ackedAt, &i.AckedBy, &i.AckNote, &escalatedAt); err != nil {
 		return i, err
 	}
 	i.StartedAt = parseTime(startedAt)
 	i.ResolvedAt = parseTimePtr(resolvedAt)
 	i.AckedAt = parseTimePtr(ackedAt)
+	i.EscalatedAt = parseTimePtr(escalatedAt)
 	return i, nil
 }
 
@@ -80,6 +82,39 @@ func (s *Store) OpenIncidentFor(ctx context.Context, sensorID int64) (*model.Inc
 		return nil, err
 	}
 	return &i, nil
+}
+
+// OpenIncidents returns every unresolved incident, for the escalation sweep.
+//
+// It reads all of them rather than one sensor at a time: the sweep runs on its
+// own clock and the number of open outages on a homelab is small.
+func (s *Store) OpenIncidents(ctx context.Context) ([]model.Incident, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT `+incidentColumns+` FROM incidents
+		 WHERE resolved_at IS NULL ORDER BY started_at ASC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []model.Incident{}
+	for rows.Next() {
+		i, err := scanIncident(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, i)
+	}
+	return out, rows.Err()
+}
+
+// MarkIncidentEscalated records that the escalation channels were told about an
+// incident. The guard on escalated_at makes a second sweep, or a second process,
+// a no-op rather than a second message.
+func (s *Store) MarkIncidentEscalated(ctx context.Context, incidentID int64, at time.Time) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE incidents SET escalated_at = ? WHERE id = ? AND escalated_at IS NULL`,
+		fmtTime(at), incidentID)
+	return err
 }
 
 // LastIncident returns the most recent incident of a sensor, open or closed.

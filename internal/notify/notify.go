@@ -24,10 +24,11 @@ import (
 type Event string
 
 const (
-	EventDown     Event = "down"
-	EventUp       Event = "up"
-	EventReminder Event = "reminder"
-	EventTest     Event = "test"
+	EventDown       Event = "down"
+	EventUp         Event = "up"
+	EventReminder   Event = "reminder"
+	EventEscalation Event = "escalation"
+	EventTest       Event = "test"
 )
 
 // Message is a rendered alert, ready to be sent.
@@ -246,6 +247,18 @@ Down since: {{.DownSince}} ({{.DownFor}})
 Dashboard: {{.URL}}
 {{- end}}`
 
+	defaultEscalationTitle = "🔴 ESCALATION: {{.Name}}"
+	defaultEscalationBody  = `{{.Name}} has been DOWN for {{.DownFor}} and nobody has acknowledged it.
+Target: {{.Type}} {{.Target}}
+{{- if .Group}}
+Group: {{.Group}}
+{{- end}}
+Error: {{.Message}}
+Down since: {{.DownSince}}
+{{- if .URL}}
+Dashboard: {{.URL}}
+{{- end}}`
+
 	defaultTestBody = `This is a test message from ProbeGlass.
 
 If you can read this, the alert channel is configured correctly.
@@ -258,6 +271,8 @@ func defaultTemplates(ev Event) (title, body string) {
 		return defaultUpTitle, defaultUpBody
 	case EventReminder:
 		return defaultReminderTitle, defaultReminderBody
+	case EventEscalation:
+		return defaultEscalationTitle, defaultEscalationBody
 	case EventTest:
 		return defaultTestTitle, defaultTestBody
 	default:
@@ -401,6 +416,22 @@ func (d *Dispatcher) Notify(ctx context.Context, sensor model.Sensor, ev Event, 
 		d.log.Error("load alert channels", "sensor", sensor.Name, "error", err)
 		return
 	}
+	d.notifyChannels(ctx, sensor, ev, res, inc, channels)
+}
+
+// NotifyEscalation sends the one escalation message an incident gets, to the
+// second channel list. It is the same delivery path with a different event and
+// a different set of destinations.
+func (d *Dispatcher) NotifyEscalation(ctx context.Context, sensor model.Sensor, res model.Result, inc *model.Incident) {
+	channels, err := d.store.EscalationChannelsForSensor(ctx, sensor.ID)
+	if err != nil {
+		d.log.Error("load escalation channels", "sensor", sensor.Name, "error", err)
+		return
+	}
+	d.notifyChannels(ctx, sensor, EventEscalation, res, inc, channels)
+}
+
+func (d *Dispatcher) notifyChannels(ctx context.Context, sensor model.Sensor, ev Event, res model.Result, inc *model.Incident, channels []model.Channel) {
 	if len(channels) == 0 {
 		d.log.Debug("no alert channels assigned", "sensor", sensor.Name, "event", ev)
 		return

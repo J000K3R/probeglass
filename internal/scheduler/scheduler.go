@@ -42,6 +42,10 @@ import (
 const (
 	// maintenanceInterval is how often rollups and retention run.
 	maintenanceInterval = 5 * time.Minute
+	// escalationInterval is how often open incidents are checked for a due
+	// escalation. Shorter than the maintenance pass because it is about how long
+	// a person waits, not how long a rollup takes.
+	escalationInterval = 30 * time.Second
 	// maxStartupJitter spreads the first probe of every sensor after a restart.
 	maxStartupJitter = 3 * time.Second
 	// intervalJitter is the relative spread applied to every interval so that
@@ -248,6 +252,11 @@ func (s *Scheduler) Start(ctx context.Context) error {
 	go func() {
 		defer s.wg.Done()
 		s.maintenanceLoop(ctx)
+	}()
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		s.escalationLoop(ctx)
 	}()
 	return nil
 }
@@ -886,6 +895,73 @@ func (s *Scheduler) maintenanceLoop(ctx context.Context) {
 		case <-ticker.C:
 			run()
 		}
+	}
+}
+
+func (s *Scheduler) escalationLoop(ctx context.Context) {
+	// The first sweep runs immediately: a restart during an outage must not wait
+	// another half minute to tell the second channel what the first one already
+	// knows.
+	s.escalateDue(ctx)
+	ticker := time.NewTicker(escalationInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			s.escalateDue(ctx)
+		}
+	}
+}
+
+// escalateDue sends the one escalation message an incident gets.
+//
+// It is a sweep rather than something the probe path does, because escalation is
+// about the clock: a sensor with a fifteen-minute interval would otherwise
+// escalate fifteen minutes late, and an escalation that arrives after somebody
+// has already fixed the box is noise. The incident row records that the message
+// went out, so a restart or a second sweep cannot send it again; a failed send is
+// not retried, because the dispatcher has already tried three times and another
+// attempt every half minute would be a worse problem than the silence.
+func (s *Scheduler) escalateDue(ctx context.Context) {
+	opens, err := s.store.OpenIncidents(ctx)
+	if err != nil {
+		s.log.Error("escalation sweep failed", "error", err)
+		return
+	}
+	now := time.Now().UTC()
+	for _, inc := range opens {
+		if inc.EscalatedAt != nil || inc.Acknowledged() {
+			continue
+		}
+		sensor, err := s.store.GetSensor(ctx, inc.SensorID)
+		if err != nil {
+			continue
+		}
+		if sensor.EscalateAfter <= 0 || len(sensor.EscalateChannels) == 0 {
+			continue
+		}
+		if now.Sub(inc.StartedAt) < time.Duration(sensor.EscalateAfter)*time.Second {
+			continue
+		}
+		if s.dispatcher == nil {
+			return
+		}
+		// Mark first: the message must go out once, not once per sweep.
+		if err := s.store.MarkIncidentEscalated(ctx, inc.ID, now); err != nil {
+			s.log.Error("could not mark an incident escalated", "incident", inc.ID, "error", err)
+			continue
+		}
+		incident := inc
+		res := model.Result{
+			SensorID: sensor.ID,
+			TS:       incident.StartedAt,
+			Success:  false,
+			Message:  incident.Cause,
+		}
+		go s.dispatcher.NotifyEscalation(context.WithoutCancel(ctx), sensor, res, &incident)
+		s.log.Info("escalation alert sent", "sensor", sensor.Name, "incident", incident.ID)
 	}
 }
 

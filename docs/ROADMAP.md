@@ -174,18 +174,21 @@ promises; the ordering is what the design already supports cheaply.
   this item once promised is the **tree**, the **wall** and the **map**, and pinning
   a sensor to the top is the header built out of widgets.)
 
+- [x] **Escalation.** A second list of channels and a delay on the sensor: an
+  incident that is still open and unacknowledged after that long is told to the
+  second list once, and an acknowledgement stops it. The incident records that the
+  message went out, so a restart cannot send it twice.
+
+- [x] **Export for the configuration file.** The dashboard writes the sites,
+  channels and sensors it holds as a `probeglass.yaml` — the file the daemon
+  already reads — so a setup made in the browser can become the versioned one.
+  Accounts, incidents and history stay out; that is what the JSON backup is for.
+  Example data is left out unless it is asked for.
+
 ## Next — 0.2.x
 
-Ordered by value per unit of work.
-
-- [ ] **Escalation.** A second channel that only fires when an incident is still
-  open after N minutes.
-- [ ] **Import and export, for the configuration file.** The dashboard can already
-  write the whole installation out as JSON and read it back in — sensors, channels,
-  sites, accounts, and as much history as you ask for. What this item still wants is
-  the **other direction**: writing the `probeglass.yaml` a file-driven installation
-  is configured from, so the versioned part of a setup stops being something
-  maintained by hand.
+Nothing on the 0.2.x list is open. The next work is the 0.3.x list below, starting
+with `/metrics` and the public status page.
 
 ## Later — 0.3.x and beyond
 

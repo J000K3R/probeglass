@@ -167,9 +167,16 @@ type Sensor struct {
 	Icon string `json:"icon,omitempty"`
 	// ReminderEvery re-sends the DOWN alert every N seconds while the sensor
 	// stays down. 0 disables reminders (state transitions only).
-	ReminderEvery int  `json:"reminder_every"`
-	SortOrder     int  `json:"sort_order"`
-	Managed       bool `json:"managed"` // declared in the config file, read-only in the UI
+	ReminderEvery int `json:"reminder_every"`
+	// EscalateAfter is how long an incident may stay open and unacknowledged
+	// before the escalation channels are told once. 0 switches escalation off.
+	EscalateAfter int `json:"escalate_after,omitempty"`
+	// EscalateChannels are the channel rows an escalation goes to. They are a
+	// second list rather than a flag on the ordinary channels because the two
+	// lists answer different questions: who hears first, and who hears next.
+	EscalateChannels []int64 `json:"escalate_channel_ids,omitempty"`
+	SortOrder        int     `json:"sort_order"`
+	Managed          bool    `json:"managed"` // declared in the config file, read-only in the UI
 	// Origin records where a sensor came from when nobody typed it in by hand:
 	// OriginExample for what the setup screen and `seed --demo` leave behind, and
 	// empty for everything else. Without it, "remove all the example data" would
@@ -612,6 +619,11 @@ type Incident struct {
 	AckedAt *time.Time `json:"acked_at,omitempty"`
 	AckedBy string     `json:"acked_by,omitempty"`
 	AckNote string     `json:"ack_note,omitempty"`
+
+	// EscalatedAt is when the escalation channels were told about this outage.
+	// It is written once; a second escalation for the same incident would be a
+	// second wake-up for the same news.
+	EscalatedAt *time.Time `json:"escalated_at,omitempty"`
 }
 
 // Ongoing reports whether the incident has not been resolved yet.

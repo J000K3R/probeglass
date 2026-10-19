@@ -285,6 +285,7 @@ func (s *Server) Handler() http.Handler {
 	// the clear, and the restore replaces the accounts and the API key along with
 	// everything else — including the account of whoever is asking.
 	adm("GET /api/backup", s.handleBackup)
+	adm("GET /api/config/export", s.handleExportConfig)
 	adm("POST /api/restore", s.handleRestore)
 
 	// Dashboard shell and assets.

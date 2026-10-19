@@ -190,10 +190,14 @@ type BackupSensor struct {
 	Tags          []string       `json:"tags"`
 	Options       map[string]any `json:"options"`
 	ReminderEvery int            `json:"reminder_every_s"`
-	SortOrder     int            `json:"sort_order"`
-	Managed       bool           `json:"managed"`
-	Origin        string         `json:"origin"`
-	Channels      []string       `json:"channels"`
+	// EscalateAfter and EscalateChannels are the second alert list: how long an
+	// open incident may wait before these channels are told once.
+	EscalateAfter    int      `json:"escalate_after_s,omitempty"`
+	EscalateChannels []string `json:"escalate_channels,omitempty"`
+	SortOrder        int      `json:"sort_order"`
+	Managed          bool     `json:"managed"`
+	Origin           string   `json:"origin"`
+	Channels         []string `json:"channels"`
 }
 
 // BackupUser is one account, complete: password hash, second factor and the
@@ -561,7 +565,7 @@ func exportSensors(ctx context.Context, tx *sql.Tx, jw *jsonWriter, counts *Coun
 	rows, err := tx.QueryContext(ctx, `
 		SELECT id, name, type, target, interval_s, timeout_s, retries, enabled, grp,
 		       COALESCE(site,''), COALESCE(parent,''), icon, tags, options, reminder_every_s,
-		       sort_order, managed, origin
+		       escalate_after_s, sort_order, managed, origin
 		FROM sensors ORDER BY sort_order ASC, name COLLATE NOCASE ASC`)
 	if err != nil {
 		return err
@@ -586,7 +590,7 @@ func exportSensors(ctx context.Context, tx *sql.Tx, jw *jsonWriter, counts *Coun
 		if err := rows.Scan(&r.id, &r.sensor.Name, &r.sensor.Type, &r.sensor.Target,
 			&r.sensor.Interval, &r.sensor.Timeout, &r.sensor.Retries, &enabled,
 			&r.sensor.Group, &site, &parent, &r.sensor.Icon, &tags, &options, &r.sensor.ReminderEvery,
-			&r.sensor.SortOrder, &managed, &r.sensor.Origin); err != nil {
+			&r.sensor.EscalateAfter, &r.sensor.SortOrder, &managed, &r.sensor.Origin); err != nil {
 			return err
 		}
 		r.sensor.Enabled = enabled != 0
@@ -641,6 +645,32 @@ func exportSensors(ctx context.Context, tx *sql.Tx, jw *jsonWriter, counts *Coun
 	for i := range all {
 		if names := byName[all[i].id]; len(names) > 0 {
 			all[i].sensor.Channels = names
+		}
+	}
+
+	// The escalation list is the same mapping, in its own table.
+	escalations, err := tx.QueryContext(ctx, `
+		SELECT ec.sensor_id, c.name
+		FROM sensor_escalation_channels ec JOIN channels c ON c.id = ec.channel_id
+		ORDER BY c.name COLLATE NOCASE ASC`)
+	if err != nil {
+		return err
+	}
+	byEscalation := map[int64][]string{}
+	if err := eachRow(escalations, func(r *sql.Rows) error {
+		var sensorID int64
+		var name string
+		if err := r.Scan(&sensorID, &name); err != nil {
+			return err
+		}
+		byEscalation[sensorID] = append(byEscalation[sensorID], name)
+		return nil
+	}); err != nil {
+		return err
+	}
+	for i := range all {
+		if names := byEscalation[all[i].id]; len(names) > 0 {
+			all[i].sensor.EscalateChannels = names
 		}
 	}
 
@@ -1418,24 +1448,24 @@ func restoreSensors(ctx context.Context, tx *sql.Tx, sensors []BackupSensor, ids
 			if _, err := tx.ExecContext(ctx, `
 				UPDATE sensors SET type=?, target=?, interval_s=?, timeout_s=?, retries=?,
 				       enabled=?, grp=?, site=?, parent=?, tags=?, options=?, reminder_every_s=?,
-				       sort_order=?, managed=?, origin=?, updated_at=?
+				       escalate_after_s=?, sort_order=?, managed=?, origin=?, updated_at=?
 				WHERE id=?`,
 				sensor.Type, sensor.Target, interval, timeout, retries, boolToInt(sensor.Enabled),
 				sensor.Group, site, nullIfEmpty(sensor.Parent), tags, string(options),
-				sensor.ReminderEvery, sensor.SortOrder, boolToInt(sensor.Managed), sensor.Origin,
-				fmtTime(now), id); err != nil {
+				sensor.ReminderEvery, sensor.EscalateAfter, sensor.SortOrder,
+				boolToInt(sensor.Managed), sensor.Origin, fmtTime(now), id); err != nil {
 				return fmt.Errorf("sensor %q: %w", sensor.Name, err)
 			}
 		} else {
 			res, err := tx.ExecContext(ctx, `
 				INSERT INTO sensors (name, type, target, interval_s, timeout_s, retries, enabled,
-				                     grp, site, parent, icon, tags, options, reminder_every_s, sort_order,
-				                     managed, origin, created_at, updated_at)
-				VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+				                     grp, site, parent, icon, tags, options, reminder_every_s,
+				                     escalate_after_s, sort_order, managed, origin, created_at, updated_at)
+				VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 				sensor.Name, sensor.Type, sensor.Target, interval, timeout, retries,
 				boolToInt(sensor.Enabled), sensor.Group, site, nullIfEmpty(sensor.Parent),
-				sensor.Icon, tags, string(options), sensor.ReminderEvery, sensor.SortOrder,
-				boolToInt(sensor.Managed), sensor.Origin, fmtTime(now), fmtTime(now))
+				sensor.Icon, tags, string(options), sensor.ReminderEvery, sensor.EscalateAfter,
+				sensor.SortOrder, boolToInt(sensor.Managed), sensor.Origin, fmtTime(now), fmtTime(now))
 			if err != nil {
 				return fmt.Errorf("sensor %q: %w", sensor.Name, err)
 			}
@@ -1448,6 +1478,25 @@ func restoreSensors(ctx context.Context, tx *sql.Tx, sensors []BackupSensor, ids
 
 		if err := relinkChannels(ctx, tx, id, sensor.Channels); err != nil {
 			return fmt.Errorf("sensor %q: %w", sensor.Name, err)
+		}
+		if err := relinkEscalationChannels(ctx, tx, id, sensor.EscalateChannels); err != nil {
+			return fmt.Errorf("sensor %q: %w", sensor.Name, err)
+		}
+	}
+	return nil
+}
+
+// relinkEscalationChannels is relinkChannels for the second list.
+func relinkEscalationChannels(ctx context.Context, tx *sql.Tx, sensorID int64, names []string) error {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM sensor_escalation_channels WHERE sensor_id = ?`, sensorID); err != nil {
+		return err
+	}
+	for _, name := range names {
+		_, err := tx.ExecContext(ctx, `
+			INSERT INTO sensor_escalation_channels (sensor_id, channel_id)
+			SELECT ?, id FROM channels WHERE name = ? COLLATE NOCASE`, sensorID, name)
+		if err != nil {
+			return fmt.Errorf("escalation channel %q: %w", name, err)
 		}
 	}
 	return nil

@@ -466,6 +466,10 @@ type sensorInput struct {
 	Options       model.Options `json:"options"`
 	ChannelIDs    *[]int64      `json:"channel_ids"`
 	ReminderEvery *int          `json:"reminder_every"`
+	// EscalateAfter and EscalateChannelIDs are the second alert list. An explicit
+	// zero and an explicit empty list switch escalation off and clear the list.
+	EscalateAfter      *int     `json:"escalate_after"`
+	EscalateChannelIDs *[]int64 `json:"escalate_channel_ids"`
 	// Icon is the symbol drawn beside the sensor's name: empty for none, a
 	// `builtin:` name, or an `upload:` id. An explicit empty string clears it, like
 	// the parent and the site above.
@@ -524,6 +528,12 @@ func (in sensorInput) toSensor(base model.Sensor) model.Sensor {
 	}
 	if in.ReminderEvery != nil {
 		c.ReminderEvery = *in.ReminderEvery
+	}
+	if in.EscalateAfter != nil {
+		c.EscalateAfter = *in.EscalateAfter
+	}
+	if in.EscalateChannelIDs != nil {
+		c.EscalateChannels = *in.EscalateChannelIDs
 	}
 	if in.Enabled != nil {
 		c.Enabled = *in.Enabled

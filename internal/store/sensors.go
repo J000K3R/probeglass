@@ -13,7 +13,7 @@ import (
 )
 
 const sensorColumns = `id, name, type, target, interval_s, timeout_s, retries, enabled,
-	grp, site, parent, icon, tags, options, reminder_every_s, sort_order, managed, origin, created_at, updated_at`
+	grp, site, parent, icon, tags, options, reminder_every_s, escalate_after_s, sort_order, managed, origin, created_at, updated_at`
 
 type rowScanner interface {
 	Scan(dest ...any) error
@@ -33,8 +33,8 @@ func scanSensor(sc rowScanner) (model.Sensor, error) {
 		updatedAt string
 	)
 	err := sc.Scan(&c.ID, &c.Name, &typ, &c.Target, &c.Interval, &c.Timeout, &c.Retries,
-		&enabled, &c.Group, &site, &parent, &c.Icon, &tags, &options, &c.ReminderEvery, &c.SortOrder,
-		&managed, &c.Origin, &createdAt, &updatedAt)
+		&enabled, &c.Group, &site, &parent, &c.Icon, &tags, &options, &c.ReminderEvery,
+		&c.EscalateAfter, &c.SortOrder, &managed, &c.Origin, &createdAt, &updatedAt)
 	if err != nil {
 		return c, err
 	}
@@ -144,6 +144,12 @@ func NormaliseSensor(c *model.Sensor) {
 	if c.ReminderEvery < 0 {
 		c.ReminderEvery = 0
 	}
+	if c.EscalateAfter < 0 {
+		c.EscalateAfter = 0
+	}
+	if c.EscalateAfter > 30*24*60*60 {
+		c.EscalateAfter = 30 * 24 * 60 * 60
+	}
 	if c.Options == nil {
 		c.Options = model.Options{}
 	}
@@ -182,9 +188,21 @@ func (s *Store) ListSensors(ctx context.Context) ([]model.Sensor, error) {
 			sensors[i].Channels = ids
 		}
 	}
+	escalation, err := s.allSensorEscalationChannels(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for sensorID, ids := range escalation {
+		if i, ok := byID[sensorID]; ok {
+			sensors[i].EscalateChannels = ids
+		}
+	}
 	for i := range sensors {
 		if sensors[i].Channels == nil {
 			sensors[i].Channels = []int64{}
+		}
+		if sensors[i].EscalateChannels == nil {
+			sensors[i].EscalateChannels = []int64{}
 		}
 	}
 	return sensors, nil
@@ -193,6 +211,24 @@ func (s *Store) ListSensors(ctx context.Context) ([]model.Sensor, error) {
 func (s *Store) allSensorChannels(ctx context.Context) (map[int64][]int64, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT sensor_id, channel_id FROM sensor_channels ORDER BY sensor_id, channel_id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[int64][]int64{}
+	for rows.Next() {
+		var cid, chid int64
+		if err := rows.Scan(&cid, &chid); err != nil {
+			return nil, err
+		}
+		out[cid] = append(out[cid], chid)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) allSensorEscalationChannels(ctx context.Context) (map[int64][]int64, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT sensor_id, channel_id FROM sensor_escalation_channels ORDER BY sensor_id, channel_id`)
 	if err != nil {
 		return nil, err
 	}
@@ -223,6 +259,11 @@ func (s *Store) GetSensor(ctx context.Context, id int64) (model.Sensor, error) {
 		return c, err
 	}
 	c.Channels = ids
+	escalation, err := s.SensorEscalationChannelIDs(ctx, id)
+	if err != nil {
+		return c, err
+	}
+	c.EscalateChannels = escalation
 	return c, nil
 }
 
@@ -259,11 +300,13 @@ func insertSensor(ctx context.Context, tx *sql.Tx, c *model.Sensor) error {
 
 	res, err := tx.ExecContext(ctx, `
 		INSERT INTO sensors (name, type, target, interval_s, timeout_s, retries, enabled,
-			grp, site, parent, icon, tags, options, reminder_every_s, sort_order, managed, origin, created_at, updated_at)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			grp, site, parent, icon, tags, options, reminder_every_s, escalate_after_s,
+			sort_order, managed, origin, created_at, updated_at)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		c.Name, string(c.Type), c.Target, c.Interval, c.Timeout, c.Retries, boolInt(c.Enabled),
 		c.Group, nullIfEmpty(c.Site), nullIfEmpty(c.Parent), c.Icon, model.JoinTags(c.Tags), string(options),
-		c.ReminderEvery, c.SortOrder, boolInt(c.Managed), c.Origin, fmtTime(now), fmtTime(now))
+		c.ReminderEvery, c.EscalateAfter, c.SortOrder, boolInt(c.Managed), c.Origin,
+		fmtTime(now), fmtTime(now))
 	if err != nil {
 		return wrapSensorErr(err, c)
 	}
@@ -272,7 +315,10 @@ func insertSensor(ctx context.Context, tx *sql.Tx, c *model.Sensor) error {
 		return err
 	}
 	c.ID = id
-	return setSensorChannels(ctx, tx, id, c.Channels)
+	if err := setSensorChannels(ctx, tx, id, c.Channels); err != nil {
+		return err
+	}
+	return setSensorEscalationChannels(ctx, tx, id, c.EscalateChannels)
 }
 
 // UpdateSensor writes an existing sensor and its channel assignments.
@@ -325,20 +371,23 @@ func (s *Store) updateSensor(ctx context.Context, c *model.Sensor, managed *bool
 		c.Managed = *managed
 		res, err := tx.ExecContext(ctx, `
 			UPDATE sensors SET name=?, type=?, target=?, interval_s=?, timeout_s=?, retries=?,
-				enabled=?, grp=?, site=?, parent=?, icon=?, tags=?, options=?, reminder_every_s=?, sort_order=?,
-				managed=?, updated_at=?
+				enabled=?, grp=?, site=?, parent=?, icon=?, tags=?, options=?, reminder_every_s=?,
+				escalate_after_s=?, sort_order=?, managed=?, updated_at=?
 			WHERE id = ?`,
 			c.Name, string(c.Type), c.Target, c.Interval, c.Timeout, c.Retries,
 			boolInt(c.Enabled), c.Group, nullIfEmpty(c.Site), nullIfEmpty(c.Parent), c.Icon,
-			model.JoinTags(c.Tags), string(options), c.ReminderEvery, c.SortOrder, boolInt(*managed),
-			fmtTime(now), c.ID)
+			model.JoinTags(c.Tags), string(options), c.ReminderEvery, c.EscalateAfter,
+			c.SortOrder, boolInt(*managed), fmtTime(now), c.ID)
 		if err != nil {
 			return wrapSensorErr(err, c)
 		}
 		if n, err := res.RowsAffected(); err == nil && n == 0 {
 			return ErrNotFound
 		}
-		return setSensorChannels(ctx, tx, c.ID, c.Channels)
+		if err := setSensorChannels(ctx, tx, c.ID, c.Channels); err != nil {
+			return err
+		}
+		return setSensorEscalationChannels(ctx, tx, c.ID, c.EscalateChannels)
 	})
 }
 
@@ -443,6 +492,44 @@ func setSensorChannels(ctx context.Context, tx *sql.Tx, sensorID int64, ids []in
 		if _, err := tx.ExecContext(ctx,
 			`INSERT INTO sensor_channels (sensor_id, channel_id) VALUES (?, ?)`, sensorID, id); err != nil {
 			return wrapUnique(err, "channel assignment", "")
+		}
+	}
+	return nil
+}
+
+// SensorEscalationChannelIDs returns the channels an escalation of this sensor
+// goes to, in id order.
+func (s *Store) SensorEscalationChannelIDs(ctx context.Context, sensorID int64) ([]int64, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT channel_id FROM sensor_escalation_channels WHERE sensor_id = ? ORDER BY channel_id`, sensorID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []int64{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
+}
+
+func setSensorEscalationChannels(ctx context.Context, tx *sql.Tx, sensorID int64, ids []int64) error {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM sensor_escalation_channels WHERE sensor_id = ?`, sensorID); err != nil {
+		return err
+	}
+	seen := map[int64]bool{}
+	for _, id := range ids {
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		if _, err := tx.ExecContext(ctx,
+			`INSERT INTO sensor_escalation_channels (sensor_id, channel_id) VALUES (?, ?)`, sensorID, id); err != nil {
+			return wrapUnique(err, "escalation channel assignment", "")
 		}
 	}
 	return nil

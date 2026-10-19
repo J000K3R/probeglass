@@ -743,7 +743,7 @@ func TestPartialUpdateTouchesOnlyWhatItSends(t *testing.T) {
 	resp := h.do(http.MethodPost, "/api/sensors", map[string]any{
 		"name": "NAS", "type": "tcp", "target": "nas.local:445",
 		"interval": 300, "timeout": 20, "retries": 4, "group": "Storage",
-		"tags": []string{"infra", "lan"}, "reminder_every": 3600,
+		"tags": []string{"infra", "lan"}, "reminder_every": 3600, "escalate_after": 900,
 	}, origin)
 	var sensor model.Sensor
 	decode(t, resp, &sensor)
@@ -791,6 +791,9 @@ func TestPartialUpdateTouchesOnlyWhatItSends(t *testing.T) {
 	}
 	if stored.ReminderEvery != 3600 {
 		t.Errorf("reminder_every = %d, want 3600", stored.ReminderEvery)
+	}
+	if stored.EscalateAfter != 900 {
+		t.Errorf("escalate_after = %d, want 900", stored.EscalateAfter)
 	}
 
 	// An explicit empty value still clears, so "absent" and "empty" stay
@@ -1032,4 +1035,47 @@ func itoa(n int64) string {
 		buf[i] = '-'
 	}
 	return string(buf[i:])
+}
+
+// TestConfigExportWritesTheYAMLDocument covers the download the Backup panel
+// offers: the installation's own sensors, without the invented example data, in
+// the file format the daemon itself reads.
+func TestConfigExportWritesTheYAMLDocument(t *testing.T) {
+	h := newHarness(t)
+	h.setup()
+	origin := map[string]string{"Origin": h.http.URL}
+
+	resp := h.do(http.MethodPost, "/api/sensors", map[string]any{
+		"name": "Real router", "type": "ping", "target": "10.0.0.1",
+		"interval": 60, "timeout": 10, "retries": 2,
+	}, origin)
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("create sensor: status = %d, body = %s", resp.StatusCode, readBody(t, resp))
+	}
+	resp.Body.Close()
+
+	resp = h.do(http.MethodGet, "/api/config/export", nil, nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("export: status = %d, body = %s", resp.StatusCode, readBody(t, resp))
+	}
+	if ct := resp.Header.Get("Content-Type"); !strings.Contains(ct, "yaml") {
+		t.Errorf("Content-Type = %q, want YAML", ct)
+	}
+	if cd := resp.Header.Get("Content-Disposition"); !strings.Contains(cd, "probeglass.yaml") {
+		t.Errorf("Content-Disposition = %q", cd)
+	}
+	body := readBody(t, resp)
+	if !strings.Contains(body, "Real router") || !strings.Contains(body, "type: ping") {
+		t.Errorf("the exported file does not carry the sensor:\n%s", body)
+	}
+	if strings.Contains(body, "(example)") {
+		t.Errorf("the default export carried the example data:\n%s", body)
+	}
+
+	// Asking for them is the one way they come along.
+	resp = h.do(http.MethodGet, "/api/config/export?examples=1", nil, nil)
+	body = readBody(t, resp)
+	if !strings.Contains(body, "(example)") {
+		t.Errorf("the export with examples=1 still has none:\n%s", body)
+	}
 }

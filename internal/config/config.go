@@ -107,11 +107,16 @@ type SensorSpec struct {
 	//
 	// The file may declare them in any order. applyDeclarativeConfig makes two passes,
 	// because a parent named further down the file would not exist yet on the first.
-	DependsOn     string        `yaml:"depends_on"`
-	Tags          []string      `yaml:"tags"`
-	ReminderEvery Duration      `yaml:"reminder_every"`
-	Options       model.Options `yaml:"options"`
-	Channels      []string      `yaml:"channels"`
+	DependsOn     string   `yaml:"depends_on"`
+	Tags          []string `yaml:"tags"`
+	ReminderEvery Duration `yaml:"reminder_every"`
+	// EscalateAfter is how long an incident may stay open and unacknowledged
+	// before EscalateChannels are told once. Empty or zero switches it off.
+	EscalateAfter Duration `yaml:"escalate_after"`
+	// EscalateChannels are alert channel names, resolved like Channels.
+	EscalateChannels []string      `yaml:"escalate_channels"`
+	Options          model.Options `yaml:"options"`
+	Channels         []string      `yaml:"channels"`
 	// Icon is the symbol drawn beside the sensor's name: `builtin:router` for one
 	// of the drawings that ship with the program, `upload:7` for an image somebody
 	// uploaded to this installation.
@@ -181,6 +186,9 @@ func (s SensorSpec) ToSensor() model.Sensor {
 	}
 	if s.ReminderEvery.D() > 0 {
 		c.ReminderEvery = int(s.ReminderEvery.D().Seconds())
+	}
+	if s.EscalateAfter.D() > 0 {
+		c.EscalateAfter = int(s.EscalateAfter.D().Seconds())
 	}
 	return c
 }

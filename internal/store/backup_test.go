@@ -87,7 +87,11 @@ func newBackupFixture(t *testing.T) *backupFixture {
 		Site: "Rack A", Group: "LAN", Tags: []string{"lan", "core"},
 		Icon:     icon.UploadRef(f.icon.ID),
 		Channels: []int64{f.channel.ID},
-		Options:  map[string]any{"count": float64(3)},
+		// The second list, with its delay. The channel is the same row, which is
+		// fine: escalation is about when, not who.
+		EscalateAfter:    300,
+		EscalateChannels: []int64{f.channel.ID},
+		Options:          map[string]any{"count": float64(3)},
 	})
 	// A second sensor with no history at all, so that "it came back" is not only
 	// ever tested on the one sensor that has rows.
@@ -371,6 +375,11 @@ func TestExportRestoreRoundTrip(t *testing.T) {
 	}
 	if router.Site != "Rack A" || model.JoinTags(router.Tags) != "lan,core" {
 		t.Errorf("restored Router has site %q and tags %q", router.Site, model.JoinTags(router.Tags))
+	}
+	if router.EscalateAfter != 300 || len(router.EscalateChannels) != 1 ||
+		router.EscalateChannels[0] != f.channel.ID {
+		t.Errorf("restored Router has escalation after %ds to %v",
+			router.EscalateAfter, router.EscalateChannels)
 	}
 	// The uploaded image it wears, under the number it had before: the icon column
 	// says `upload:<id>` as text with no foreign key behind it, so an image that came

@@ -163,6 +163,8 @@ sensors:
 | `site` | name of a site; **created if it does not exist yet**, default empty |
 | `icon` | symbol drawn beside the name: `builtin:<name>`, or `upload:<id>` for an image somebody uploaded in the dashboard; default none |
 | `reminder_every` | re-alert while an incident stays open; `0` means never |
+| `escalate_after` | how long an incident may stay open and unacknowledged before the escalation channels are told once; default off |
+| `escalate_channels` | names of the channels that second message goes to |
 | `options` | type-specific, see below |
 | `channels` | names of alert channels, as declared above or created in the UI |
 
@@ -170,6 +172,11 @@ Groups and tags are words on a sensor; their symbols, colours and places in the
 order are set in the dashboard under **Settings → Monitoring**, not in this file.
 A group or a tag named here exists without them, and a settings row for a word
 this file no longer carries is left alone rather than deleted.
+
+Escalation is the second alert list: `channels` hears first, and
+`escalate_channels` hears once more if the incident is still open and
+unacknowledged after `escalate_after`. An acknowledgement stops it, and the
+incident records that the message went out, so a restart cannot send it twice.
 
 | Site field | Notes |
 |---|---|

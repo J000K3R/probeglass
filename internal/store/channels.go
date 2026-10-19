@@ -186,6 +186,30 @@ func (s *Store) ChannelsForSensor(ctx context.Context, sensorID int64) ([]model.
 	return out, rows.Err()
 }
 
+// EscalationChannelsForSensor is ChannelsForSensor for the second alert list.
+func (s *Store) EscalationChannelsForSensor(ctx context.Context, sensorID int64) ([]model.Channel, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT `+prefixed(channelColumns, "ch")+`
+		FROM channels ch
+		JOIN sensor_escalation_channels ec ON ec.channel_id = ch.id
+		WHERE ec.sensor_id = ? AND ch.enabled = 1
+		ORDER BY ch.name COLLATE NOCASE ASC`, sensorID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []model.Channel{}
+	for rows.Next() {
+		c, err := scanChannel(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
 // ChannelIDsByNames resolves config-file channel names to ids.
 func (s *Store) ChannelIDsByNames(ctx context.Context, names []string) ([]int64, []string, error) {
 	ids := []int64{}

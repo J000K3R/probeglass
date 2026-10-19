@@ -3960,6 +3960,11 @@ function sensorFormMarkup(sensor) {
     return `<label class="sensor-row"><input type="checkbox" name="channel" value="${c.id}"${selected ? ' checked' : ''}>
       <span>${esc(c.name)} <small class="muted">${esc(c.type)}</small></span></label>`;
   }).join('');
+  const escalationChannels = state.channels.map((c) => {
+    const selected = (sensor?.escalate_channel_ids || []).includes(c.id);
+    return `<label class="sensor-row"><input type="checkbox" name="escalate_channel" value="${c.id}"${selected ? ' checked' : ''}>
+      <span>${esc(c.name)} <small class="muted">${esc(c.type)}</small></span></label>`;
+  }).join('');
 
   // The name row: the symbol first, then the name. The symbol is a button and not
   // part of the label, because a label forwards its click to the first labelable
@@ -4009,6 +4014,16 @@ function sensorFormMarkup(sensor) {
       ${channels || emptyBlock(t('channels.emptyBody'))}
     </fieldset>
 
+    <div class="grid-2 adv-hide">
+      <label class="field"><span>${withHelp(t('sensor.escalateAfter'), 'help.sensor.escalateAfter')}</span>
+        <input name="escalate_after" type="number" min="0" max="43200"
+               value="${Math.round((sensor?.escalate_after || 0) / 60)}"></label>
+      <fieldset class="channels-pick">
+        <legend>${withHelp(t('sensor.escalateChannels'), 'help.sensor.escalateChannels')}</legend>
+        ${escalationChannels || emptyBlock(t('channels.emptyBody'))}
+      </fieldset>
+    </div>
+
     <label class="sensor-row"><input type="checkbox" name="enabled"${sensor?.enabled === false ? '' : ' checked'}>
       <span>${withHelp(t('sensor.enabled'), 'help.sensor.enabled')}</span></label>`;
 }
@@ -4056,8 +4071,10 @@ function readSensorForm(form) {
     icon: iconUI.readIconField(form),
     tags: form.elements.tags.value.split(',').map((v) => v.trim()).filter(Boolean),
     reminder_every: Number(form.elements.reminder_every.value) || 0,
+    escalate_after: (Number(form.elements.escalate_after.value) || 0) * 60,
     options: readOptions(form, def),
     channel_ids: $$('input[name="channel"]:checked', form).map((el) => Number(el.value)),
+    escalate_channel_ids: $$('input[name="escalate_channel"]:checked', form).map((el) => Number(el.value)),
   };
 }
 
@@ -4668,6 +4685,12 @@ function backupPanel() {
       <div class="form-actions">
         <button class="btn btn-primary" data-action="backup-download">${esc(t('backup.download'))}</button>
         <button class="btn" data-action="backup-file">${esc(t('backup.restore'))}</button>
+      </div>
+
+      <h3 class="section-title">${esc(t('configExport.title'))}</h3>
+      <p class="muted small">${esc(t('configExport.hint'))}</p>
+      <div class="form-actions">
+        <button class="btn" data-action="config-export">${esc(t('configExport.download'))}</button>
       </div>
 
       <!-- A plain file input, and the chosen file is sent as the body of one POST.
@@ -6042,6 +6065,35 @@ async function downloadBackup(button) {
 }
 
 /**
+ * downloadConfig writes the installation out as the YAML a file-driven setup is
+ * configured from. It is the other direction from the backup: no accounts, no
+ * history, no incidents — just the three things a configuration file can hold.
+ */
+async function downloadConfig(button) {
+  const error = $('#backup-error');
+  if (error) error.textContent = '';
+  button.disabled = true;
+  try {
+    const res = await fetch('/api/config/export', { credentials: 'same-origin' });
+    if (!res.ok) throw new Error(errorFrom(await res.text()) || t('common.error'));
+    const text = await res.text();
+    const url = URL.createObjectURL(new Blob([text], { type: 'application/yaml' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'probeglass.yaml';
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+    toast(t('configExport.downloaded'));
+  } catch (err) {
+    if (error) error.textContent = err.message;
+  } finally {
+    button.disabled = false;
+  }
+}
+
+/**
  * restoreFromFile sends the chosen file as the body of one request.
  *
  * The file object is the body: it is a `Blob`, `fetch` streams it, and nothing is
@@ -6173,6 +6225,8 @@ async function onSettingsClick(event) {
       await runDoctor(button);
     } else if (action === 'backup-download') {
       await downloadBackup(button);
+    } else if (action === 'config-export') {
+      await downloadConfig(button);
     } else if (action === 'backup-file') {
       $('#restore-file').click();
     } else if (action === 'tour') {

@@ -350,6 +350,16 @@ func applyDeclarativeConfig(ctx context.Context, st *store.Store, cfg *config.Co
 			}
 			c.Channels = ids
 		}
+		if len(spec.EscalateChannels) > 0 {
+			ids, missing, err := st.ChannelIDsByNames(ctx, spec.EscalateChannels)
+			if err != nil {
+				return fmt.Errorf("sensor %q: %w", spec.Name, err)
+			}
+			if len(missing) > 0 {
+				return fmt.Errorf("sensor %q refers to unknown escalation channels: %v", spec.Name, missing)
+			}
+			c.EscalateChannels = ids
+		}
 		// The parent is left out of the first pass and set in the second.
 		//
 		// A file may declare a parent anywhere in it, and this loop walks it in the

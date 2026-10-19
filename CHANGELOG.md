@@ -11,7 +11,7 @@ here and what the release says are the same document.
 
 | Version | Released | In one line |
 | --- | --- | --- |
-| [Unreleased] | — | Six more sensor types, a grouped sensor chooser with tag settings, Gotify as a seventh channel, and example pictures and maintenance windows on the first dashboard |
+| [Unreleased] | — | Six more sensor types, a grouped sensor chooser with tag settings, escalation, a YAML export, Gotify as a seventh channel, and example pictures and maintenance windows on the first dashboard |
 | [0.2.2] | 2026-10-18 | A symbol on every sensor, place and group — ours, yours, or searched for online — and one set of measurements for the whole dashboard |
 | [0.2.1] | 2026-10-16 | A sensor under maintenance says so |
 | [0.2.0] | 2026-10-16 | Maintenance windows, a second interface language, and the container as the only thing that ships |
@@ -42,6 +42,19 @@ here and what the release says are the same document.
   dashboard should show them in; the whole order is written at once, so a drop
   cannot leave two rows sharing a number. The position number in the editor remains
   as the keyboard path.
+
+- **Escalation.** A sensor can carry a second list of channels and a delay. The
+  ordinary channels hear about the outage first; if it is still open and nobody has
+  acknowledged it after `escalate_after`, the escalation channels are told once.
+  Acknowledgement stops it, and the incident records that the message went out, so a
+  restart cannot send it twice. It is set per sensor in the form, and as
+  `escalate_after`/`escalate_channels` in the configuration file.
+
+- **The configuration file can be written from the dashboard.** The Backup panel's
+  *Configuration file* button writes the sites, channels and sensors as the
+  `probeglass.yaml` the daemon already reads, so a setup made in the browser can
+  become the versioned one. Accounts, incidents and history stay out — that is what
+  the JSON backup is for — and example data is left out unless it is asked for.
 
 - **An open chooser stays inside the window.** The panels are fixed to the viewport
   and clamped to it rather than absolutely placed inside the dialog: a long

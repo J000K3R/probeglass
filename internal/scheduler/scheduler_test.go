@@ -4,6 +4,8 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -371,4 +373,68 @@ func TestReconcileBeforeStartStartsNoLoops(t *testing.T) {
 	if n := runnerCount(s); n != 1 {
 		t.Errorf("Start left %d probe loop(s) running, want the one for the sensor", n)
 	}
+}
+
+// TestEscalationGoesOutOnceAfterTheDelay covers the whole second-list path: an
+// incident old enough for its sensor's escalation delay is sent to the escalation
+// channel, marked on the incident, and never sent again.
+func TestEscalationGoesOutOnceAfterTheDelay(t *testing.T) {
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	s, st := newTestScheduler(t)
+
+	received := make(chan string, 2)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		received <- r.Header.Get("X-ProbeGlass-Event")
+	}))
+	defer srv.Close()
+
+	ch := model.Channel{
+		Name: "on-call", Type: "webhook", Enabled: true,
+		Config: map[string]string{"url": srv.URL},
+	}
+	if err := st.CreateChannel(context.Background(), &ch); err != nil {
+		t.Fatalf("create channel: %v", err)
+	}
+
+	s.dispatcher = notify.NewDispatcher(st, log, "")
+	c := newTestSensor(t, st, 1)
+	c.EscalateAfter = 60
+	c.EscalateChannels = []int64{ch.ID}
+	if err := st.UpdateSensor(context.Background(), &c); err != nil {
+		t.Fatalf("update sensor: %v", err)
+	}
+
+	ctx := context.Background()
+	id, err := st.OpenIncident(ctx, c.ID, time.Now().Add(-2*time.Minute), "request timeout")
+	if err != nil {
+		t.Fatalf("open incident: %v", err)
+	}
+
+	s.escalateDue(ctx)
+
+	select {
+	case event := <-received:
+		if event != string(notify.EventEscalation) {
+			t.Errorf("the webhook was called with event %q, want escalation", event)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the escalation channel was never called")
+	}
+
+	inc, err := st.OpenIncidentFor(ctx, c.ID)
+	if err != nil {
+		t.Fatalf("read incident: %v", err)
+	}
+	if inc == nil || inc.EscalatedAt == nil {
+		t.Fatalf("the incident was not marked escalated: %+v", inc)
+	}
+
+	// A second sweep must stay silent: the news has already been sent.
+	s.escalateDue(ctx)
+	select {
+	case event := <-received:
+		t.Errorf("the second sweep sent another %q alert", event)
+	case <-time.After(300 * time.Millisecond):
+	}
+	_ = id
 }
