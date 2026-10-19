@@ -158,6 +158,9 @@ export const de = {
   'sensor.edit': 'Sensor bearbeiten',
   'sensor.name': 'Name',
   'sensor.type': 'Typ',
+  'sensor.typeSearch': 'Typen suchen',
+  'sensor.typeSearchPlaceholder': 'Typen suchen',
+  'sensor.typeNoMatch': 'Kein Typ passt zu „{query}“.',
   'sensor.target': 'Ziel',
   'sensor.interval': 'Intervall (s)',
   'sensor.timeout': 'Zeitlimit (s)',
@@ -727,6 +730,10 @@ export const de = {
   // Was hinter `type.` steht, ist der Name, den der Server speichert; das Paar wird
   // deshalb aus einer Registry nachgeschlagen und nicht an jeder Stelle
   // ausgeschrieben.
+  'type.group.web': 'Web',
+  'type.group.network': 'Netzwerk',
+  'type.group.services': 'Dienste',
+  'type.group.infra': 'Infrastruktur',
   'type.http': 'HTTP(S)',
   'type.http.target': 'URL',
   'type.tcp': 'TCP-Port',

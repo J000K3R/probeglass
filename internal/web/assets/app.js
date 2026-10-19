@@ -343,8 +343,20 @@ const groupModal = sheet({
 // A locked dialog has no way out but its own button: Escape would close it and
 // take the only copy of whatever it is showing with it. The dashboard uses it for
 // the recovery codes, which are shown exactly once.
+//
+// An open sensor-type chooser is the other case: Escape belongs to the panel
+// first. Closing both at once would hide the field somebody was in the middle of
+// choosing and take the rest of the half-filled sensor form with it.
 $('#modal').addEventListener('cancel', (event) => {
-  if ($('#modal-form').dataset.locked === '1') event.preventDefault();
+  if ($('#modal-form').dataset.locked === '1') {
+    event.preventDefault();
+    return;
+  }
+  const panel = document.querySelector('#modal .type-panel:not([hidden])');
+  if (panel) {
+    event.preventDefault();
+    closeTypePanel(panel.closest('[data-type-field]'), { restoreFocus: true });
+  }
 });
 
 /**
@@ -888,6 +900,10 @@ function showApp() {
   // because those forms are rebuilt on every open. One delegated listener set on the
   // document is what survives that.
   iconUI.mount({ api, toast, confirm: confirmDialog });
+
+  // The sensor type chooser, for the same reason: its field is rebuilt with the
+  // sensor dialog on every open, and one delegated listener set survives that.
+  mountSensorTypePicker();
 
   applyHash();
 
@@ -2677,6 +2693,8 @@ async function afterOutageChange() {
 const SENSOR_TYPES = [
   {
     value: 'http',
+    group: 'web',
+    icon: 'builtin:globe',
     labelKey: 'type.http',
     targetLabelKey: 'type.http.target',
     placeholder: 'https://example.org/health',
@@ -2698,6 +2716,8 @@ const SENSOR_TYPES = [
   },
   {
     value: 'redirect',
+    group: 'web',
+    icon: 'builtin:cloud',
     labelKey: 'type.redirect',
     targetLabelKey: 'type.redirect.target',
     placeholder: 'https://example.org',
@@ -2710,6 +2730,8 @@ const SENSOR_TYPES = [
   },
   {
     value: 'tcp',
+    group: 'network',
+    icon: 'builtin:plug',
     labelKey: 'type.tcp',
     targetLabelKey: 'type.tcp.target',
     placeholder: 'db.internal:5432',
@@ -2724,6 +2746,8 @@ const SENSOR_TYPES = [
   },
   {
     value: 'ssh',
+    group: 'services',
+    icon: 'builtin:laptop',
     labelKey: 'type.ssh',
     targetLabelKey: 'type.ssh.target',
     placeholder: 'nas.local:22',
@@ -2733,6 +2757,8 @@ const SENSOR_TYPES = [
   },
   {
     value: 'smtp',
+    group: 'services',
+    icon: 'builtin:mail',
     labelKey: 'type.smtp',
     targetLabelKey: 'type.smtp.target',
     placeholder: 'mail.local:25',
@@ -2745,6 +2771,8 @@ const SENSOR_TYPES = [
   },
   {
     value: 'imap',
+    group: 'services',
+    icon: 'builtin:mail',
     labelKey: 'type.imap',
     targetLabelKey: 'type.imap.target',
     placeholder: 'mail.local:993',
@@ -2757,6 +2785,8 @@ const SENSOR_TYPES = [
   },
   {
     value: 'udp',
+    group: 'network',
+    icon: 'builtin:plug',
     labelKey: 'type.udp',
     targetLabelKey: 'type.udp.target',
     placeholder: '1.1.1.1:53',
@@ -2767,6 +2797,8 @@ const SENSOR_TYPES = [
   },
   {
     value: 'tls',
+    group: 'services',
+    icon: 'builtin:certificate',
     labelKey: 'type.tls',
     targetLabelKey: 'type.tls.target',
     placeholder: 'example.org:443',
@@ -2778,6 +2810,8 @@ const SENSOR_TYPES = [
   },
   {
     value: 'docker',
+    group: 'infra',
+    icon: 'builtin:container',
     labelKey: 'type.docker',
     targetLabelKey: 'type.docker.target',
     placeholder: 'nginx',
@@ -2792,6 +2826,8 @@ const SENSOR_TYPES = [
   },
   {
     value: 'snmp',
+    group: 'infra',
+    icon: 'builtin:switch',
     labelKey: 'type.snmp',
     targetLabelKey: 'type.snmp.target',
     placeholder: '192.168.1.2',
@@ -2806,6 +2842,8 @@ const SENSOR_TYPES = [
   },
   {
     value: 'ping',
+    group: 'network',
+    icon: 'builtin:wifi',
     labelKey: 'type.ping',
     targetLabelKey: 'type.ping.target',
     placeholder: '192.168.1.1',
@@ -2813,6 +2851,8 @@ const SENSOR_TYPES = [
   },
   {
     value: 'hop',
+    group: 'network',
+    icon: 'builtin:router',
     labelKey: 'type.hop',
     targetLabelKey: 'type.hop.target',
     placeholder: '1.1.1.1',
@@ -2820,6 +2860,8 @@ const SENSOR_TYPES = [
   },
   {
     value: 'dns',
+    group: 'network',
+    icon: 'builtin:server',
     labelKey: 'type.dns',
     targetLabelKey: 'type.dns.target',
     placeholder: 'example.org',
@@ -2836,12 +2878,112 @@ function typeDef(type) {
   return SENSOR_TYPES.find((c) => c.value === type) || SENSOR_TYPES[0];
 }
 
+// The order the chooser draws the groups in. The words are spelled out in
+// typeGroupLabel rather than assembled from the group id: the catalogue test can
+// see a literal translation call and cannot see a template, and a missing key
+// would otherwise ship as "type.group.network" on a heading.
+const SENSOR_TYPE_GROUPS = ['web', 'network', 'services', 'infra'];
+
+function typeGroupLabel(group) {
+  switch (group) {
+    case 'network':
+      return t('type.group.network');
+    case 'services':
+      return t('type.group.services');
+    case 'infra':
+      return t('type.group.infra');
+    default:
+      return t('type.group.web');
+  }
+}
+
+/** sensorTypePanelMarkup is the chooser, rendered once into every sensor dialog. */
+function sensorTypePanelMarkup(def) {
+  const groups = SENSOR_TYPE_GROUPS.map((group) => {
+    const tiles = SENSOR_TYPES.filter((c) => c.group === group).map((c) => `
+      <button type="button" class="type-tile${c.value === def.value ? ' is-current' : ''}"
+              data-sensor-type="${esc(c.value)}" title="${esc(t(c.labelKey))}">
+        <span class="type-tile-icon">${iconUI.iconMarkup(c.icon, { size: 18 })}</span>
+        <span class="type-tile-text">
+          <span class="type-tile-label">${esc(t(c.labelKey))}</span>
+          <small class="type-tile-target">${esc(t(c.targetLabelKey))}</small>
+        </span>
+      </button>`).join('');
+    return `<section class="type-group" data-type-group="${esc(group)}">
+      <p class="type-group-title">${esc(typeGroupLabel(group))}</p>
+      <div class="type-grid">${tiles}</div>
+    </section>`;
+  }).join('');
+  return `
+    <div class="type-search">
+      <label class="type-search-label" for="sensor-type-search">${esc(t('sensor.typeSearch'))}</label>
+      <input type="search" id="sensor-type-search" data-type-query
+             placeholder="${esc(t('sensor.typeSearchPlaceholder'))}" autocomplete="off" spellcheck="false">
+      <p class="type-search-note" data-type-note hidden></p>
+    </div>
+    ${groups}`;
+}
+
+/**
+ * sensorTypeFieldMarkup is the type choice as a field: a button carrying the
+ * current type and a pre-rendered panel of grouped tiles.
+ *
+ * The value travels in a hidden input named like any other field, so the form
+ * reads it the way it reads everything else and the existing tests that save a
+ * sensor without touching the type keep working.
+ *
+ * The panel is right-anchored: the field sits in the right-hand column of the
+ * name/type grid, and a 560-pixel panel opening to the left would leave the
+ * dialog it belongs to.
+ */
+function sensorTypeFieldMarkup(def) {
+  return `
+    <div class="field-row">
+      <label id="sensor-type-label">${withHelp(t('sensor.type'), 'help.sensor.type')}</label>
+      <div class="icon-field type-field" data-type-field>
+        <input type="hidden" name="type" id="sensor-type" value="${esc(def.value)}">
+        <button type="button" class="icon-button" data-type-open
+                aria-haspopup="true" aria-expanded="false" aria-controls="sensor-type-panel"
+                aria-labelledby="sensor-type-label">
+          <span class="icon-slot" data-type-icon>${iconUI.iconMarkup(def.icon, { size: 18 })}</span>
+          <span class="icon-button-label" data-type-label>${esc(t(def.labelKey))}</span>
+          <svg class="icon-caret" viewBox="0 0 12 12" width="12" height="12" aria-hidden="true">
+            <path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.8"
+                  stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <div class="type-panel" id="sensor-type-panel" hidden>${sensorTypePanelMarkup(def)}</div>
+      </div>
+    </div>`;
+}
+
 /**
  * withHelp renders a field label with its "?" beside it. The explanation and its
  * example both live in the catalogue: the key names the sentence, and the
  * example is stored beside it under the same key plus "Example".
  */
 const withHelp = (text, key) => `${esc(text)} ${helpButton(key, `${key}Example`)}`;
+
+/**
+ * choiceGroup draws a small set of choices as chips around one native radio
+ * group. A radio and not a button, so the keyboard, the form reader and the
+ * screen reader all keep working; the chip is only what the choice looks like.
+ *
+ * The empty choice is a chip like the others on purpose. "Leave it at the
+ * default" is a decision somebody makes and has to be able to see, not the
+ * absence of one hidden behind a blank field.
+ */
+function choiceGroup(name, current, choices, label) {
+  const known = choices.some((c) => c.value === current);
+  const items = choices.map((c) => `
+    <label class="chip chip-choice">
+      <input type="radio" name="${esc(name)}" value="${esc(c.value)}"${c.value === (known ? current : '') ? ' checked' : ''}>
+      <span>${esc(c.label)}</span>
+    </label>`).join('');
+  return `<fieldset class="field choice-field">
+    <legend>${label}</legend>
+    <div class="choice-group">${items}</div>
+  </fieldset>`;
+}
 
 /** Render one option widget. Empty means "leave it at the default". */
 function optionField(field, options) {
@@ -2853,12 +2995,11 @@ function optionField(field, options) {
   switch (field.type) {
     case 'bool': {
       const current = value === undefined || value === null ? '' : String(value);
-      return `<label class="field"><span>${label}</span>
-        <select name="${name}">
-          <option value=""${current === '' ? ' selected' : ''}>${esc(t('common.optional'))}</option>
-          <option value="true"${current === 'true' ? ' selected' : ''}>${esc(t('common.yes'))}</option>
-          <option value="false"${current === 'false' ? ' selected' : ''}>${esc(t('common.no'))}</option>
-        </select></label>`;
+      return choiceGroup(name, current, [
+        { value: '', label: t('common.optional') },
+        { value: 'true', label: t('common.yes') },
+        { value: 'false', label: t('common.no') },
+      ], label);
     }
     case 'select': {
       const current = value === undefined || value === null ? '' : String(value);
@@ -2866,9 +3007,9 @@ function optionField(field, options) {
       // is why it is worded that way. A field where empty means something else
       // says so through emptyLabel.
       const emptyText = field.emptyLabel ? t(field.emptyLabel) : t('common.optional');
-      const opts = [`<option value=""${current === '' ? ' selected' : ''}>${esc(emptyText)}</option>`]
-        .concat(field.options.map((o) => `<option value="${esc(o)}"${current === o ? ' selected' : ''}>${esc(o)}</option>`));
-      return `<label class="field"><span>${label}</span><select name="${name}">${opts.join('')}</select></label>`;
+      const choices = [{ value: '', label: emptyText }]
+        .concat(field.options.map((o) => ({ value: o, label: o })));
+      return choiceGroup(name, current, choices, label);
     }
     case 'map': {
       const lines = value && typeof value === 'object'
@@ -2895,7 +3036,13 @@ function readOptions(form, def) {
   for (const field of def.fields) {
     const input = form.elements[`opt_${field.key}`];
     if (!input) continue;
-    const raw = input.value;
+    // A chip group is several radios under one name, which the form exposes as a
+    // RadioNodeList. Its .value is the checked one already; reading the checked
+    // element explicitly keeps the "nothing chosen" case visible rather than
+    // relying on that.
+    const raw = input.type === undefined
+      ? ([...input].find((el) => el.checked)?.value ?? '')
+      : input.value;
     if (field.type === 'bool') {
       if (raw === '') continue;
       options[field.key] = raw === 'true';
@@ -2970,6 +3117,172 @@ function siteOptions(selected) {
     `<option value="${NEW_SITE}">${esc(t('sites.newOption'))}</option>`;
 }
 
+// --- the sensor type chooser -------------------------------------------------
+
+/** openTypePanel shows one chooser, closes any other and focuses the search. */
+function openTypePanel(field) {
+  const panel = field.querySelector('.type-panel');
+  if (!panel || !panel.hidden) return;
+  closeTypePanels(field);
+  const query = panel.querySelector('[data-type-query]');
+  if (query) {
+    query.value = '';
+    filterTypeTiles(field, '');
+  }
+  panel.hidden = false;
+  field.querySelector('[data-type-open]')?.setAttribute('aria-expanded', 'true');
+  query?.focus();
+}
+
+/** closeTypePanel hides one chooser, optionally putting focus back on its button. */
+function closeTypePanel(field, { restoreFocus = false } = {}) {
+  const panel = field?.querySelector('.type-panel');
+  if (!panel || panel.hidden) return;
+  panel.hidden = true;
+  const button = field.querySelector('[data-type-open]');
+  button?.setAttribute('aria-expanded', 'false');
+  if (restoreFocus) button?.focus();
+}
+
+/** closeTypePanels closes every chooser but one, since only one may be open. */
+function closeTypePanels(except) {
+  for (const field of document.querySelectorAll('[data-type-field]')) {
+    if (field !== except) closeTypePanel(field);
+  }
+}
+
+/** filterTypeTiles narrows the tiles to those matching the search box. */
+function filterTypeTiles(field, term) {
+  const panel = field.querySelector('.type-panel');
+  if (!panel) return;
+  const needle = term.trim().toLowerCase();
+  let visible = 0;
+  for (const tile of panel.querySelectorAll('[data-sensor-type]')) {
+    const haystack = `${tile.dataset.sensorType} ${tile.textContent}`.toLowerCase();
+    const show = !needle || haystack.includes(needle);
+    tile.hidden = !show;
+    if (show) visible++;
+  }
+  for (const group of panel.querySelectorAll('[data-type-group]')) {
+    group.hidden = ![...group.querySelectorAll('[data-sensor-type]')].some((tile) => !tile.hidden);
+  }
+  const note = panel.querySelector('[data-type-note]');
+  if (note) {
+    note.hidden = visible !== 0;
+    note.textContent = visible === 0 ? t('sensor.typeNoMatch', { query: term.trim() }) : '';
+  }
+}
+
+/**
+ * applySensorType moves the form to another type: the hidden value, the button,
+ * the target label and placeholder, the option fields and the fold's summary.
+ *
+ * The option values are read from the type that is leaving before the fields
+ * are rebuilt, so keys two types share (server_name, expect, cert_warn_days)
+ * survive a switch the way they did when this was a select's change handler.
+ */
+function applySensorType(form, value) {
+  const next = typeDef(value);
+  const previous = typeDef(form.dataset.lastType || next.value);
+  const values = readOptions(form, previous);
+  form.dataset.lastType = next.value;
+
+  const input = $('#sensor-type');
+  if (input) input.value = next.value;
+
+  const field = form.querySelector('[data-type-field]');
+  if (field) {
+    const icon = field.querySelector('[data-type-icon]');
+    if (icon) icon.innerHTML = iconUI.iconMarkup(next.icon, { size: 18 });
+    const label = field.querySelector('[data-type-label]');
+    if (label) label.textContent = t(next.labelKey);
+    for (const tile of field.querySelectorAll('[data-sensor-type]')) {
+      tile.classList.toggle('is-current', tile.dataset.sensorType === next.value);
+    }
+  }
+
+  const targetLabel = $('#target-label');
+  if (targetLabel) targetLabel.innerHTML = withHelp(t(next.targetLabelKey), 'help.sensor.target');
+  const target = form.elements.target;
+  if (target) target.placeholder = next.placeholder;
+
+  const fields = $('#option-fields');
+  if (fields) fields.innerHTML = next.fields.map((f) => optionField(f, values)).join('');
+  const summary = $('#option-summary');
+  if (summary) summary.textContent = t(next.labelKey);
+}
+
+/** pickTypeTile applies one tile and puts the chooser away. */
+function pickTypeTile(field, tile, form) {
+  if (!form) return;
+  applySensorType(form, tile.dataset.sensorType);
+  closeTypePanel(field);
+  // Focus moves in a task of its own. Enter chooses a tile, and the same key
+  // stroke is still being resolved when this handler returns: a button focused
+  // here would be activated by that default action and reopen what was just
+  // closed. One task later the key is done and the button is safe to focus.
+  const button = field?.querySelector('[data-type-open]');
+  if (button) setTimeout(() => button.focus(), 0);
+}
+
+/**
+ * mountSensorTypePicker wires the choosers once, on the document. The sensor
+ * dialog is rebuilt on every open, so listeners attached to it would have to be
+ * removed with it; the icon picker solved this the same way.
+ */
+function mountSensorTypePicker() {
+  document.addEventListener('click', (event) => {
+    const open = event.target.closest('[data-type-open]');
+    if (open) {
+      const field = open.closest('[data-type-field]');
+      const panel = field?.querySelector('.type-panel');
+      if (panel && !panel.hidden) closeTypePanel(field, { restoreFocus: true });
+      else if (field) openTypePanel(field);
+      return;
+    }
+
+    const tile = event.target.closest('[data-sensor-type]');
+    if (tile) {
+      pickTypeTile(tile.closest('[data-type-field]'), tile, tile.closest('form'));
+      return;
+    }
+
+    // A click anywhere else closes the chooser, which is what makes it behave
+    // like a menu rather than like part of the form.
+    if (!event.target.closest('.type-panel')) closeTypePanels(null);
+  });
+
+  document.addEventListener('input', (event) => {
+    const query = event.target.closest('[data-type-query]');
+    if (!query) return;
+    const field = query.closest('[data-type-field]');
+    if (field) filterTypeTiles(field, query.value);
+  });
+
+  // Enter in the search picks the first visible tile. It must not reach the
+  // form: #modal-form is method="dialog", so an unhandled Enter saves and closes.
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter') return;
+    const query = event.target.closest('[data-type-query]');
+    if (!query) return;
+    event.preventDefault();
+    const field = query.closest('[data-type-field]');
+    const first = field?.querySelector('[data-sensor-type]:not([hidden])');
+    if (first) pickTypeTile(field, first, field.closest('form'));
+  });
+
+  // Escape closes the chooser and not the dialog. The dialog's own cancel
+  // listener has the same guard, because some browsers request the cancel
+  // before the keydown default is decided.
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape') return;
+    const panel = document.querySelector('.type-panel:not([hidden])');
+    if (!panel) return;
+    event.preventDefault();
+    closeTypePanel(panel.closest('[data-type-field]'), { restoreFocus: true });
+  });
+}
+
 function sensorFormMarkup(sensor) {
   const isNew = !sensor;
   const def = typeDef(sensor?.type || 'http');
@@ -2992,10 +3305,7 @@ function sensorFormMarkup(sensor) {
           <input id="sensor-name" name="name" type="text" required value="${esc(sensor?.name || '')}" autocomplete="off">
         </div>
       </div>
-      <label class="field"><span>${withHelp(t('sensor.type'), 'help.sensor.type')}</span>
-        <select name="type" id="sensor-type">
-          ${SENSOR_TYPES.map((c) => `<option value="${c.value}"${c.value === def.value ? ' selected' : ''}>${esc(t(c.labelKey))}</option>`).join('')}
-        </select></label>
+      ${sensorTypeFieldMarkup(def)}
     </div>
 
     <label class="field"><span id="target-label">${withHelp(t(def.targetLabelKey), 'help.sensor.target')}</span>
@@ -3029,7 +3339,7 @@ function sensorFormMarkup(sensor) {
       <input name="reminder_every" type="number" min="0" value="${sensor?.reminder_every || 0}"></label>
 
     <details class="options adv-hide"${isNew ? ' open' : ''}>
-      <summary>${esc(t(def.labelKey))}</summary>
+      <summary id="option-summary">${esc(t(def.labelKey))}</summary>
       <div id="option-fields" class="grid-2">${def.fields.map((f) => optionField(f, sensor?.options)).join('')}</div>
     </details>
 
@@ -3055,17 +3365,11 @@ async function openSensorEditor(existing = null) {
     showTest: true,
   });
 
-  const typeSelect = $('#sensor-type');
-  typeSelect.addEventListener('change', () => {
-    const def = typeDef(typeSelect.value);
-    const values = readOptions(form, typeDef(form.dataset.lastType || def.value));
-    form.dataset.lastType = typeSelect.value;
-    $('#target-label').textContent = t(def.targetLabelKey);
-    const target = form.elements.target;
-    target.placeholder = def.placeholder;
-    $('#option-fields').innerHTML = def.fields.map((f) => optionField(f, values)).join('');
-  });
   form.dataset.lastType = existing?.type || 'http';
+  // The tiles call applySensorType directly; the hidden input keeps a change
+  // from a script — or from a test — working the way the old select did.
+  const typeInput = $('#sensor-type');
+  typeInput.addEventListener('change', () => applySensorType(form, typeInput.value));
 
   const siteSelect = $('#sensor-site');
   siteSelect.addEventListener('change', () => {

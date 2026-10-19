@@ -157,6 +157,9 @@ const en = {
   'sensor.edit': 'Edit sensor',
   'sensor.name': 'Name',
   'sensor.type': 'Type',
+  'sensor.typeSearch': 'Search types',
+  'sensor.typeSearchPlaceholder': 'Search types',
+  'sensor.typeNoMatch': 'No type matches "{query}".',
   'sensor.target': 'Target',
   'sensor.interval': 'Interval (s)',
   'sensor.timeout': 'Timeout (s)',
@@ -728,6 +731,10 @@ const en = {
   // What follows `type.` is the name the server stores, so the pair is looked up
   // from a registry rather than written out at each use. TestEverySensorTypeHasAName
   // is what keeps a new type from shipping without one.
+  'type.group.web': 'Web',
+  'type.group.network': 'Network',
+  'type.group.services': 'Services',
+  'type.group.infra': 'Infrastructure',
   'type.http': 'HTTP(S)',
   'type.http.target': 'URL',
   'type.tcp': 'TCP port',

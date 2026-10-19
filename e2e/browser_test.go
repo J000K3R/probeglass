@@ -300,9 +300,10 @@ func TestDashboardIsActuallyUsable(t *testing.T) {
 	}
 	slices.Sort(wantTypes)
 	offered, err := chromedp.Run(ctx, chromedp.Evaluate[string](`(() => {
-		const type = document.querySelector('#sensor-type');
-		if (!type) return '';
-		return [...type.options].map((o) => o.value).sort().join(',');
+		// The chooser is pre-rendered inside the dialog, so every type is in the
+		// document whether or not the panel happens to be open.
+		return [...document.querySelectorAll('#modal [data-sensor-type]')]
+			.map((tile) => tile.dataset.sensorType).sort().join(',');
 	})()`))
 	if err != nil {
 		t.Errorf("could not read the sensor type choices: %v", err)
@@ -319,18 +320,23 @@ func TestDashboardIsActuallyUsable(t *testing.T) {
 	// statuses — or that leaves the empty choice to be found by clearing a text
 	// box — hands the operator a card that is red for good.
 	dockerHealth := `(() => {
-		const type = document.querySelector('#sensor-type');
-		if (!type) return 'the form has no sensor type select';
-		type.value = 'docker';
-		type.dispatchEvent(new Event('change', { bubbles: true }));
-		const field = document.querySelector('[name="opt_expect_health"]');
-		if (!field) return 'the docker form has no expect_health field';
-		if (field.tagName !== 'SELECT') return 'expect_health is a ' + field.tagName + ', not a choice';
-		const options = [...field.options];
-		const off = options.find((o) => o.value === '');
+		const open = document.querySelector('#modal [data-type-open]');
+		if (!open) return 'the form has no sensor type button';
+		open.click();
+		const tile = document.querySelector('#modal [data-sensor-type="docker"]');
+		if (!tile) return 'the form offers no docker type';
+		tile.click();
+		const inputs = [...document.querySelectorAll('#modal [name="opt_expect_health"]')];
+		if (!inputs.length) return 'the docker form has no expect_health field';
+		if (inputs.some((el) => el.tagName !== 'INPUT' || el.type !== 'radio')) {
+			return 'expect_health is not a chip radio group';
+		}
+		const off = inputs.find((el) => el.value === '');
 		if (!off) return 'expect_health offers no way to switch the check off';
-		if (!off.textContent.trim()) return 'the switched-off choice has no label';
-		if (!options.some((o) => o.value === 'healthy')) return 'expect_health no longer offers healthy';
+		if (!off.checked) return 'expect_health does not start at the default';
+		const label = off.closest('label');
+		if (!label || !label.textContent.trim()) return 'the switched-off choice has no label';
+		if (!inputs.some((el) => el.value === 'healthy')) return 'expect_health no longer offers healthy';
 		return '';
 	})()`
 	if problem, err := chromedp.Run(ctx, chromedp.Evaluate[string](dockerHealth)); err != nil {
@@ -345,10 +351,12 @@ func TestDashboardIsActuallyUsable(t *testing.T) {
 	// the page is painted behind the dialog's backdrop. The same question as the
 	// help panel above, by the same means: what is under the pointer.
 	toastForm := `(() => {
-		const type = document.querySelector('#sensor-type');
-		if (!type) return 'the form has no sensor type select';
-		type.value = 'http';
-		type.dispatchEvent(new Event('change', { bubbles: true }));
+		const open = document.querySelector('#modal [data-type-open]');
+		if (!open) return 'the form has no sensor type button';
+		open.click();
+		const tile = document.querySelector('#modal [data-sensor-type="http"]');
+		if (!tile) return 'the form offers no http type';
+		tile.click();
 		const fill = (name, value) => {
 			const field = document.querySelector('#modal [name="' + name + '"]');
 			if (!field) return false;
@@ -713,4 +721,261 @@ func (w testWriter) Write(p []byte) (int, error) {
 		w.t.Logf("%s: %s", w.what, line)
 	}
 	return len(p), nil
+}
+
+// TestTheSensorFormPicksTypesAndOptionsWithoutSelects is the direct encoding of
+// the request behind this form: the type choice and every per-type option are
+// visible controls rather than dropdowns.
+//
+// It also holds the two behaviours a visual chooser can quietly break: Escape
+// belongs to the panel before the dialog, and an option two types share
+// (server_name here) survives a type switch.
+func TestTheSensorFormPicksTypesAndOptionsWithoutSelects(t *testing.T) {
+	browser := findBrowser(t)
+	base := startServer(t, buildBinary(t))
+	ctx, done := openBrowser(t, browser)
+	defer done()
+	dir := artifactsDir(t)
+
+	firstRun(t, ctx, base, dir)
+
+	if err := withTimeout(ctx, func(tctx context.Context) error {
+		return chromedp.Do(tctx,
+			chromedp.Click(`#new-sensor`),
+			chromedp.WaitVisible(`#modal[open] [data-type-open]`),
+		)
+	}); err != nil {
+		capture(t, ctx, dir, "sensor-type-form")
+		t.Fatalf("could not open the sensor form: %v", err)
+	}
+
+	type initial struct {
+		Selects int    `json:"selects"`
+		Hidden  string `json:"hidden"`
+		Value   string `json:"value"`
+		Tiles   int    `json:"tiles"`
+		Groups  int    `json:"groups"`
+	}
+	got := read[initial](t, ctx, `(() => ({
+		selects: document.querySelectorAll('#modal select[name="type"]').length,
+		hidden: document.querySelector('#sensor-type')?.type || '',
+		value: document.querySelector('#sensor-type')?.value || '',
+		tiles: document.querySelectorAll('#modal [data-sensor-type]').length,
+		groups: document.querySelectorAll('#modal [data-type-group]').length,
+	}))()`, "the type field")
+
+	if got.Selects != 0 {
+		t.Errorf("the form still has a type select; the chooser was supposed to replace it")
+	}
+	if got.Hidden != "hidden" || got.Value != "http" {
+		t.Errorf("the form control is %q with value %q, want a hidden input holding http",
+			got.Hidden, got.Value)
+	}
+	if got.Tiles != 13 || got.Groups != 4 {
+		t.Errorf("the chooser has %d tiles in %d groups, want 13 in 4",
+			got.Tiles, got.Groups)
+	}
+
+	// Escape closes the panel and leaves the dialog — and the half-filled form —
+	// where it was.
+	if err := withTimeout(ctx, func(tctx context.Context) error {
+		return chromedp.Do(tctx,
+			chromedp.Click(`#modal [data-type-open]`),
+			chromedp.WaitVisible(`#modal .type-panel:not([hidden])`),
+			chromedp.KeyEvent("\x1b"),
+		)
+	}); err != nil {
+		capture(t, ctx, dir, "sensor-type-escape")
+		t.Fatalf("could not exercise Escape in the type chooser: %v", err)
+	}
+	escaped := read[map[string]bool](t, ctx, `(() => ({
+		dialog: document.querySelector('#modal').open,
+		panel: !document.querySelector('#modal .type-panel').hidden,
+		focused: document.activeElement === document.querySelector('#modal [data-type-open]'),
+	}))()`, "the state after Escape")
+	if !escaped["dialog"] || escaped["panel"] || !escaped["focused"] {
+		t.Errorf("Escape left dialog=%v panel=%v focused=%v, want true false true",
+			escaped["dialog"], escaped["panel"], escaped["focused"])
+	}
+
+	// The search narrows the tiles and Enter picks the first one; it must not
+	// submit the form.
+	if err := withTimeout(ctx, func(tctx context.Context) error {
+		return chromedp.Do(tctx,
+			chromedp.Click(`#modal [data-type-open]`),
+			chromedp.WaitVisible(`#modal .type-panel:not([hidden])`),
+			chromedp.SendKeys(`#modal [data-type-query]`, "dock"),
+		)
+	}); err != nil {
+		capture(t, ctx, dir, "sensor-type-search")
+		t.Fatalf("could not search the type chooser: %v", err)
+	}
+	type filtered struct {
+		Visible []string `json:"visible"`
+		Groups  int      `json:"groups"`
+	}
+	found := read[filtered](t, ctx, `(() => ({
+		visible: [...document.querySelectorAll('#modal [data-sensor-type]')]
+			.filter((tile) => !tile.hidden).map((tile) => tile.dataset.sensorType),
+		groups: [...document.querySelectorAll('#modal [data-type-group]')].filter((g) => !g.hidden).length,
+	}))()`, "the filtered type tiles")
+	if !slices.Equal(found.Visible, []string{"docker"}) || found.Groups != 1 {
+		t.Errorf("searching for dock shows %v in %d groups, want [docker] in 1",
+			found.Visible, found.Groups)
+	}
+
+	if err := withTimeout(ctx, func(tctx context.Context) error {
+		return chromedp.Do(tctx,
+			chromedp.KeyEvent("\r"),
+			// The chooser returns focus in a task of its own, after Enter's
+			// default action has been resolved; waiting for it is what makes the
+			// assertion below about the settled state rather than a race.
+			chromedp.Poll[chromedp.Void](
+				`document.activeElement === document.querySelector('#modal [data-type-open]')`,
+				chromedp.WithPollingTimeout(5*time.Second)),
+		)
+	}); err != nil {
+		t.Fatalf("could not press Enter in the type search: %v", err)
+	}
+	type afterPick struct {
+		PanelHidden bool   `json:"panelHidden"`
+		Value       string `json:"value"`
+		Label       string `json:"label"`
+		Placeholder string `json:"placeholder"`
+		Summary     string `json:"summary"`
+		Focused     bool   `json:"focused"`
+		Help        bool   `json:"help"`
+	}
+	picked := read[afterPick](t, ctx, `(() => ({
+		panelHidden: document.querySelector('#modal .type-panel').hidden,
+		value: document.querySelector('#sensor-type').value,
+		label: document.querySelector('#modal [data-type-label]').textContent.trim(),
+		placeholder: document.querySelector('#modal [name="target"]').placeholder,
+		summary: document.querySelector('#option-summary').textContent.trim(),
+		focused: document.activeElement === document.querySelector('#modal [data-type-open]'),
+		help: !!document.querySelector('#target-label .help-dot'),
+	}))()`, "the form after choosing docker")
+	if !picked.PanelHidden || picked.Value != "docker" || !picked.Focused {
+		t.Errorf("after Enter the panel is hidden=%v, value=%q, focused=%v, want true docker true",
+			picked.PanelHidden, picked.Value, picked.Focused)
+	}
+	if picked.Label != "Docker container" || picked.Summary != "Docker container" {
+		t.Errorf("the type reads %q and the fold %q, want Docker container in both",
+			picked.Label, picked.Summary)
+	}
+	if picked.Placeholder != "nginx" {
+		t.Errorf("the target placeholder is %q, want nginx", picked.Placeholder)
+	}
+	if !picked.Help {
+		t.Error("changing the type removed the ? from the target label")
+	}
+
+	// The health choice is a visible chip group, with the switched-off choice
+	// first and selected.
+	type health struct {
+		Selects  int      `json:"selects"`
+		Values   []string `json:"values"`
+		Checked  string   `json:"checked"`
+		OffLabel string   `json:"offLabel"`
+	}
+	choice := read[health](t, ctx, `(() => {
+		const inputs = [...document.querySelectorAll('#modal [name="opt_expect_health"]')];
+		const off = inputs.find((el) => el.value === '');
+		return {
+			selects: document.querySelectorAll('#option-fields select').length,
+			values: inputs.map((el) => el.value),
+			checked: inputs.find((el) => el.checked)?.value ?? '',
+			offLabel: off?.closest('label')?.textContent.trim() ?? '',
+		};
+	})()`, "the docker health choices")
+	if choice.Selects != 0 {
+		t.Errorf("the option fields still hold %d select(s)", choice.Selects)
+	}
+	if !slices.Equal(choice.Values, []string{"", "healthy", "starting", "unhealthy"}) {
+		t.Errorf("the health choices are %v, want the empty one plus the three statuses",
+			choice.Values)
+	}
+	if choice.Checked != "" || choice.OffLabel == "" {
+		t.Errorf("health starts at %q with the off choice labelled %q, want the empty choice and a label",
+			choice.Checked, choice.OffLabel)
+	}
+
+	if _, err := chromedp.Run(ctx, chromedp.Evaluate[bool](
+		`(() => {
+			document.querySelector('#modal [name="opt_expect_health"][value="healthy"]').closest('label').click();
+			return true;
+		})()`)); err != nil {
+		t.Fatalf("could not click the healthy chip: %v", err)
+	}
+	if got := read[string](t, ctx,
+		`document.querySelector('#modal [name="opt_expect_health"]:checked')?.value ?? ''`,
+		"the chosen health"); got != "healthy" {
+		t.Errorf("clicking the healthy chip selected %q", got)
+	}
+
+	switchType := func(value string) {
+		t.Helper()
+		expr := fmt.Sprintf(`(() => {
+			document.querySelector('#modal [data-type-open]').click();
+			document.querySelector('#modal [data-sensor-type="%s"]').click();
+			return true;
+		})()`, value)
+		if _, err := chromedp.Run(ctx, chromedp.Evaluate[bool](expr)); err != nil {
+			t.Fatalf("could not switch the sensor type to %s: %v", value, err)
+		}
+	}
+
+	// HTTP's method and boolean options are chip groups too, and the value a
+	// person clicks is the value the form reads.
+	switchType("http")
+	type httpOptions struct {
+		Selects int      `json:"selects"`
+		Method  []string `json:"method"`
+		Follow  []string `json:"follow"`
+	}
+	httpChoice := read[httpOptions](t, ctx, `(() => ({
+		selects: document.querySelectorAll('#option-fields select').length,
+		method: [...document.querySelectorAll('#modal [name="opt_method"]')].map((el) => el.value),
+		follow: [...document.querySelectorAll('#modal [name="opt_follow_redirects"]')].map((el) => el.value),
+	}))()`, "the http option choices")
+	if httpChoice.Selects != 0 {
+		t.Errorf("the http options still hold %d select(s)", httpChoice.Selects)
+	}
+	if len(httpChoice.Method) != 7 || !slices.Equal(httpChoice.Follow, []string{"", "true", "false"}) {
+		t.Errorf("method has %d choices and follow %v, want seven and the three-state default",
+			len(httpChoice.Method), httpChoice.Follow)
+	}
+
+	if _, err := chromedp.Run(ctx, chromedp.Evaluate[bool](`(() => {
+		document.querySelector('#modal [name="opt_method"][value="HEAD"]').closest('label').click();
+		document.querySelector('#modal [name="opt_follow_redirects"][value="false"]').closest('label').click();
+		return true;
+	})()`)); err != nil {
+		t.Fatalf("could not click the method and boolean chips: %v", err)
+	}
+	chosen := read[map[string]string](t, ctx, `(() => ({
+		method: document.querySelector('#modal [name="opt_method"]:checked')?.value ?? '',
+		follow: document.querySelector('#modal [name="opt_follow_redirects"]:checked')?.value ?? '',
+	}))()`, "the chosen http options")
+	if chosen["method"] != "HEAD" || chosen["follow"] != "false" {
+		t.Errorf("clicking HEAD and No selected method=%q follow=%q", chosen["method"], chosen["follow"])
+	}
+
+	// server_name exists on both TCP and TLS; switching must carry it across,
+	// which is what the old select's change handler did.
+	switchType("tcp")
+	if _, err := chromedp.Run(ctx, chromedp.Evaluate[bool](`(() => {
+		const field = document.querySelector('#modal [name="opt_server_name"]');
+		field.value = 'db.internal';
+		field.dispatchEvent(new Event('input', { bubbles: true }));
+		return true;
+	})()`)); err != nil {
+		t.Fatalf("could not fill server_name: %v", err)
+	}
+	switchType("tls")
+	if got := read[string](t, ctx,
+		`document.querySelector('#modal [name="opt_server_name"]')?.value ?? ''`,
+		"server_name after the type switch"); got != "db.internal" {
+		t.Errorf("server_name became %q after switching tcp → tls, want db.internal", got)
+	}
 }

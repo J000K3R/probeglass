@@ -507,6 +507,20 @@ func capture(ctx context.Context, base, out string) error {
 	if err := shot(ctx, out, "sensor-form", 1600, 1000); err != nil {
 		return err
 	}
+	// The type chooser, opened on that same form: the grouped, searchable
+	// alternative to a thirteen-entry dropdown.
+	if err := do(ctx, "the sensor type chooser",
+		chromedp.Click(`#modal [data-type-open]`),
+		chromedp.WaitVisible(`#modal .type-panel .type-tile`),
+	); err != nil {
+		return err
+	}
+	if err := shot(ctx, out, "sensor-type-picker", 1600, 1000, chromedp.Sleep(300*time.Millisecond)); err != nil {
+		return err
+	}
+	if err := do(ctx, "closing the type chooser", chromedp.Click(`#modal [data-type-open]`)); err != nil {
+		return err
+	}
 	// The icon picker, opened on that same form. It is the one control in the
 	// dashboard whose body is pictures rather than words, and a page that describes
 	// choosing a symbol reads better with the grid of them than without it. The

@@ -355,7 +355,7 @@ and nothing else: it never starts, stops or changes a container.
 none — with the check left at its default, such a container is reported down with
 the reason spelled out. Set `expect_health` empty for those; the container's
 running state, status and restart count are still checked and reported. In the
-dashboard this is the empty entry in the health dropdown, labelled "only check
+dashboard this is the first chip in the health choice, labelled "only check
 that it runs".
 
 A socket that is missing or unreadable is a probe failure rather than a

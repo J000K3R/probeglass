@@ -1598,6 +1598,36 @@ label.field.check > span { color: var(--text); font-size: var(--text-3); }
 .options summary { cursor: pointer; font-size: var(--text-3); color: var(--text-dim); }
 .options > div { margin-top: var(--pad-sm); }
 
+/* A small set of choices as chips around one native radio group. The radio is
+   the control — keyboard, form reading and screen readers keep working — and the
+   chip is what it looks like. The empty choice is a chip like the others on
+   purpose: "leave it at the default" is a decision somebody makes and has to be
+   able to see, not the absence of a field. */
+.choice-field {
+  display: grid;
+  gap: var(--sp-1);
+  align-content: start;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.choice-field > legend { padding: 0; font-size: var(--text-3); color: var(--text-dim); font-weight: 500; }
+.choice-group { display: flex; flex-wrap: wrap; gap: var(--sp-1); }
+.chip-choice {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--ctl-h);
+}
+.chip-choice input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.chip-choice:has(input:checked) {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+.chip-choice:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+
 .form-actions { display: flex; gap: var(--sp-2); align-items: end; }
 .form-error { color: var(--crit); font-size: var(--text-3); min-height: 1.1em; }
 
@@ -2827,6 +2857,73 @@ label.field.check > span { color: var(--text); font-size: var(--text-3); }
 }
 .icon-upload { cursor: pointer; }
 .icon-field.is-busy .icon-upload { opacity: 0.5; pointer-events: none; }
+
+/* The sensor type chooser. It reuses the icon picker's field, button and panel;
+   only the grid is wider and the panel opens to the left, because the field
+   stands in the right-hand column of the name/type row and a 560-pixel panel
+   growing to the right would leave the dialog it belongs to. */
+.type-field { display: block; width: 100%; min-width: 0; }
+.type-panel {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + 6px);
+  left: auto;
+  right: 0;
+  width: min(560px, calc(100vw - 64px));
+  max-height: min(560px, calc(100vh - 180px));
+  overflow-y: auto;
+  padding: var(--sp-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+.type-search { display: flex; flex-direction: column; gap: var(--sp-1); margin-bottom: var(--sp-3); }
+.type-search-label {
+  color: var(--text-dim);
+  font-size: var(--text-5);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.type-search-note { margin: var(--sp-1) 0 0; color: var(--text-dim); font-size: var(--text-4); line-height: 1.4; }
+.type-group-title {
+  margin: var(--sp-3) var(--sp-0) var(--sp-2);
+  color: var(--text-dim);
+  font-size: var(--text-5);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.type-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: var(--sp-1); }
+.type-tile {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-4);
+  line-height: 1.25;
+  text-align: left;
+  cursor: pointer;
+}
+.type-tile:hover { background: var(--surface-2); border-color: var(--border); }
+.type-tile.is-current {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.type-tile-icon { display: inline-flex; flex: none; }
+.type-tile-text { display: grid; min-width: 0; }
+.type-tile-label { overflow-wrap: anywhere; }
+.type-tile-target { color: var(--text-dim); font-size: var(--text-5); }
+
+@media (max-width: 520px) {
+  /* The field is the full width of the row here, so there is no right column to
+     open away from; anchoring left keeps the panel over its own field. */
+  .type-panel { left: 0; right: auto; width: calc(100vw - 48px); }
+}
 
 /* A group's heading wearing the colour somebody gave it.
  *

@@ -11,7 +11,7 @@ here and what the release says are the same document.
 
 | Version | Released | In one line |
 | --- | --- | --- |
-| [Unreleased] | — | Six more sensor types, Gotify as a seventh channel, and example pictures and maintenance windows on the first dashboard |
+| [Unreleased] | — | Six more sensor types, a grouped sensor chooser, Gotify as a seventh channel, and example pictures and maintenance windows on the first dashboard |
 | [0.2.2] | 2026-10-18 | A symbol on every sensor, place and group — ours, yours, or searched for online — and one set of measurements for the whole dashboard |
 | [0.2.1] | 2026-10-16 | A sensor under maintenance says so |
 | [0.2.0] | 2026-10-16 | Maintenance windows, a second interface language, and the container as the only thing that ships |
@@ -20,6 +20,15 @@ here and what the release says are the same document.
 ## [Unreleased]
 
 ### Added
+
+- **The sensor editor stops being a stack of dropdowns.** The type is a button that
+  opens a grouped, searchable chooser — **Web**, **Network**, **Services** and
+  **Infrastructure** — with a symbol and the shape of each target on every tile. The
+  per-type choices below it (method, record type, SNMP version, health, and every
+  yes/no) are chips, so a value is one click and visible. "Leave it at the default"
+  is a chip of its own, not an empty field somebody has to work out how to clear.
+  `site` and `parent` remain native lists: those are dynamic sets of entities, not
+  parameters of a check.
 
 - **Six more sensor types.** Each answers a question the existing probes could only
   approximate, and each is the smallest protocol exchange that answers it:
