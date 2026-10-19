@@ -4899,10 +4899,10 @@ function openSiteDialog(existing, { onSaved, onClosed, hint } = {}) {
       <label class="field adv-hide"><span>${esc(t('sites.name'))}</span>
         <input name="site_name" value="${esc(site.name)}" maxlength="64" required></label>
       <p class="muted small adv-hide">${esc(t('sites.nameHint'))}</p>
-      <label class="field"><span>${esc(t('sites.kind'))}</span>
-        <select name="kind">
-          ${['local', 'external'].map((k) => `<option value="${k}"${k === site.kind ? ' selected' : ''}>${esc(t(`sites.kind.${k}`))}</option>`).join('')}
-        </select></label>
+      ${choiceGroup('kind', site.kind, [
+        { value: 'local', label: t('sites.kind.local') },
+        { value: 'external', label: t('sites.kind.external') },
+      ], esc(t('sites.kind')))}
       <div class="field adv-hide"><span>${withHelp(t('icons.label'), 'help.sites.icon')}</span>
         ${iconUI.iconFieldMarkup(site.icon || '')}</div>
       <div class="grid-2">
@@ -5078,12 +5078,11 @@ function openLabelEditor(kind, name, settings, { creating = false, initialName =
                value="${esc(initialName)}"></label>` : ''}
       <div class="field"><span>${withHelp(t('icons.label'), isTag ? 'help.tags.icon' : 'help.groups.icon')}</span>
         ${iconUI.iconFieldMarkup(row.icon || '')}</div>
-      <label class="field"><span>${withHelp(t(isTag ? 'tags.colour' : 'groups.colour'), isTag ? 'help.tags.colour' : 'help.groups.colour')}</span>
-        <select name="colour">
-          <option value="">${esc(t('groups.colourNone'))}</option>
-          ${(state.accents || ACCENTS).map((c) =>
-            `<option value="${esc(c)}"${c === row.colour ? ' selected' : ''}>${esc(t(`settings.accent.${c}`))}</option>`).join('')}
-        </select></label>
+      ${choiceGroup('colour', row.colour || '', [
+        { value: '', label: t('groups.colourNone') },
+        ...(state.accents || ACCENTS).map((c) => ({ value: c, label: t(`settings.accent.${c}`) })),
+      ], withHelp(t(isTag ? 'tags.colour' : 'groups.colour'),
+        isTag ? 'help.tags.colour' : 'help.groups.colour'))}
       <label class="field"><span>${esc(t(isTag ? 'tags.order' : 'groups.order'))}</span>
         <input name="sort_order" type="number" value="${Number(row.sort_order) || 0}"></label>
       <p class="muted small">${esc(t(isTag ? 'tags.orderHint' : 'groups.orderHint'))}</p>`,

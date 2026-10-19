@@ -281,7 +281,7 @@ func TestTheGroupsPanelDressesAHeading(t *testing.T) {
 			chromedp.Click(`#groups-panel [data-action="group-edit"][data-name="Examples"]`),
 			chromedp.WaitVisible(`#group-form [data-icon-open]`),
 			chooseBuiltin("builtin:bell"),
-			chromedp.SetValue(`#group-form [name="colour"]`, "amber"),
+			chromedp.Click(`#group-form label.chip-choice:has(input[value="amber"])`),
 			chromedp.Click(`#group-save`),
 			chromedp.WaitNotPresent(`#modal-group[open]`),
 		)
