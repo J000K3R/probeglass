@@ -1173,8 +1173,10 @@ func assignSite(t *testing.T, ctx context.Context, dir, site string) {
 			chromedp.Evaluate[chromedp.Void](`location.hash = '#/dashboard'`),
 			chromedp.WaitVisible(`#groups .card`),
 			chromedp.Click(`#groups .card [data-action="edit"]`),
-			chromedp.WaitVisible(`#modal select[name="site"]`),
-			chromedp.SetValue(`#modal select[name="site"]`, site),
+			chromedp.WaitVisible(`#modal [data-pick-field="site"] [data-pick-open]`),
+			chromedp.Click(`#modal [data-pick-field="site"] [data-pick-open]`),
+			chromedp.WaitVisible(`#modal .pick-panel:not([hidden])`),
+			chromedp.Click(fmt.Sprintf(`#modal [data-pick-field="site"] [data-pick-value="%s"]`, site)),
 			chromedp.Click(`#modal-save`),
 			chromedp.WaitNotVisible(`#modal`),
 			// The write has to have landed before the views are asked about it:
@@ -2303,7 +2305,7 @@ func openNewSensorForm(t *testing.T, ctx context.Context, dir string) {
 		return chromedp.Do(tctx,
 			chromedp.WaitVisible(`#new-sensor`),
 			chromedp.Click(`#new-sensor`),
-			chromedp.WaitVisible(`#modal select[name="site"]`),
+			chromedp.WaitVisible(`#modal [data-pick-field="site"] [data-pick-open]`),
 		)
 	}); err != nil {
 		capture(t, ctx, dir, "sensor-form-missing")
@@ -2311,25 +2313,17 @@ func openNewSensorForm(t *testing.T, ctx context.Context, dir string) {
 	}
 }
 
-// pickTheNewSiteEntry chooses the last entry in the sensor form's place list, which
-// is the one that opens the site editor.
+// pickTheNewSiteEntry opens the sensor form's place picker and chooses its
+// "New site…" tile, which opens the site editor instead of filling the field.
 //
-// By position rather than by value: the value is an internal marker, and a test that
-// hard-coded it would go on passing after the marker was renamed while the entry it
-// stands for had stopped being the last one. What the entry is called is read back
-// separately in the test, because an entry that does not say what it does is a
-// button nobody presses.
-//
-// And by hand rather than with chromedp.SetValue. SetValue assigns `.value` in
-// JavaScript and dispatches no event — the note over clearSearch in search_test.go
-// says the same thing about the search box — while the entry that opens the site
-// editor is brought up by a change event. With SetValue the editor would never open
-// and the test would be measuring one way of setting a field instead of the form.
-var pickTheNewSiteEntry = chromedp.Evaluate[chromedp.Void](`(() => {
-  const el = document.querySelector('#modal select[name="site"]');
-  el.value = el.options[el.options.length - 1].value;
-  el.dispatchEvent(new Event('change', { bubbles: true }));
-})()`)
+// The tile is identified by its own data attribute rather than by its position in
+// the list: a test that said "the last one" would go on passing after the entry
+// was moved while the thing it stands for had stopped being reachable.
+var pickTheNewSiteEntry = chromedp.Steps(
+	chromedp.Click(`#modal [data-pick-field="site"] [data-pick-open]`),
+	chromedp.WaitVisible(`#modal .pick-panel:not([hidden])`),
+	chromedp.Click(`#modal [data-pick-new-site]`),
+)
 
 // siteDialogOpen says whether the site editor is up.
 //
@@ -2339,7 +2333,7 @@ var pickTheNewSiteEntry = chromedp.Evaluate[chromedp.Void](`(() => {
 const siteDialogOpen = `document.querySelector('#modal-site').open`
 
 // thePlacePicker is the sensor form's place picker, read as what it would send.
-const thePlacePicker = `document.querySelector('#modal select[name="site"]').value`
+const thePlacePicker = `document.querySelector('#modal input[name="site"]').value`
 
 // sensorFormState reads the sensor form field by field, as a list of `name=value`.
 //
@@ -2434,7 +2428,7 @@ func TestASiteCanBeMadeWhileTheSensorIsMade(t *testing.T) {
 	}
 
 	labels := read[[]string](t, ctx,
-		`Array.from(document.querySelectorAll('#modal select[name="site"] option')).map(o => o.textContent.trim())`,
+		`[...document.querySelectorAll('#modal [data-pick-field="site"] [data-pick-value] .type-tile-label, #modal [data-pick-field="site"] [data-pick-new-site] .type-tile-label')].map((el) => el.textContent.trim())`,
 		"the entries in the place picker")
 	if len(labels) == 0 {
 		t.Fatalf("the sensor form has no entries in its place picker at all")
@@ -2581,7 +2575,7 @@ func TestASiteCanBeMadeWhileTheSensorIsMade(t *testing.T) {
 			// list and not for the option: a select holding a name the server does not
 			// know is exactly what must not happen.
 			chromedp.Poll[chromedp.Void](
-				fmt.Sprintf(`document.querySelector('#modal select[name="site"]').value === %s`, jsQuote(place)),
+				fmt.Sprintf(`document.querySelector('#modal input[name="site"]').value === %s`, jsQuote(place)),
 				chromedp.WithPollingTimeout(15*time.Second)),
 		)
 	}); err != nil {

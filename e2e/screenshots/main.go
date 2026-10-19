@@ -509,16 +509,51 @@ func capture(ctx context.Context, base, out string) error {
 	}
 	// The type chooser, opened on that same form: the grouped, searchable
 	// alternative to a thirteen-entry dropdown.
+	// The chooser is opened with a scripted click: it is a button inside a dialog
+	// that was just resized for the photograph, and a coordinate click can land on
+	// the element that was there a frame earlier.
+	// The chooser is opened with a scripted click: it is a button inside a dialog
+	// that was just resized for the photograph, and a coordinate click can land on
+	// the element that was there a frame earlier.
+	//
+	// The wait is a poll rather than WaitVisible because a `.type-panel .type-tile`
+	// query matches the hidden site and dependency panels too, and WaitVisible
+	// wants every match visible — including the ones that are meant to be hidden.
 	if err := do(ctx, "the sensor type chooser",
-		chromedp.Click(`#modal [data-type-open]`),
-		chromedp.WaitVisible(`#modal .type-panel .type-tile`),
+		eval(`document.querySelector('#modal [data-type-open]').click()`),
+		chromedp.Poll[chromedp.Void](
+			`!document.querySelector('#modal .type-panel').hidden &&
+			 document.querySelector('#modal .type-panel .type-tile').getClientRects().length > 0`,
+			chromedp.WithPollingTimeout(10*time.Second)),
 	); err != nil {
 		return err
 	}
 	if err := shot(ctx, out, "sensor-type-picker", 1600, 1000, chromedp.Sleep(300*time.Millisecond)); err != nil {
 		return err
 	}
-	if err := do(ctx, "closing the type chooser", chromedp.Click(`#modal [data-type-open]`)); err != nil {
+	if err := do(ctx, "closing the type chooser",
+		eval(`document.querySelector('#modal [data-type-open]').click()`)); err != nil {
+		return err
+	}
+	// The dependency picker: the other sensors with the state each one is in, which
+	// is the point of choosing a parent from a list rather than from a name.
+	if err := do(ctx, "the dependency picker",
+		eval(`document.querySelector('#modal [data-pick-field="parent"] [data-pick-open]').click()`),
+		chromedp.Poll[chromedp.Void](
+			`(() => {
+				const panel = document.querySelector('#modal [data-pick-field="parent"] .pick-panel');
+				const tile = panel && panel.querySelector('.pick-sensor');
+				return !!tile && tile.getClientRects().length > 0;
+			})()`,
+			chromedp.WithPollingTimeout(10*time.Second)),
+	); err != nil {
+		return err
+	}
+	if err := shot(ctx, out, "sensor-parent-picker", 1600, 1000, chromedp.Sleep(300*time.Millisecond)); err != nil {
+		return err
+	}
+	if err := do(ctx, "closing the dependency picker",
+		eval(`document.querySelector('#modal [data-pick-field="parent"] [data-pick-open]').click()`)); err != nil {
 		return err
 	}
 	// The icon picker, opened on that same form. It is the one control in the

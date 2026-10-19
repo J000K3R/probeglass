@@ -978,4 +978,97 @@ func TestTheSensorFormPicksTypesAndOptionsWithoutSelects(t *testing.T) {
 		"server_name after the type switch"); got != "db.internal" {
 		t.Errorf("server_name became %q after switching tcp → tls, want db.internal", got)
 	}
+
+	// The place picker follows the same pattern: no select, a "No site" entry,
+	// and the way to make one.
+	type placePicker struct {
+		Selects int  `json:"selects"`
+		NoSite  bool `json:"noSite"`
+		NewSite bool `json:"newSite"`
+		Sites   int  `json:"sites"`
+		Groups  int  `json:"groups"`
+	}
+	places := read[placePicker](t, ctx, `(() => {
+		const field = document.querySelector('#modal [data-pick-field="site"]');
+		return {
+			selects: document.querySelectorAll('#modal select[name="site"]').length,
+			noSite: [...field.querySelectorAll('[data-pick-value]')].some((b) => b.dataset.pickValue === ''),
+			newSite: !!field.querySelector('[data-pick-new-site]'),
+			sites: [...field.querySelectorAll('[data-pick-value]')].filter((b) => b.dataset.pickValue).length,
+			groups: field.querySelectorAll('[data-pick-group]').length,
+		};
+	})()`, "the place picker")
+	if places.Selects != 0 {
+		t.Errorf("the form still has a site select; the place picker was supposed to replace it")
+	}
+	if !places.NoSite || !places.NewSite || places.Sites == 0 {
+		t.Errorf("the place picker has no-site=%v new-site=%v sites=%d, want both entries and at least one place",
+			places.NoSite, places.NewSite, places.Sites)
+	}
+
+	if _, err := chromedp.Run(ctx, chromedp.Evaluate[bool](`(() => {
+		const field = document.querySelector('#modal [data-pick-field="site"]');
+		const first = [...field.querySelectorAll('[data-pick-value]')].find((b) => b.dataset.pickValue);
+		first.click();
+		return true;
+	})()`)); err != nil {
+		t.Fatalf("could not choose a place: %v", err)
+	}
+	type chosenPlace struct {
+		Value string `json:"value"`
+		Label string `json:"label"`
+	}
+	place := read[chosenPlace](t, ctx, `(() => ({
+		value: document.querySelector('#modal input[name="site"]').value,
+		label: document.querySelector('#modal [data-pick-field="site"] [data-pick-label]').textContent.trim(),
+	}))()`, "the chosen place")
+	if place.Value == "" || place.Label != place.Value {
+		t.Errorf("choosing a place left the field value=%q label=%q", place.Value, place.Label)
+	}
+
+	// The dependency picker shows the other sensors with the status each one has
+	// right now, and choosing one puts the same status on the button.
+	type dependencyPicker struct {
+		Selects int `json:"selects"`
+		Sensors int `json:"sensors"`
+		Pills   int `json:"pills"`
+	}
+	dependencies := read[dependencyPicker](t, ctx, `(() => {
+		const field = document.querySelector('#modal [data-pick-field="parent"]');
+		return {
+			selects: document.querySelectorAll('#modal select[name="parent"]').length,
+			sensors: [...field.querySelectorAll('[data-pick-value]')].filter((b) => b.dataset.pickValue).length,
+			pills: field.querySelectorAll('.pick-sensor .pill').length,
+		};
+	})()`, "the dependency picker")
+	if dependencies.Selects != 0 {
+		t.Errorf("the form still has a parent select; the dependency picker was supposed to replace it")
+	}
+	if dependencies.Sensors == 0 || dependencies.Pills != dependencies.Sensors {
+		t.Errorf("the dependency picker lists %d sensors and %d status pills, want one pill per sensor",
+			dependencies.Sensors, dependencies.Pills)
+	}
+
+	if _, err := chromedp.Run(ctx, chromedp.Evaluate[bool](`(() => {
+		const field = document.querySelector('#modal [data-pick-field="parent"]');
+		const first = [...field.querySelectorAll('[data-pick-value]')].find((b) => b.dataset.pickValue);
+		first.click();
+		return true;
+	})()`)); err != nil {
+		t.Fatalf("could not choose a dependency: %v", err)
+	}
+	type chosenParent struct {
+		Value  string `json:"value"`
+		Pill   bool   `json:"pill"`
+		Button string `json:"button"`
+	}
+	parent := read[chosenParent](t, ctx, `(() => ({
+		value: document.querySelector('#modal input[name="parent"]').value,
+		pill: !!document.querySelector('#modal [data-pick-field="parent"] [data-pick-status] .pill'),
+		button: document.querySelector('#modal [data-pick-field="parent"] .icon-button-label').textContent.trim(),
+	}))()`, "the chosen dependency")
+	if parent.Value == "" || parent.Button != parent.Value || !parent.Pill {
+		t.Errorf("choosing a dependency left value=%q label=%q pill=%v, want the name and its status",
+			parent.Value, parent.Button, parent.Pill)
+	}
 }

@@ -352,10 +352,16 @@ $('#modal').addEventListener('cancel', (event) => {
     event.preventDefault();
     return;
   }
-  const panel = document.querySelector('#modal .type-panel:not([hidden])');
+  const panel = document.querySelector('#modal .type-panel:not([hidden]), #modal .pick-panel:not([hidden])');
   if (panel) {
     event.preventDefault();
-    closeTypePanel(panel.closest('[data-type-field]'), { restoreFocus: true });
+    if (panel.classList.contains('type-panel')) {
+      closeTypePanel(panel.closest('[data-type-field]'), { restoreFocus: true });
+    } else {
+      const field = panel.closest('[data-pick-field]');
+      closePickPanel(field);
+      field?.querySelector('[data-pick-open]')?.focus();
+    }
   }
 });
 
@@ -904,6 +910,9 @@ function showApp() {
   // The sensor type chooser, for the same reason: its field is rebuilt with the
   // sensor dialog on every open, and one delegated listener set survives that.
   mountSensorTypePicker();
+
+  // The place and dependency pickers in the same form, wired the same way.
+  mountPickPanels();
 
   applyHash();
 
@@ -3076,45 +3085,147 @@ function readOptions(form, def) {
   return options;
 }
 
-/**
- * siteOptions is the place picker's entries, for the form's markup and for putting
- * the picker back together afterwards.
- *
- * A list to choose from rather than a name to type: a site is a row in another
- * table, and a typo here is refused by the database. Offering only what exists
- * makes the mistake impossible instead of explaining it.
- *
- * The last entry is the way out of that: a sensor is often the moment somebody
- * first knows where it stands, and sending them to Settings to make the site and
- * then back here to save the sensor is a trip that loses the half-filled form.
- * Choosing it opens the site editor on top of this window — see
- * openSiteFromSensor — so the place is made in the one dialog that makes places,
- * coordinates and all.
- *
- * It is a function and not a line inside the markup because the picker has to be
- * redrawn from it: the form is built once, and a place made from this very form is
- * made after that. Without the redraw the sensor would have to be pointed at the
- * place it just made by choosing from a list the place is not in yet.
- */
-/**
- * parentOptions lists the other sensors this one could sit behind.
- *
- * The sensor being edited is left out, and so is anything it would make a circle with
- * — which is only the sensor itself, since the server refuses a deeper circle and the
- * list cannot know about it. Offering a sensor that would be refused is offering
- * something that does not work.
- */
-function parentOptions(selected, selfName) {
-  const other = (state.sensors || []).filter((c) => c.name !== selfName);
-  return `<option value="">${esc(t('sensor.parentNone'))}</option>` +
-    other.map((c) => `<option value="${esc(c.name)}"${c.name === selected ? ' selected' : ''}>${esc(c.name)}</option>`).join('');
+/** siteIcon is the symbol a place is drawn with: its own, or one from its kind. */
+function siteIcon(site) {
+  if (site?.icon) return site.icon;
+  return site?.kind === 'external' ? 'builtin:cloud' : 'builtin:router';
 }
 
-function siteOptions(selected) {
-  return `<option value="">${esc(t('sites.none'))}</option>` +
-    (state.sites || []).map((s) =>
-      `<option value="${esc(s.name)}"${s.name === selected ? ' selected' : ''}>${esc(s.name)}</option>`).join('') +
-    `<option value="${NEW_SITE}">${esc(t('sites.newOption'))}</option>`;
+/**
+ * siteTile is one place in the site chooser. The "no site" entry has no icon and
+ * the empty value, which is what the form sends and what the hidden input holds.
+ */
+function siteTile(site, selected, none = false) {
+  const value = none ? '' : site.name;
+  const label = none ? t('sites.none') : site.name;
+  const sub = none ? '' : (site.kind === 'external' ? t('sites.kind.external') : t('sites.kind.local'));
+  return `<button type="button" class="type-tile${value === (selected || '') ? ' is-current' : ''}"
+      data-pick-value="${esc(value)}" title="${esc(label)}">
+    <span class="type-tile-icon">${none ? '' : iconUI.iconMarkup(siteIcon(site), { size: 18 })}</span>
+    <span class="type-tile-text">
+      <span class="type-tile-label">${esc(label)}</span>
+      ${sub ? `<small class="type-tile-target">${esc(sub)}</small>` : ''}
+    </span>
+  </button>`;
+}
+
+/** sitePanelMarkup is the grouped place chooser, rendered with the form. */
+function sitePanelMarkup(selected) {
+  const sites = state.sites || [];
+  const groups = ['local', 'external'].map((kind) => {
+    const list = sites.filter((s) => (s.kind || 'local') === kind);
+    if (!list.length) return '';
+    return `<section class="type-group" data-pick-group="${esc(kind)}">
+      <p class="type-group-title">${esc(kind === 'external' ? t('sites.kind.external') : t('sites.kind.local'))}</p>
+      <div class="type-grid">${list.map((s) => siteTile(s, selected)).join('')}</div>
+    </section>`;
+  }).join('');
+  return `
+    <div class="type-search">
+      <label class="type-search-label" for="sensor-site-search">${esc(t('sensor.siteSearch'))}</label>
+      <input type="search" id="sensor-site-search" data-pick-query
+             placeholder="${esc(t('sensor.siteSearchPlaceholder'))}" autocomplete="off" spellcheck="false">
+      <p class="type-search-note" data-pick-note hidden></p>
+    </div>
+    <div class="type-grid">${siteTile({}, selected, true)}</div>
+    ${groups || `<p class="type-search-note">${esc(t('sites.empty'))}</p>`}
+    <div class="type-grid pick-new">
+      <button type="button" class="type-tile" data-pick-new-site>
+        <span class="type-tile-icon" aria-hidden="true">+</span>
+        <span class="type-tile-text"><span class="type-tile-label">${esc(t('sites.newOption'))}</span></span>
+      </button>
+    </div>`;
+}
+
+/**
+ * parentPanelMarkup lists the other sensors this one could sit behind, with the
+ * status each one has right now.
+ *
+ * Sorted by state before by name: a down sensor is the one somebody is looking
+ * for when they make this choice, and it should be at the top rather than
+ * somewhere in the alphabet. The sensor being edited is left out; the server
+ * refuses a deeper circle, and offering what would be refused is offering
+ * something that does not work.
+ */
+function parentPanelMarkup(selected, selfName) {
+  const rank = { down: 0, warn: 1, unknown: 2, paused: 3, up: 4 };
+  const others = [...(state.sensors || [])]
+    .filter((c) => c.name !== selfName)
+    .sort((a, b) => (rank[a.status] ?? 2) - (rank[b.status] ?? 2) || a.name.localeCompare(b.name));
+  const tiles = others.map((c) => `
+    <button type="button" class="type-tile pick-sensor${c.name === selected ? ' is-current' : ''}"
+            data-pick-value="${esc(c.name)}" title="${esc(c.name)}">
+      <span class="type-tile-icon">${iconUI.iconMarkup(c.icon || 'builtin:server', { size: 18 })}</span>
+      <span class="type-tile-text">
+        <span class="type-tile-label">${esc(c.name)}</span>
+        ${c.group ? `<small class="type-tile-target">${esc(c.group)}</small>` : ''}
+      </span>
+      ${statusPill(c)}
+    </button>`).join('');
+  return `
+    <div class="type-search">
+      <label class="type-search-label" for="sensor-parent-search">${esc(t('sensor.parentSearch'))}</label>
+      <input type="search" id="sensor-parent-search" data-pick-query
+             placeholder="${esc(t('sensor.parentSearchPlaceholder'))}" autocomplete="off" spellcheck="false">
+      <p class="type-search-note" data-pick-note hidden></p>
+    </div>
+    <div class="type-grid pick-grid">
+      <button type="button" class="type-tile${selected ? '' : ' is-current'}" data-pick-value=""
+              title="${esc(t('sensor.parentNone'))}">
+        <span class="type-tile-label">${esc(t('sensor.parentNone'))}</span>
+      </button>
+    </div>
+    <section class="type-group" data-pick-group="others">
+      <p class="type-group-title">${esc(t('sensor.parentOthers'))}</p>
+      ${tiles
+        ? `<div class="type-grid pick-grid">${tiles}</div>`
+        : `<p class="type-search-note">${esc(t('sensor.parentEmpty'))}</p>`}
+    </section>`;
+}
+
+/** siteFieldMarkup is the place picker as a field, in the type chooser's style. */
+function siteFieldMarkup(selected) {
+  const site = (state.sites || []).find((s) => s.name === selected);
+  return `
+    <div class="field-row">
+      <label id="sensor-site-label">${withHelp(t('sensor.site'), 'help.sensor.site')}</label>
+      <div class="icon-field type-field pick-field" data-pick-field="site">
+        <input type="hidden" name="site" id="sensor-site" value="${esc(selected || '')}">
+        <button type="button" class="icon-button" data-pick-open
+                aria-haspopup="true" aria-expanded="false" aria-controls="sensor-site-panel"
+                aria-labelledby="sensor-site-label sensor-site-value">
+          <span class="icon-slot" data-pick-icon>${selected ? iconUI.iconMarkup(siteIcon(site), { size: 18 }) : ''}</span>
+          <span class="icon-button-label" id="sensor-site-value" data-pick-label>${esc(selected || t('sites.none'))}</span>
+          <svg class="icon-caret" viewBox="0 0 12 12" width="12" height="12" aria-hidden="true">
+            <path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.8"
+                  stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <div class="type-panel pick-panel" id="sensor-site-panel" hidden>${sitePanelMarkup(selected)}</div>
+      </div>
+    </div>`;
+}
+
+/** parentFieldMarkup is the dependency picker: a sensor, with its state. */
+function parentFieldMarkup(selected, selfName) {
+  const sensor = (state.sensors || []).find((c) => c.name === selected);
+  return `
+    <div class="field-row">
+      <label id="sensor-parent-label">${withHelp(t('sensor.parent'), 'help.sensor.parent')}</label>
+      <div class="icon-field type-field pick-field" data-pick-field="parent">
+        <input type="hidden" name="parent" id="sensor-parent" value="${esc(selected || '')}">
+        <button type="button" class="icon-button" data-pick-open
+                aria-haspopup="true" aria-expanded="false" aria-controls="sensor-parent-panel"
+                aria-labelledby="sensor-parent-label sensor-parent-value sensor-parent-status">
+          <span class="icon-slot" data-pick-icon>${selected ? iconUI.iconMarkup(sensor?.icon || 'builtin:server', { size: 18 }) : ''}</span>
+          <span class="icon-button-label" id="sensor-parent-value" data-pick-label>${esc(selected || t('sensor.parentNone'))}</span>
+          <span class="pick-status" id="sensor-parent-status" data-pick-status>${selected ? statusPill(sensor) : ''}</span>
+          <svg class="icon-caret" viewBox="0 0 12 12" width="12" height="12" aria-hidden="true">
+            <path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.8"
+                  stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <div class="type-panel pick-panel" id="sensor-parent-panel" hidden>${parentPanelMarkup(selected, selfName)}</div>
+      </div>
+    </div>`;
 }
 
 // --- the sensor type chooser -------------------------------------------------
@@ -3124,6 +3235,7 @@ function openTypePanel(field) {
   const panel = field.querySelector('.type-panel');
   if (!panel || !panel.hidden) return;
   closeTypePanels(field);
+  closePickPanels(null);
   const query = panel.querySelector('[data-type-query]');
   if (query) {
     query.value = '';
@@ -3283,6 +3395,169 @@ function mountSensorTypePicker() {
   });
 }
 
+// --- the site and dependency choosers ---------------------------------------
+
+const pickFieldOf = (node) => node.closest('[data-pick-field]');
+const pickValueOf = (field) => field?.querySelector('input[type="hidden"]')?.value || '';
+
+/** setPickValue writes a choice into the site or dependency picker. */
+function setPickValue(field, value) {
+  if (!field) return;
+  const input = field.querySelector('input[type="hidden"]');
+  if (input) input.value = value;
+
+  const label = field.querySelector('[data-pick-label]');
+  const icon = field.querySelector('[data-pick-icon]');
+  const status = field.querySelector('[data-pick-status]');
+  if (field.dataset.pickField === 'site') {
+    const site = (state.sites || []).find((s) => s.name === value);
+    if (label) label.textContent = value || t('sites.none');
+    if (icon) icon.innerHTML = value ? iconUI.iconMarkup(siteIcon(site), { size: 18 }) : '';
+  } else {
+    const sensor = (state.sensors || []).find((c) => c.name === value);
+    if (label) label.textContent = value || t('sensor.parentNone');
+    if (icon) icon.innerHTML = value ? iconUI.iconMarkup(sensor?.icon || 'builtin:server', { size: 18 }) : '';
+    if (status) status.innerHTML = value ? statusPill(sensor) : '';
+  }
+  for (const tile of field.querySelectorAll('[data-pick-value]')) {
+    tile.classList.toggle('is-current', tile.dataset.pickValue === value);
+  }
+}
+
+/** renderSitePanel redraws the place list after one was made from this form. */
+function renderSitePanel(field) {
+  const panel = field?.querySelector('.pick-panel');
+  if (panel) panel.innerHTML = sitePanelMarkup(pickValueOf(field));
+}
+
+/** openPickPanel shows one picker, closes any other and focuses its search. */
+function openPickPanel(field) {
+  const panel = field.querySelector('.pick-panel');
+  if (!panel || !panel.hidden) return;
+  closePickPanels(field);
+  closeTypePanels(null);
+  const query = panel.querySelector('[data-pick-query]');
+  if (query) {
+    query.value = '';
+    filterPickTiles(field, '');
+  }
+  panel.hidden = false;
+  field.querySelector('[data-pick-open]')?.setAttribute('aria-expanded', 'true');
+  query?.focus();
+}
+
+/** closePickPanel hides one picker. */
+function closePickPanel(field) {
+  const panel = field?.querySelector('.pick-panel');
+  if (!panel || panel.hidden) return;
+  panel.hidden = true;
+  field.querySelector('[data-pick-open]')?.setAttribute('aria-expanded', 'false');
+}
+
+/** closePickPanels closes every picker but one, since only one may be open. */
+function closePickPanels(except) {
+  for (const field of document.querySelectorAll('[data-pick-field]')) {
+    if (field !== except) closePickPanel(field);
+  }
+}
+
+/** filterPickTiles narrows a picker to the entries matching its search box. */
+function filterPickTiles(field, term) {
+  const panel = field.querySelector('.pick-panel');
+  if (!panel) return;
+  const needle = term.trim().toLowerCase();
+  let visible = 0;
+  for (const tile of panel.querySelectorAll('[data-pick-value]')) {
+    const haystack = `${tile.dataset.pickValue} ${tile.textContent}`.toLowerCase();
+    const show = !needle || haystack.includes(needle);
+    tile.hidden = !show;
+    if (show) visible++;
+  }
+  for (const group of panel.querySelectorAll('[data-pick-group]')) {
+    group.hidden = ![...group.querySelectorAll('[data-pick-value]')].some((tile) => !tile.hidden);
+  }
+  const note = panel.querySelector('[data-pick-note]');
+  if (note) {
+    const key = field.dataset.pickField === 'site' ? 'sensor.siteNoMatch' : 'sensor.parentNoMatch';
+    note.hidden = visible !== 0;
+    note.textContent = visible === 0 ? t(key, { query: term.trim() }) : '';
+  }
+}
+
+/**
+ * mountPickPanels wires the place and dependency pickers once, on the document.
+ * They follow the type chooser's keyboard and focus rules: Enter picks the first
+ * match and must not submit the form, Escape closes the panel and not the dialog,
+ * and focus returns to the button one task later, after the keystroke is done.
+ */
+function mountPickPanels() {
+  document.addEventListener('click', (event) => {
+    const open = event.target.closest('[data-pick-open]');
+    if (open) {
+      const field = pickFieldOf(open);
+      const panel = field?.querySelector('.pick-panel');
+      if (panel && !panel.hidden) closePickPanel(field);
+      else if (field) openPickPanel(field);
+      return;
+    }
+
+    const fresh = event.target.closest('[data-pick-new-site]');
+    if (fresh) {
+      const field = pickFieldOf(fresh);
+      closePickPanel(field);
+      openSiteFromSensor((name) => {
+        renderSitePanel(field);
+        setPickValue(field, name);
+        const button = field?.querySelector('[data-pick-open]');
+        if (button) setTimeout(() => button.focus(), 0);
+      });
+      return;
+    }
+
+    const pick = event.target.closest('[data-pick-value]');
+    if (pick) {
+      const field = pickFieldOf(pick);
+      setPickValue(field, pick.dataset.pickValue);
+      closePickPanel(field);
+      const button = field?.querySelector('[data-pick-open]');
+      if (button) setTimeout(() => button.focus(), 0);
+      return;
+    }
+
+    if (!event.target.closest('.pick-panel')) closePickPanels(null);
+  });
+
+  document.addEventListener('input', (event) => {
+    const query = event.target.closest('[data-pick-query]');
+    if (!query) return;
+    const field = pickFieldOf(query);
+    if (field) filterPickTiles(field, query.value);
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      const query = event.target.closest('[data-pick-query]');
+      if (!query) return;
+      event.preventDefault();
+      const field = pickFieldOf(query);
+      const first = field?.querySelector('[data-pick-value]:not([hidden])');
+      if (!first) return;
+      setPickValue(field, first.dataset.pickValue);
+      closePickPanel(field);
+      const button = field?.querySelector('[data-pick-open]');
+      if (button) setTimeout(() => button.focus(), 0);
+      return;
+    }
+    if (event.key !== 'Escape') return;
+    const panel = document.querySelector('.pick-panel:not([hidden])');
+    if (!panel) return;
+    event.preventDefault();
+    const field = panel.closest('[data-pick-field]');
+    closePickPanel(field);
+    field?.querySelector('[data-pick-open]')?.focus();
+  });
+}
+
 function sensorFormMarkup(sensor) {
   const isNew = !sensor;
   const def = typeDef(sensor?.type || 'http');
@@ -3323,12 +3598,10 @@ function sensorFormMarkup(sensor) {
     <div class="grid-3 adv-hide">
       <label class="field"><span>${withHelp(t('sensor.group'), 'help.sensor.group')}</span>
         <input name="group" type="text" value="${esc(sensor?.group || '')}" list="group-list"></label>
-      <label class="field"><span>${withHelp(t('sensor.site'), 'help.sensor.site')}</span>
-        <select name="site" id="sensor-site">${siteOptions(sensor?.site)}</select></label>
+      ${siteFieldMarkup(sensor?.site)}
       <label class="field"><span>${withHelp(t('sensor.tags'), 'help.sensor.tags')}</span>
         <input name="tags" type="text" value="${esc((sensor?.tags || []).join(', '))}"></label>
-      <label class="field"><span>${withHelp(t('sensor.parent'), 'help.sensor.parent')}</span>
-        <select name="parent" id="sensor-parent">${parentOptions(sensor?.parent, sensor?.name)}</select></label>
+      ${parentFieldMarkup(sensor?.parent, sensor?.name)}
     </div>
 
     <datalist id="group-list">
@@ -3371,11 +3644,6 @@ async function openSensorEditor(existing = null) {
   const typeInput = $('#sensor-type');
   typeInput.addEventListener('change', () => applySensorType(form, typeInput.value));
 
-  const siteSelect = $('#sensor-site');
-  siteSelect.addEventListener('change', () => {
-    if (siteSelect.value === NEW_SITE) openSiteFromSensor(siteSelect);
-  });
-
   if (!isNew && !existing.managed) {
     modal.danger(t('sensor.delete'), () => deleteSensor(existing));
   }
@@ -3393,12 +3661,7 @@ function readSensorForm(form) {
     enabled: form.elements.enabled.checked,
     group: form.elements.group.value.trim(),
     parent: form.elements.parent.value,
-    // The "new site" entry is a button in the shape of an option, not a site
-    // called that. Choosing it opens the site editor instead of setting a value,
-    // and a form saved with it still standing there — the window was dismissed
-    // without making anything — means the sensor has no place, not a place
-    // called `__new__`.
-    site: form.elements.site.value === NEW_SITE ? '' : form.elements.site.value,
+    site: form.elements.site.value,
     icon: iconUI.readIconField(form),
     tags: form.elements.tags.value.split(',').map((v) => v.trim()).filter(Boolean),
     reminder_every: Number(form.elements.reminder_every.value) || 0,
@@ -3407,16 +3670,11 @@ function readSensorForm(form) {
   };
 }
 
-// NEW_SITE is the value of the last entry in the sensor form's site list: the one
-// that means "there is no such site yet". It cannot collide with a real name —
-// the server allows letters, digits and a few separators, and no underscores.
-const NEW_SITE = '__new__';
-
 /**
  * openSiteFromSensor opens the site editor over the sensor form.
  *
  * Creating a sensor is often the moment somebody first knows where it stands, so
- * the site list carries an entry that makes one, rather than sending them to
+ * the place picker carries an entry that makes one, rather than sending them to
  * Settings and back — a trip that loses the half-filled form. What answers is the
  * site editor itself, the same window Settings → Sites opens: one dialog makes
  * places, and a second set of fields with its own names and no coordinates would
@@ -3424,15 +3682,15 @@ const NEW_SITE = '__new__';
  *
  * The sensor form is not saved and not rebuilt; it stays behind the window with
  * everything in it, which is the whole reason the site editor is its own dialog.
- * When the place is made its name is put straight into the picker; when the
- * window is dismissed, the picker goes back to "No site", because the entry that
- * was chosen there is not a place either.
+ * Choosing "New site…" does not touch the field: when the place is made its name
+ * is put straight into the picker, and when the window is dismissed the picker
+ * still holds whatever it held before.
  *
  * The place is made when this window is saved, not when the sensor is. Abandoning
  * the sensor afterwards therefore leaves the place standing — the one thing this
  * arrangement gives up, and it is worth saying out loud rather than discovering.
  */
-function openSiteFromSensor(siteSelect) {
+function openSiteFromSensor(onSaved) {
   openSiteDialog(null, {
     hint: t('sites.fromSensorHint'),
     onSaved: (name) => {
@@ -3440,13 +3698,7 @@ function openSiteFromSensor(siteSelect) {
       // the window wants to know about it too. The picker is then drawn from that
       // list again, because it was drawn when the form opened and the place was
       // made after that — without the redraw the entry is not there to choose.
-      loadSites(true).then(() => {
-        siteSelect.innerHTML = siteOptions(name);
-        siteSelect.value = name;
-      });
-    },
-    onClosed: () => {
-      if (siteSelect.value === NEW_SITE) siteSelect.value = '';
+      loadSites(true).then(() => onSaved(name));
     },
   });
 }

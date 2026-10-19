@@ -2919,6 +2919,16 @@ label.field.check > span { color: var(--text); font-size: var(--text-3); }
 .type-tile-label { overflow-wrap: anywhere; }
 .type-tile-target { color: var(--text-dim); font-size: var(--text-5); }
 
+/* The place and dependency pickers sit in the three-column part of the form
+   rather than in the right-hand name column, so their panels open to the right
+   of their own field and are narrower than the type chooser. */
+.pick-panel { left: 0; right: auto; width: min(420px, calc(100vw - 48px)); }
+.pick-grid { grid-template-columns: 1fr; }
+.pick-sensor .pill-group { margin-left: auto; flex: none; }
+.pick-status { display: inline-flex; flex: none; }
+.pick-status .pill { font-size: var(--text-5); }
+.pick-new .type-tile-icon { justify-content: center; color: var(--text-dim); font-size: var(--text-3); }
+
 @media (max-width: 520px) {
   /* The field is the full width of the row here, so there is no right column to
      open away from; anchoring left keeps the panel over its own field. */

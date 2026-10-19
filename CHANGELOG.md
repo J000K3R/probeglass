@@ -27,8 +27,10 @@ here and what the release says are the same document.
   per-type choices below it (method, record type, SNMP version, health, and every
   yes/no) are chips, so a value is one click and visible. "Leave it at the default"
   is a chip of its own, not an empty field somebody has to work out how to clear.
-  `site` and `parent` remain native lists: those are dynamic sets of entities, not
-  parameters of a check.
+  The place picker groups sites by kind and still carries the entry that makes a new
+  one; the **Depends on** picker lists the other sensors with their current status
+  beside them, a down one first, so the choice is made on what is happening rather
+  than on the alphabet.
 
 - **Six more sensor types.** Each answers a question the existing probes could only
   approximate, and each is the smallest protocol exchange that answers it:
