@@ -153,7 +153,7 @@ sensors:
 | Sensor field | Notes |
 |---|---|
 | `name` | required, unique |
-| `type` | `http`, `tcp`, `tls`, `ping`, `dns`, `docker` or `snmp` |
+| `type` | `http`, `redirect`, `tcp`, `ssh`, `smtp`, `imap`, `udp`, `hop`, `tls`, `ping`, `dns`, `docker` or `snmp` |
 | `target` | required; URL, `host:port`, host/IP, DNS name, or container name |
 | `interval` | 5s … 24h, default 60s |
 | `timeout` | up to 10m, default 10s |
@@ -213,6 +213,21 @@ up.
 | `insecure_skip_verify` | `false` | accept self-signed certificates |
 | `cert_warn_days` | — | fail when the certificate expires within N days |
 
+**HTTP redirect chain** (`type: redirect`)
+
+Walks the redirects itself rather than following them silently, and reports the
+codes and the address it ends on: `301 → 302 → 200 · final https://example.org/`.
+The ordinary HTTP sensor either follows the chain or refuses it; this one exists
+for the question where an address actually ends up, which is what notices a
+domain move or a captive portal in front of a page.
+
+| Option | Default | Notes |
+|---|---|---|
+| `max_hops` | `10` | redirects to follow, 1 … 30; a longer chain fails |
+| `expected_final` | — | substring the final URL must contain |
+| `expected_status` | `200-299` | status codes the final response may carry |
+| `insecure_skip_verify` | `false` | accept self-signed certificates |
+
 **TCP** (`type: tcp`)
 
 | Option | Default | Notes |
@@ -222,6 +237,58 @@ up.
 | `insecure_skip_verify` | `false` | accept self-signed certificates |
 | `send` | — | text written after connecting; `\r` and `\n` are decoded |
 | `expect` | — | substring the response must contain |
+
+**SSH banner** (`type: ssh`)
+
+Connects and reads the identification line an SSH server sends before any
+handshake, for example `SSH-2.0-OpenSSH_9.6p1`. The target is a host or
+`host:port`; a bare host means port 22. Lines some appliances send before the
+identification are skipped, as RFC 4253 allows.
+
+| Option | Default | Notes |
+|---|---|---|
+| `expect` | — | substring the banner must contain, for pinning a version |
+
+**SMTP greeting** (`type: smtp`)
+
+Reads the greeting an SMTP server sends on connect; RFC 5321 says it begins with
+`220`. The target is a host or `host:port`; a bare host means port 25. The
+`tls` option opens the connection over implicit TLS (port 465), not STARTTLS.
+
+| Option | Default | Notes |
+|---|---|---|
+| `tls` | `false` | connect over implicit TLS |
+| `server_name` | host from the target | SNI and verification name |
+| `insecure_skip_verify` | `false` | accept self-signed certificates |
+| `expect` | — | substring the greeting must contain |
+
+**IMAP greeting** (`type: imap`)
+
+Reads the untagged greeting an IMAP server sends on connect; RFC 3501 allows
+`* OK` and `* PREAUTH`, and `* BYE` is a failure. The target is a host or
+`host:port`; a bare host means port 143. Use `tls` for port 993.
+
+| Option | Default | Notes |
+|---|---|---|
+| `tls` | `false` | connect over implicit TLS |
+| `server_name` | host from the target | SNI and verification name |
+| `insecure_skip_verify` | `false` | accept self-signed certificates |
+| `expect` | — | substring the greeting must contain |
+
+**UDP port** (`type: udp`)
+
+Sends one datagram to a `host:port` and, when `expect` is set, waits for a reply
+containing it. UDP has no handshake: without `expect` the probe can only report
+that the packet left, not that anything is listening. With it, the check is real
+— DNS over UDP, a status reply from a game server, a collector that answers.
+
+| Option | Default | Notes |
+|---|---|---|
+| `payload` | — | bytes to send; `\r` and `\n` are decoded; empty sends an empty datagram |
+| `expect` | — | substring the reply must contain; empty does not wait for one |
+
+A connected socket is used, so an ICMP port-unreachable is reported as a probe
+failure when the reply is awaited.
 
 **TLS certificate** (`type: tls`)
 
@@ -242,6 +309,24 @@ a certificate that has run out, or an authority this host does not trust.
 | Option | Default | Notes |
 |---|---|---|
 | `count` | `3` | echo requests to send, max 20 |
+
+**ICMP hop** (`type: hop`)
+
+Sends one echo request with a chosen time-to-live and reports what answered. A
+TTL of 1 asks the first router, a larger one the router that many hops away, and
+a packet that reaches the destination answers as itself. A router whose TTL ran
+out answers with ICMP Time Exceeded, and that answer is the success of the
+probe: the hop exists and named itself.
+
+| Option | Default | Notes |
+|---|---|---|
+| `ttl` | `1` | time-to-live to send with, 1 … 255 |
+
+This sensor needs a raw ICMP socket, which means `CAP_NET_RAW` in the container
+(the same capability ping sensors use; the ping sensor can also fall back to an
+unprivileged datagram socket, a hop sensor cannot, because the router's address
+is in the Time Exceeded message). Without it the probe says so and names the
+capability.
 
 **DNS** (`type: dns`)
 

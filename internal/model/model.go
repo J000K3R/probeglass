@@ -73,13 +73,19 @@ func BuildInfo() string {
 type SensorType string
 
 const (
-	SensorHTTP   SensorType = "http"
-	SensorTCP    SensorType = "tcp"
-	SensorPing   SensorType = "ping"
-	SensorDNS    SensorType = "dns"
-	SensorTLS    SensorType = "tls"
-	SensorDocker SensorType = "docker"
-	SensorSNMP   SensorType = "snmp"
+	SensorHTTP     SensorType = "http"
+	SensorTCP      SensorType = "tcp"
+	SensorPing     SensorType = "ping"
+	SensorDNS      SensorType = "dns"
+	SensorTLS      SensorType = "tls"
+	SensorDocker   SensorType = "docker"
+	SensorSNMP     SensorType = "snmp"
+	SensorSSH      SensorType = "ssh"
+	SensorSMTP     SensorType = "smtp"
+	SensorIMAP     SensorType = "imap"
+	SensorUDP      SensorType = "udp"
+	SensorRedirect SensorType = "redirect"
+	SensorHop      SensorType = "hop"
 )
 
 // SensorTypes lists every supported sensor type. Valid uses it, and a test walks
@@ -87,6 +93,7 @@ const (
 // list, because it needs a label and a set of form fields for each type as well.
 var SensorTypes = []SensorType{
 	SensorHTTP, SensorTCP, SensorPing, SensorDNS, SensorTLS, SensorDocker, SensorSNMP,
+	SensorSSH, SensorSMTP, SensorIMAP, SensorUDP, SensorRedirect, SensorHop,
 }
 
 // Valid reports whether t is a known sensor type.

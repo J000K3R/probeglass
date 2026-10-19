@@ -2697,6 +2697,18 @@ const SENSOR_TYPES = [
     ],
   },
   {
+    value: 'redirect',
+    labelKey: 'type.redirect',
+    targetLabelKey: 'type.redirect.target',
+    placeholder: 'https://example.org',
+    fields: [
+      { key: 'max_hops', type: 'number', placeholder: '10' },
+      { key: 'expected_final', type: 'text', placeholder: 'https://example.org/' },
+      { key: 'expected_status', type: 'text', placeholder: '200-299' },
+      { key: 'insecure_skip_verify', type: 'bool' },
+    ],
+  },
+  {
     value: 'tcp',
     labelKey: 'type.tcp',
     targetLabelKey: 'type.tcp.target',
@@ -2708,6 +2720,49 @@ const SENSOR_TYPES = [
       { key: 'send', type: 'text' },
       { key: 'expect', type: 'text' },
       { key: 'insecure_skip_verify', type: 'bool' },
+    ],
+  },
+  {
+    value: 'ssh',
+    labelKey: 'type.ssh',
+    targetLabelKey: 'type.ssh.target',
+    placeholder: 'nas.local:22',
+    fields: [
+      { key: 'expect', type: 'text', placeholder: 'OpenSSH' },
+    ],
+  },
+  {
+    value: 'smtp',
+    labelKey: 'type.smtp',
+    targetLabelKey: 'type.smtp.target',
+    placeholder: 'mail.local:25',
+    fields: [
+      { key: 'tls', type: 'bool' },
+      { key: 'server_name', type: 'text', placeholder: 'mail.local' },
+      { key: 'expect', type: 'text', placeholder: 'Postfix' },
+      { key: 'insecure_skip_verify', type: 'bool' },
+    ],
+  },
+  {
+    value: 'imap',
+    labelKey: 'type.imap',
+    targetLabelKey: 'type.imap.target',
+    placeholder: 'mail.local:993',
+    fields: [
+      { key: 'tls', type: 'bool' },
+      { key: 'server_name', type: 'text', placeholder: 'mail.local' },
+      { key: 'expect', type: 'text', placeholder: 'Dovecot' },
+      { key: 'insecure_skip_verify', type: 'bool' },
+    ],
+  },
+  {
+    value: 'udp',
+    labelKey: 'type.udp',
+    targetLabelKey: 'type.udp.target',
+    placeholder: '1.1.1.1:53',
+    fields: [
+      { key: 'payload', type: 'text' },
+      { key: 'expect', type: 'text' },
     ],
   },
   {
@@ -2755,6 +2810,13 @@ const SENSOR_TYPES = [
     targetLabelKey: 'type.ping.target',
     placeholder: '192.168.1.1',
     fields: [{ key: 'count', type: 'number', placeholder: '3' }],
+  },
+  {
+    value: 'hop',
+    labelKey: 'type.hop',
+    targetLabelKey: 'type.hop.target',
+    placeholder: '1.1.1.1',
+    fields: [{ key: 'ttl', type: 'number', placeholder: '1' }],
   },
   {
     value: 'dns',

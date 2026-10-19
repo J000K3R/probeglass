@@ -11,7 +11,7 @@ here and what the release says are the same document.
 
 | Version | Released | In one line |
 | --- | --- | --- |
-| [Unreleased] | — | Gotify as a seventh channel, and example pictures and maintenance windows on the first dashboard |
+| [Unreleased] | — | Six more sensor types, Gotify as a seventh channel, and example pictures and maintenance windows on the first dashboard |
 | [0.2.2] | 2026-10-18 | A symbol on every sensor, place and group — ours, yours, or searched for online — and one set of measurements for the whole dashboard |
 | [0.2.1] | 2026-10-16 | A sensor under maintenance says so |
 | [0.2.0] | 2026-10-16 | Maintenance windows, a second interface language, and the container as the only thing that ships |
@@ -20,6 +20,26 @@ here and what the release says are the same document.
 ## [Unreleased]
 
 ### Added
+
+- **Six more sensor types.** Each answers a question the existing probes could only
+  approximate, and each is the smallest protocol exchange that answers it:
+
+  - **SSH banner** (`ssh`) reads the identification line an SSH server sends before
+    any handshake — `SSH-2.0-OpenSSH_9.6p1` — so "sshd is answering" is told apart
+    from "something is listening on 22".
+  - **SMTP greeting** (`smtp`) reads the `220` line an SMTP server sends on connect;
+    **IMAP greeting** (`imap`) reads `* OK` or `* PREAUTH`, and refuses `* BYE`.
+    Both can speak implicit TLS, so port 465 and 993 are covered too.
+  - **UDP port** (`udp`) sends one datagram and, when told what to look for, waits
+    for a reply containing it. Without an expectation it says plainly that the
+    packet left — UDP has no handshake, and a sent packet is not proof of a listener.
+  - **HTTP redirect chain** (`redirect`) walks redirects itself and reports the
+    chain and the address it ends on, with an optional limit, an expected final URL
+    and the status codes the last page may carry.
+  - **ICMP hop** (`hop`) sends one echo with a chosen TTL and names what answered:
+    the router a Time Exceeded came from, or the destination itself when the packet
+    got that far. It needs `CAP_NET_RAW`, as ping does, and says so when it cannot
+    have it.
 
 - **Gotify is a channel.** The self-hosted push server a homelab often already runs:
   the base address and an app token from one of its applications, and the message

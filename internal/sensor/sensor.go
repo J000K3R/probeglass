@@ -49,13 +49,19 @@ type Prober interface {
 
 // registry maps a sensor type to its implementation.
 var registry = map[model.SensorType]Prober{
-	model.SensorHTTP:   HTTPProber{},
-	model.SensorTCP:    TCPProber{},
-	model.SensorPing:   PingProber{},
-	model.SensorDNS:    DNSProber{},
-	model.SensorTLS:    TLSProber{},
-	model.SensorDocker: DockerProber{},
-	model.SensorSNMP:   SNMPProber{},
+	model.SensorHTTP:     HTTPProber{},
+	model.SensorTCP:      TCPProber{},
+	model.SensorPing:     PingProber{},
+	model.SensorDNS:      DNSProber{},
+	model.SensorTLS:      TLSProber{},
+	model.SensorDocker:   DockerProber{},
+	model.SensorSNMP:     SNMPProber{},
+	model.SensorSSH:      SSHProber{},
+	model.SensorSMTP:     SMTPProber{},
+	model.SensorIMAP:     IMAPProber{},
+	model.SensorUDP:      UDPProber{},
+	model.SensorRedirect: RedirectProber{},
+	model.SensorHop:      HopProber{},
 }
 
 // Get returns the prober for a type.

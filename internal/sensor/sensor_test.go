@@ -47,6 +47,29 @@ func TestValidateAcceptsEveryType(t *testing.T) {
 			Name: "switch", Type: model.SensorSNMP, Target: "192.168.1.2",
 			Options: model.Options{"oid": "1.3.6.1.2.1.1.3.0", "min": 1},
 		}),
+		"ssh": validSensor(model.Sensor{
+			Name: "ssh", Type: model.SensorSSH, Target: "nas.local",
+		}),
+		"smtp": validSensor(model.Sensor{
+			Name: "smtp", Type: model.SensorSMTP, Target: "mail.local",
+			Options: model.Options{"tls": true},
+		}),
+		"imap": validSensor(model.Sensor{
+			Name: "imap", Type: model.SensorIMAP, Target: "mail.local:993",
+			Options: model.Options{"tls": true},
+		}),
+		"udp": validSensor(model.Sensor{
+			Name: "udp", Type: model.SensorUDP, Target: "1.1.1.1:53",
+			Options: model.Options{"payload": "PING", "expect": "PONG"},
+		}),
+		"redirect": validSensor(model.Sensor{
+			Name: "redirect", Type: model.SensorRedirect, Target: "https://example.org",
+			Options: model.Options{"max_hops": 5, "expected_status": "200-299"},
+		}),
+		"hop": validSensor(model.Sensor{
+			Name: "hop", Type: model.SensorHop, Target: "192.168.1.1",
+			Options: model.Options{"ttl": 3},
+		}),
 	}
 	for name, c := range cases {
 		if err := Validate(c); err != nil {
@@ -76,6 +99,13 @@ func TestValidateRejectsBadSensors(t *testing.T) {
 		{"ping count out of range", validSensor(model.Sensor{Name: "x", Type: model.SensorPing, Target: "192.168.1.1", Options: model.Options{"count": 99}}), "count"},
 		{"dns with an unknown record type", validSensor(model.Sensor{Name: "x", Type: model.SensorDNS, Target: "example.org", Options: model.Options{"record_type": "PTR9"}}), "record_type"},
 		{"dns with a bad resolver", validSensor(model.Sensor{Name: "x", Type: model.SensorDNS, Target: "example.org", Options: model.Options{"resolver": "not a host"}}), "resolver"},
+		{"ssh with a path", validSensor(model.Sensor{Name: "x", Type: model.SensorSSH, Target: "nas.local/24"}), "without a path"},
+		{"smtp with a bad port", validSensor(model.Sensor{Name: "x", Type: model.SensorSMTP, Target: "mail.local:99999"}), "port"},
+		{"imap without a host", validSensor(model.Sensor{Name: "x", Type: model.SensorIMAP, Target: ":143"}), "host"},
+		{"udp without a port", validSensor(model.Sensor{Name: "x", Type: model.SensorUDP, Target: "1.1.1.1"}), "host:port"},
+		{"redirect with an odd scheme", validSensor(model.Sensor{Name: "x", Type: model.SensorRedirect, Target: "ftp://example.org"}), "scheme"},
+		{"redirect with zero hops", validSensor(model.Sensor{Name: "x", Type: model.SensorRedirect, Target: "https://example.org", Options: model.Options{"max_hops": 0}}), "max_hops"},
+		{"hop with a zero ttl", validSensor(model.Sensor{Name: "x", Type: model.SensorHop, Target: "192.168.1.1", Options: model.Options{"ttl": 0}}), "ttl"},
 	}
 	for _, tc := range cases {
 		err := Validate(tc.sensor)

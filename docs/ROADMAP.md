@@ -154,13 +154,15 @@ promises; the ordering is what the design already supports cheaply.
   rather than files beside it, so copying that file is still the whole backup, and
   an image something still points at cannot be deleted without saying so.
 
+- [x] **Six more sensor types.** An SSH banner, SMTP and IMAP greetings, a UDP
+  port, an ICMP TTL/hop probe and an HTTP redirect chain that reports where it
+  ends. Each is the smallest exchange that answers its question, and each is one
+  file in `internal/sensor`.
+
 ## Next — 0.2.x
 
 Ordered by value per unit of work.
 
-- [ ] **More sensor types.** SSH banner, SMTP/IMAP greeting, UDP port, an ICMP
-  TTL/hop sensor, and an HTTP sensor that follows a redirect chain and reports
-  what it found. Each is one file in `internal/sensor`.
 - [ ] **Drag-to-arrange groups.** The order is a number in the group editor today,
   which works and is not a thing anybody wants to do twice. (Per-group colours and
   icons shipped above; the side-by-side comparison view this item used to promise is
