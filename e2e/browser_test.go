@@ -1071,4 +1071,112 @@ func TestTheSensorFormPicksTypesAndOptionsWithoutSelects(t *testing.T) {
 		t.Errorf("choosing a dependency left value=%q label=%q pill=%v, want the name and its status",
 			parent.Value, parent.Button, parent.Pill)
 	}
+
+	// The group field is a picker too, but a group is a word typed on a sensor
+	// rather than a row elsewhere: the search box is also where a new one is
+	// named, and a term no existing group matches is the group being made.
+	type groupPicker struct {
+		Texts  int `json:"texts"`
+		Groups int `json:"groups"`
+	}
+	groups := read[groupPicker](t, ctx, `(() => {
+		const field = document.querySelector('#modal [data-pick-field="group"]');
+		return {
+			texts: document.querySelectorAll('#modal input[name="group"][type="text"]').length,
+			groups: [...field.querySelectorAll('[data-pick-value]')].filter((b) => b.dataset.pickValue).length,
+		};
+	})()`, "the group picker")
+	if groups.Texts != 0 || groups.Groups == 0 {
+		t.Errorf("the group field has %d text inputs and %d groups, want a picker with the example groups",
+			groups.Texts, groups.Groups)
+	}
+
+	if _, err := chromedp.Run(ctx, chromedp.Evaluate[bool](`(() => {
+		const field = document.querySelector('#modal [data-pick-field="group"]');
+		field.querySelector('[data-pick-open]').click();
+		const first = [...field.querySelectorAll('[data-pick-value]')].find((b) => b.dataset.pickValue);
+		first.click();
+		return true;
+	})()`)); err != nil {
+		t.Fatalf("could not choose a group: %v", err)
+	}
+	if got := read[string](t, ctx,
+		`document.querySelector('#modal input[name="group"]').value`,
+		"the chosen group"); got == "" {
+		t.Error("choosing a group left the field empty")
+	}
+
+	const madeGroup = "E2E Group"
+	if _, err := chromedp.Run(ctx, chromedp.Evaluate[bool](`(() => {
+		const field = document.querySelector('#modal [data-pick-field="group"]');
+		field.querySelector('[data-pick-open]').click();
+		field.scrollIntoView({ block: 'center' });
+		return true;
+	})()`)); err != nil {
+		t.Fatalf("could not reopen the group picker: %v", err)
+	}
+	if err := withTimeout(ctx, func(tctx context.Context) error {
+		return chromedp.Do(tctx,
+			chromedp.SendKeys(`#modal [data-pick-field="group"] [data-pick-query]`, madeGroup),
+			chromedp.Poll[chromedp.Void](
+				`!document.querySelector('#modal [data-group-create]').hidden &&
+				 document.querySelector('#modal [data-group-create-label]').textContent.trim() !== ''`,
+				chromedp.WithPollingTimeout(5*time.Second)),
+			chromedp.KeyEvent("\r"),
+			chromedp.Poll[chromedp.Void](
+				`document.activeElement === document.querySelector('#modal [data-pick-field="group"] [data-pick-open]')`,
+				chromedp.WithPollingTimeout(5*time.Second)),
+		)
+	}); err != nil {
+		capture(t, ctx, dir, "group-create-missing")
+		t.Fatalf("could not create a group from the picker: %v", err)
+	}
+	created := read[map[string]string](t, ctx, `(() => ({
+		value: document.querySelector('#modal input[name="group"]').value,
+		label: document.querySelector('#modal [data-pick-field="group"] [data-pick-label]').textContent.trim(),
+	}))()`, "the created group")
+	if created["value"] != madeGroup || created["label"] != madeGroup {
+		t.Errorf("creating a group left value=%q label=%q, want %q", created["value"], created["label"], madeGroup)
+	}
+
+	// A panel larger than the dialog must not add scrollbars to it or to the
+	// page: it is fixed to the window and clamped to it. The smallest window is
+	// where that is easiest to get wrong.
+	if _, err := chromedp.Run(ctx, chromedp.EmulateViewport(900, 600)); err != nil {
+		t.Fatalf("could not shrink the window: %v", err)
+	}
+	if _, err := chromedp.Run(ctx, chromedp.Evaluate[bool](`(() => {
+		const button = document.querySelector('#modal [data-pick-field="parent"] [data-pick-open]');
+		button.scrollIntoView({ block: 'center' });
+		button.click();
+		return true;
+	})()`)); err != nil {
+		t.Fatalf("could not open the dependency picker in a small window: %v", err)
+	}
+	type placed struct {
+		Left, Top, Right, Bottom float64
+		InnerW, InnerH           int
+		PageScrollW              int
+		ModalScrollW, ModalW     int
+	}
+	fit := read[placed](t, ctx, `(() => {
+		const panel = document.querySelector('#modal [data-pick-field="parent"] .pick-panel');
+		const r = panel.getBoundingClientRect();
+		const modal = document.querySelector('#modal');
+		return {
+			left: r.left, top: r.top, right: r.right, bottom: r.bottom,
+			innerW: window.innerWidth, innerH: window.innerHeight,
+			pageScrollW: document.documentElement.scrollWidth,
+			modalScrollW: modal.scrollWidth, modalW: modal.clientWidth,
+		};
+	})()`, "the panel in a small window")
+	if fit.Left < -0.5 || fit.Top < -0.5 || fit.Right > float64(fit.InnerW)+0.5 ||
+		fit.Bottom > float64(fit.InnerH)+0.5 {
+		t.Errorf("the panel is at (%0.0f,%0.0f)-(%0.0f,%0.0f) in a %dx%d window, outside it",
+			fit.Left, fit.Top, fit.Right, fit.Bottom, fit.InnerW, fit.InnerH)
+	}
+	if fit.PageScrollW > fit.InnerW || fit.ModalScrollW > fit.ModalW {
+		t.Errorf("the open panel adds a horizontal scrollbar: page %d/%d, dialog %d/%d",
+			fit.PageScrollW, fit.InnerW, fit.ModalScrollW, fit.ModalW)
+	}
 }

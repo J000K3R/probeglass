@@ -914,6 +914,9 @@ function showApp() {
   // The place and dependency pickers in the same form, wired the same way.
   mountPickPanels();
 
+  // Panels are fixed to the window; keep them on their button when it moves.
+  mountPanelPlacement();
+
   applyHash();
 
   // The first load decides whether the dashboard is usable. If it fails, say so
@@ -3183,6 +3186,94 @@ function parentPanelMarkup(selected, selfName) {
     </section>`;
 }
 
+/** groupNames is every group a sensor names, in the dashboard's order. */
+function groupNames() {
+  const names = [...new Set((state.sensors || []).map((s) => s.group).filter(Boolean))];
+  const order = (name) => iconUI.groupOf(state.groups, name)?.sort_order ?? 0;
+  return names.sort((a, b) => order(a) - order(b) || a.localeCompare(b));
+}
+
+/** groupTile is one existing group, with how many sensors wear it. */
+function groupTile(name, selected, count) {
+  const settings = iconUI.groupOf(state.groups, name);
+  const icon = (settings && iconUI.groupIcon(settings, 18)) ||
+    iconUI.iconMarkup('builtin:tag', { size: 18 });
+  return `<button type="button" class="type-tile${name === selected ? ' is-current' : ''}"
+      data-pick-value="${esc(name)}" title="${esc(name)}">
+    <span class="type-tile-icon">${icon}</span>
+    <span class="type-tile-text">
+      <span class="type-tile-label">${esc(name)}</span>
+      <small class="type-tile-target">${esc(t('sensor.groupCount', { count }))}</small>
+    </span>
+  </button>`;
+}
+
+/**
+ * groupPanelMarkup is the group chooser. Unlike a place, a group is a word typed
+ * on a sensor rather than a row somewhere else, so the search field doubles as
+ * the place to name a new one: a term that is not an existing group brings a
+ * "New group" tile with it.
+ */
+function groupPanelMarkup(selected) {
+  const counts = new Map();
+  for (const s of state.sensors || []) {
+    if (s.group) counts.set(s.group, (counts.get(s.group) || 0) + 1);
+  }
+  const tiles = groupNames().map((n) => groupTile(n, selected, counts.get(n) || 0)).join('');
+  return `
+    <div class="type-search">
+      <label class="type-search-label" for="sensor-group-search">${esc(t('sensor.groupSearch'))}</label>
+      <input type="search" id="sensor-group-search" data-pick-query
+             placeholder="${esc(t('sensor.groupSearchPlaceholder'))}" autocomplete="off" spellcheck="false">
+      <p class="type-search-note" data-pick-note hidden></p>
+    </div>
+    <div class="type-grid pick-grid">
+      <button type="button" class="type-tile${selected ? '' : ' is-current'}" data-pick-value=""
+              title="${esc(t('sensor.groupNone'))}">
+        <span class="type-tile-label">${esc(t('sensor.groupNone'))}</span>
+      </button>
+    </div>
+    <section class="type-group" data-pick-group="groups">
+      <p class="type-group-title">${esc(t('sensor.groupHeading'))}</p>
+      ${tiles
+        ? `<div class="type-grid">${tiles}</div>`
+        : `<p class="type-search-note">${esc(t('sensor.groupEmpty'))}</p>`}
+    </section>
+    <div class="type-grid pick-new" data-group-create hidden>
+      <button type="button" class="type-tile" data-pick-create>
+        <span class="type-tile-icon" aria-hidden="true">+</span>
+        <span class="type-tile-text">
+          <span class="type-tile-label" data-group-create-label></span>
+        </span>
+      </button>
+    </div>`;
+}
+
+/** groupFieldMarkup is the group picker as a field, in the type chooser's style. */
+function groupFieldMarkup(selected) {
+  const settings = iconUI.groupOf(state.groups, selected);
+  const icon = selected
+    ? ((settings && iconUI.groupIcon(settings, 18)) || iconUI.iconMarkup('builtin:tag', { size: 18 }))
+    : '';
+  return `
+    <div class="field-row">
+      <label id="sensor-group-label">${withHelp(t('sensor.group'), 'help.sensor.group')}</label>
+      <div class="icon-field type-field pick-field" data-pick-field="group">
+        <input type="hidden" name="group" id="sensor-group" value="${esc(selected || '')}">
+        <button type="button" class="icon-button" data-pick-open
+                aria-haspopup="true" aria-expanded="false" aria-controls="sensor-group-panel"
+                aria-labelledby="sensor-group-label sensor-group-value">
+          <span class="icon-slot" data-pick-icon>${icon}</span>
+          <span class="icon-button-label" id="sensor-group-value" data-pick-label>${esc(selected || t('sensor.groupNone'))}</span>
+          <svg class="icon-caret" viewBox="0 0 12 12" width="12" height="12" aria-hidden="true">
+            <path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.8"
+                  stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <div class="type-panel pick-panel" id="sensor-group-panel" hidden>${groupPanelMarkup(selected)}</div>
+      </div>
+    </div>`;
+}
+
 /** siteFieldMarkup is the place picker as a field, in the type chooser's style. */
 function siteFieldMarkup(selected) {
   const site = (state.sites || []).find((s) => s.name === selected);
@@ -3243,7 +3334,10 @@ function openTypePanel(field) {
   }
   panel.hidden = false;
   field.querySelector('[data-type-open]')?.setAttribute('aria-expanded', 'true');
+  // Focus first: focusing the search can scroll the dialog, and the panel has to
+  // be placed against where the button ended up, not where it was before.
   query?.focus();
+  placePanel(field, panel);
 }
 
 /** closeTypePanel hides one chooser, optionally putting focus back on its button. */
@@ -3251,6 +3345,7 @@ function closeTypePanel(field, { restoreFocus = false } = {}) {
   const panel = field?.querySelector('.type-panel');
   if (!panel || panel.hidden) return;
   panel.hidden = true;
+  clearPanelPlacement(panel);
   const button = field.querySelector('[data-type-open]');
   button?.setAttribute('aria-expanded', 'false');
   if (restoreFocus) button?.focus();
@@ -3413,6 +3508,14 @@ function setPickValue(field, value) {
     const site = (state.sites || []).find((s) => s.name === value);
     if (label) label.textContent = value || t('sites.none');
     if (icon) icon.innerHTML = value ? iconUI.iconMarkup(siteIcon(site), { size: 18 }) : '';
+  } else if (field.dataset.pickField === 'group') {
+    const settings = iconUI.groupOf(state.groups, value);
+    if (label) label.textContent = value || t('sensor.groupNone');
+    if (icon) {
+      icon.innerHTML = value
+        ? ((settings && iconUI.groupIcon(settings, 18)) || iconUI.iconMarkup('builtin:tag', { size: 18 }))
+        : '';
+    }
   } else {
     const sensor = (state.sensors || []).find((c) => c.name === value);
     if (label) label.textContent = value || t('sensor.parentNone');
@@ -3444,6 +3547,7 @@ function openPickPanel(field) {
   panel.hidden = false;
   field.querySelector('[data-pick-open]')?.setAttribute('aria-expanded', 'true');
   query?.focus();
+  placePanel(field, panel);
 }
 
 /** closePickPanel hides one picker. */
@@ -3451,6 +3555,7 @@ function closePickPanel(field) {
   const panel = field?.querySelector('.pick-panel');
   if (!panel || panel.hidden) return;
   panel.hidden = true;
+  clearPanelPlacement(panel);
   field.querySelector('[data-pick-open]')?.setAttribute('aria-expanded', 'false');
 }
 
@@ -3465,22 +3570,42 @@ function closePickPanels(except) {
 function filterPickTiles(field, term) {
   const panel = field.querySelector('.pick-panel');
   if (!panel) return;
+  const kind = field.dataset.pickField;
   const needle = term.trim().toLowerCase();
   let visible = 0;
   for (const tile of panel.querySelectorAll('[data-pick-value]')) {
+    const empty = tile.dataset.pickValue === '';
     const haystack = `${tile.dataset.pickValue} ${tile.textContent}`.toLowerCase();
-    const show = !needle || haystack.includes(needle);
+    // A search hides the "none" choice: somebody typing a name is not looking
+    // for "No site" or "Nothing", and it would otherwise be the first match for
+    // a term it happens to contain.
+    const show = !needle || (!empty && haystack.includes(needle));
     tile.hidden = !show;
     if (show) visible++;
   }
   for (const group of panel.querySelectorAll('[data-pick-group]')) {
     group.hidden = ![...group.querySelectorAll('[data-pick-value]')].some((tile) => !tile.hidden);
   }
+
+  let creating = false;
+  if (kind === 'group') {
+    const exact = [...panel.querySelectorAll('[data-pick-value]')]
+      .some((tile) => tile.dataset.pickValue.toLowerCase() === needle);
+    creating = needle !== '' && !exact;
+    const create = panel.querySelector('[data-group-create]');
+    if (create) {
+      create.hidden = !creating;
+      const label = create.querySelector('[data-group-create-label]');
+      if (label) label.textContent = t('sensor.groupCreate', { name: term.trim() });
+    }
+  }
+
   const note = panel.querySelector('[data-pick-note]');
   if (note) {
-    const key = field.dataset.pickField === 'site' ? 'sensor.siteNoMatch' : 'sensor.parentNoMatch';
-    note.hidden = visible !== 0;
-    note.textContent = visible === 0 ? t(key, { query: term.trim() }) : '';
+    const key = { site: 'sensor.siteNoMatch', group: 'sensor.groupNoMatch' }[kind]
+      || 'sensor.parentNoMatch';
+    note.hidden = visible !== 0 || creating;
+    note.textContent = visible === 0 && !creating ? t(key, { query: term.trim() }) : '';
   }
 }
 
@@ -3514,6 +3639,19 @@ function mountPickPanels() {
       return;
     }
 
+    const create = event.target.closest('[data-pick-create]');
+    if (create) {
+      const field = pickFieldOf(create);
+      const term = field?.querySelector('[data-pick-query]')?.value.trim() || '';
+      if (term) {
+        setPickValue(field, term);
+        closePickPanel(field);
+        const button = field?.querySelector('[data-pick-open]');
+        if (button) setTimeout(() => button.focus(), 0);
+      }
+      return;
+    }
+
     const pick = event.target.closest('[data-pick-value]');
     if (pick) {
       const field = pickFieldOf(pick);
@@ -3540,7 +3678,27 @@ function mountPickPanels() {
       if (!query) return;
       event.preventDefault();
       const field = pickFieldOf(query);
-      const first = field?.querySelector('[data-pick-value]:not([hidden])');
+      const term = query.value.trim();
+
+      // In the group picker the search box is also where a new group is named:
+      // a term no existing group matches is the group being made.
+      if (field?.dataset.pickField === 'group' && term) {
+        const exact = [...field.querySelectorAll('[data-pick-value]')]
+          .some((tile) => tile.dataset.pickValue.toLowerCase() === term.toLowerCase());
+        if (!exact) {
+          setPickValue(field, term);
+          closePickPanel(field);
+          const button = field?.querySelector('[data-pick-open]');
+          if (button) setTimeout(() => button.focus(), 0);
+          return;
+        }
+      }
+
+      let first = term
+        ? [...field.querySelectorAll('[data-pick-value]:not([hidden])')]
+          .find((tile) => tile.dataset.pickValue.toLowerCase() === term.toLowerCase())
+        : null;
+      first = first || field?.querySelector('[data-pick-value]:not([hidden])');
       if (!first) return;
       setPickValue(field, first.dataset.pickValue);
       closePickPanel(field);
@@ -3556,6 +3714,68 @@ function mountPickPanels() {
     closePickPanel(field);
     field?.querySelector('[data-pick-open]')?.focus();
   });
+}
+
+// --- panel placement ---------------------------------------------------------
+
+// A panel is fixed to the viewport rather than absolute inside the dialog. An
+// absolute panel that grows past the dialog is part of the dialog's scrollable
+// area, so a long dependency list added a scrollbar to the form and a wide one
+// added a horizontal bar. Fixed positioning does not, and the coordinates below
+// keep the panel inside the window.
+const PANEL_MARGIN = 8;
+const PANEL_GAP = 6;
+
+/** placePanel anchors an open panel to its button, clamped to the window. */
+function placePanel(field, panel) {
+  const button = field.querySelector('[data-type-open], [data-pick-open]');
+  if (!button) return;
+  const rect = button.getBoundingClientRect();
+  // The type chooser is 560 px wide and opens leftwards from its right column;
+  // the place, dependency and group pickers are 420 px and open rightwards.
+  const wanted = panel.classList.contains('pick-panel') ? 420 : 560;
+  const width = Math.min(wanted, window.innerWidth - PANEL_MARGIN * 2);
+  const alignRight = !panel.classList.contains('pick-panel');
+  let left = alignRight ? rect.right - width : rect.left;
+  left = Math.max(PANEL_MARGIN, Math.min(left, window.innerWidth - width - PANEL_MARGIN));
+
+  const below = window.innerHeight - rect.bottom - PANEL_GAP - PANEL_MARGIN;
+  const above = rect.top - PANEL_GAP - PANEL_MARGIN;
+  const useBelow = below >= 220 || below >= above;
+  const available = Math.max(useBelow ? below : above, 160);
+
+  panel.style.position = 'fixed';
+  panel.style.width = `${width}px`;
+  panel.style.left = `${left}px`;
+  panel.style.right = 'auto';
+  panel.style.top = useBelow ? `${rect.bottom + PANEL_GAP}px` : 'auto';
+  panel.style.bottom = useBelow ? 'auto' : `${window.innerHeight - rect.top + PANEL_GAP}px`;
+  panel.style.maxHeight = `${available}px`;
+}
+
+/** clearPanelPlacement hands the panel back to the stylesheet. */
+function clearPanelPlacement(panel) {
+  for (const prop of ['position', 'width', 'left', 'right', 'top', 'bottom', 'maxHeight']) {
+    panel.style[prop] = '';
+  }
+}
+
+/** repositionPanels follows the button after a resize or a scroll of the dialog. */
+function repositionPanels() {
+  for (const panel of document.querySelectorAll('.type-panel:not([hidden]), .pick-panel:not([hidden])')) {
+    const field = panel.closest('[data-type-field], [data-pick-field]');
+    if (field) placePanel(field, panel);
+  }
+}
+
+/** mountPanelPlacement keeps open panels anchored while the window moves. */
+function mountPanelPlacement() {
+  window.addEventListener('resize', repositionPanels);
+  // Only the dialog's own scroll moves the button. A scroll inside the panel must
+  // not reposition it, and the event would otherwise arrive here from the panel too.
+  document.addEventListener('scroll', (event) => {
+    if (event.target && event.target.id === 'modal') repositionPanels();
+  }, true);
 }
 
 function sensorFormMarkup(sensor) {
@@ -3596,17 +3816,12 @@ function sensorFormMarkup(sensor) {
     </div>
 
     <div class="grid-3 adv-hide">
-      <label class="field"><span>${withHelp(t('sensor.group'), 'help.sensor.group')}</span>
-        <input name="group" type="text" value="${esc(sensor?.group || '')}" list="group-list"></label>
+      ${groupFieldMarkup(sensor?.group || '')}
       ${siteFieldMarkup(sensor?.site)}
       <label class="field"><span>${withHelp(t('sensor.tags'), 'help.sensor.tags')}</span>
         <input name="tags" type="text" value="${esc((sensor?.tags || []).join(', '))}"></label>
       ${parentFieldMarkup(sensor?.parent, sensor?.name)}
     </div>
-
-    <datalist id="group-list">
-      ${[...new Set(state.sensors.map((c) => c.group).filter(Boolean))].map((g) => `<option value="${esc(g)}">`).join('')}
-    </datalist>
 
     <label class="field adv-hide"><span>${withHelp(t('sensor.reminder'), 'help.sensor.reminder')}</span>
       <input name="reminder_every" type="number" min="0" value="${sensor?.reminder_every || 0}"></label>

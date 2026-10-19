@@ -27,10 +27,21 @@ here and what the release says are the same document.
   per-type choices below it (method, record type, SNMP version, health, and every
   yes/no) are chips, so a value is one click and visible. "Leave it at the default"
   is a chip of its own, not an empty field somebody has to work out how to clear.
-  The place picker groups sites by kind and still carries the entry that makes a new
+  The group field is the same picker, and its search box doubles as the place to
+  name a new group: a term no existing group matches is the group being made. The
+  place picker groups sites by kind and still carries the entry that makes a new
   one; the **Depends on** picker lists the other sensors with their current status
   beside them, a down one first, so the choice is made on what is happening rather
   than on the alphabet.
+
+- **An open chooser stays inside the window.** The panels are fixed to the viewport
+  and clamped to it rather than absolutely placed inside the dialog: a long
+  dependency list or a wide panel no longer adds a scrollbar to the form, and a
+  panel near an edge opens on the side with room.
+
+- **The static demo's built-in symbols are drawn again.** They were requested from
+  the domain root, which is right for the binary and wrong for the demo served from
+  a subdirectory; the path is now resolved against the module that defines it.
 
 - **Six more sensor types.** Each answers a question the existing probes could only
   approximate, and each is the smallest protocol exchange that answers it:

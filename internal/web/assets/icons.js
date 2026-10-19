@@ -50,6 +50,13 @@ let api = null;
 let toast = () => {};
 let confirmDialog = (message) => window.confirm(message);
 
+// The drawings are siblings of this module, wherever the dashboard is served
+// from. An absolute "/assets/icons/..." is right for the binary at the root and
+// wrong for the static demo, which lives in a subdirectory: the browser asked
+// the domain root for a file that was never there, and every built-in symbol
+// came out blank. Resolving against the module keeps both working.
+const ICON_BASE = new URL('icons/', import.meta.url);
+
 /** The URL a symbol is drawn from, or "" when there is nothing to draw. */
 export function iconURL(ref) {
   if (!ref) return '';
@@ -57,7 +64,7 @@ export function iconURL(ref) {
     const name = ref.slice(BUILTIN.length);
     // Only a plain name can become a path: a reference carrying a slash or a dot is
     // not one of ours, and is not turned into a URL that would fetch something else.
-    return /^[a-z0-9-]+$/.test(name) ? `/assets/icons/${name}.svg` : '';
+    return /^[a-z0-9-]+$/.test(name) ? new URL(`${name}.svg`, ICON_BASE).href : '';
   }
   if (ref.startsWith(UPLOAD)) {
     const id = ref.slice(UPLOAD.length);
