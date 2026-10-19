@@ -1877,8 +1877,23 @@ function renderByGroup(sensors, render) {
     if (!byGroup.has(key)) byGroup.set(key, []);
     byGroup.get(key).push(sensor);
   }
+
+  // The groups in the order somebody arranged, not the order their first sensor
+  // happens to arrive in. The ungrouped sensors stay last: they are not a group
+  // somebody can place.
+  const order = (name) => {
+    if (!name) return Number.MAX_SAFE_INTEGER;
+    return iconUI.groupOf(state.groups, name)?.sort_order ?? 0;
+  };
+  const names = [...byGroup.keys()].sort((a, b) => {
+    if (!a || !b) return a === b ? 0 : (a ? -1 : 1);
+    return order(a) - order(b) || a.localeCompare(b);
+  });
+
+  const admin = can('admin');
   let html = '';
-  for (const [group, items] of byGroup) {
+  for (const group of names) {
+    const items = byGroup.get(group);
     if (group) {
       const settings = iconUI.groupOf(state.groups, group);
       const down = items.filter((c) => c.status === 'down').length;
@@ -1887,7 +1902,9 @@ function renderByGroup(sensors, render) {
       const count = down > 0
         ? t('sites.sensorCountDown', { count: items.length, down })
         : t('sites.sensorCount', { count: items.length });
-      html += `<h2 class="group-title"${iconUI.colourAttr(settings)}>` +
+      html += `<h2 class="group-title"${iconUI.colourAttr(settings)} data-group-heading="${esc(group)}"` +
+        `${admin ? ' draggable="true"' : ''}>` +
+        `${admin ? '<span class="drag-grip" aria-hidden="true" title="' + esc(t('groups.dragHint')) + '">⠿</span>' : ''}` +
         `${iconUI.groupIcon(settings)}<span class="group-name">${esc(group)}</span>` +
         `<span class="group-count">${esc(count)}</span></h2>`;
     }
@@ -4845,20 +4862,29 @@ function tagsPanel() {
 
 let draggedGroup = '';
 
-function groupRowOf(node) {
-  return node.closest('#groups-panel tbody tr[data-name]');
+// The rows in Settings and the headings on the dashboard are the same kind of
+// item: both carry a group's name, and both can be dragged into a new order. One
+// set of handlers serves them, so the two places cannot drift apart.
+const GROUP_DRAG_ITEMS = '#groups-panel tbody tr[data-name], #groups [data-group-heading]';
+
+function groupDragItem(node) {
+  return node.closest(GROUP_DRAG_ITEMS);
+}
+
+function groupItemName(item) {
+  return item?.dataset.name || item?.dataset.groupHeading || '';
 }
 
 function clearGroupDrag() {
   draggedGroup = '';
-  for (const row of $$('#groups-panel tbody tr')) row.classList.remove('dragging', 'drag-over');
+  for (const item of $$(GROUP_DRAG_ITEMS)) item.classList.remove('dragging', 'drag-over');
 }
 
 function onGroupDragStart(event) {
-  const row = groupRowOf(event.target);
-  if (!row || !can('admin')) return;
-  draggedGroup = row.dataset.name;
-  row.classList.add('dragging');
+  const item = groupDragItem(event.target);
+  if (!item || !can('admin')) return;
+  draggedGroup = groupItemName(item);
+  item.classList.add('dragging');
   if (event.dataTransfer) {
     event.dataTransfer.setData('text/plain', draggedGroup);
     event.dataTransfer.effectAllowed = 'move';
@@ -4866,25 +4892,34 @@ function onGroupDragStart(event) {
 }
 
 function onGroupDragOver(event) {
-  const row = groupRowOf(event.target);
-  if (!row || !draggedGroup || row.dataset.name === draggedGroup) return;
+  const item = groupDragItem(event.target);
+  if (!item || !draggedGroup || groupItemName(item) === draggedGroup) return;
   event.preventDefault();
   if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
-  for (const other of $$('#groups-panel tbody tr.drag-over')) other.classList.remove('drag-over');
-  row.classList.add('drag-over');
+  for (const other of $$(GROUP_DRAG_ITEMS)) other.classList.remove('drag-over');
+  item.classList.add('drag-over');
 }
 
 async function onGroupDrop(event) {
-  const target = groupRowOf(event.target);
-  if (!target || !draggedGroup || target.dataset.name === draggedGroup) return;
+  const target = groupDragItem(event.target);
+  const targetName = groupItemName(target);
+  if (!target || !draggedGroup || targetName === draggedGroup) return;
   event.preventDefault();
-  const names = $$('#groups-panel tbody tr[data-name]').map((row) => row.dataset.name);
+
+  // The full order, not just the rows on screen: the dashboard shows only the
+  // groups that have sensors, and a settings-only group must keep its place
+  // rather than be handed a colliding number.
+  const names = (state.groups || []).map((g) => g.name);
+  for (const item of $$(GROUP_DRAG_ITEMS)) {
+    const name = groupItemName(item);
+    if (name && !names.includes(name)) names.push(name);
+  }
   const from = names.indexOf(draggedGroup);
-  const to = names.indexOf(target.dataset.name);
+  const to = names.indexOf(targetName);
   if (from < 0 || to < 0) return;
   const moved = names[from];
   names.splice(from, 1);
-  // Drop before the row it was released on, which is where the line is drawn.
+  // Drop before the row or heading it was released on, which is where the line is.
   names.splice(from < to ? to - 1 : to, 0, moved);
   clearGroupDrag();
   await saveGroupOrder(names);
@@ -5878,6 +5913,14 @@ settingsBody.addEventListener('dragstart', onGroupDragStart);
 settingsBody.addEventListener('dragover', onGroupDragOver);
 settingsBody.addEventListener('drop', onGroupDrop);
 settingsBody.addEventListener('dragend', clearGroupDrag);
+
+// The same order can be arranged on the dashboard itself. The container is
+// static; only its contents are redrawn by a refresh.
+const dashboardGroups = $('#groups');
+dashboardGroups.addEventListener('dragstart', onGroupDragStart);
+dashboardGroups.addEventListener('dragover', onGroupDragOver);
+dashboardGroups.addEventListener('drop', onGroupDrop);
+dashboardGroups.addEventListener('dragend', clearGroupDrag);
 $('#settings-body').addEventListener('submit', (event) => {
   if (event.target.id === 'password-form') onPasswordChange(event);
 });

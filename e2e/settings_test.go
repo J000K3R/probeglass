@@ -304,4 +304,74 @@ func TestGroupsCanBeReorderedByDragging(t *testing.T) {
 	if len(order) < 2 || order[0] != "Drag C" || order[1] != "Drag A" {
 		t.Errorf("the server's order starts %v, want Drag C then Drag A", order)
 	}
+
+	// The dashboard itself can be dragged too. Two of the new groups need a
+	// sensor for their headings to exist there; the example sensors are moved
+	// into them through the API, which keeps everything else about them.
+	if _, err := chromedp.Run(ctx, chromedp.Evaluate[bool](`(async () => {
+		const sensors = await fetch('/api/sensors').then((r) => r.json());
+		if (!Array.isArray(sensors) || sensors.length < 2) return false;
+		for (const [group, id] of [['Drag A', sensors[0].id], ['Drag B', sensors[1].id]]) {
+			const res = await fetch('/api/sensors/' + id, {
+				method: 'PUT',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ group }),
+			});
+			if (!res.ok) return false;
+		}
+		return true;
+	})()`, chromedp.EvalAwaitPromise)); err != nil {
+		t.Fatalf("could not put sensors into the drag groups: %v", err)
+	}
+
+	if err := withTimeout(ctx, func(tctx context.Context) error {
+		return chromedp.Do(tctx,
+			goTo("#/dashboard", `!!document.querySelector('#groups .group-title')`),
+			chromedp.WaitVisible(`#groups [data-group-heading="Drag B"]`),
+		)
+	}); err != nil {
+		capture(t, ctx, dir, "dashboard-headings-missing")
+		t.Fatalf("the drag groups did not reach the dashboard: %v", err)
+	}
+
+	if _, err := chromedp.Run(ctx, chromedp.Evaluate[bool](`(() => {
+		const heading = (name) => document.querySelector('#groups [data-group-heading="' + name + '"]');
+		const from = heading('Drag B');
+		const to = heading('Drag A');
+		if (!from || !to) return false;
+		const dt = new DataTransfer();
+		from.dispatchEvent(new DragEvent('dragstart', { bubbles: true, cancelable: true, dataTransfer: dt }));
+		to.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: dt }));
+		to.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }));
+		from.dispatchEvent(new DragEvent('dragend', { bubbles: true, cancelable: true, dataTransfer: dt }));
+		return true;
+	})()`)); err != nil {
+		t.Fatalf("could not drag the group heading: %v", err)
+	}
+
+	if err := withTimeout(ctx, func(tctx context.Context) error {
+		return chromedp.Do(tctx,
+			chromedp.Poll[chromedp.Void](
+				`(() => {
+					const names = [...document.querySelectorAll('#groups [data-group-heading]')].map((h) => h.dataset.groupHeading);
+					return names.includes('Drag B') && names.indexOf('Drag B') < names.indexOf('Drag A');
+				})()`,
+				chromedp.WithPollingTimeout(15*time.Second)),
+		)
+	}); err != nil {
+		capture(t, ctx, dir, "dashboard-heading-not-moved")
+		t.Fatalf("the dragged heading did not move: %v", err)
+	}
+
+	order, err = chromedp.Run(ctx, chromedp.Evaluate[[]string](
+		`fetch('/api/groups').then((r) => r.json()).then((d) => (d.groups || []).map((g) => g.name))`,
+		chromedp.EvalAwaitPromise))
+	if err != nil {
+		t.Fatalf("could not read the group order after the dashboard drag: %v", err)
+	}
+	// Drag C has no sensors, so it is not on the dashboard and stays in front of
+	// both; what matters is that Drag B is now before Drag A.
+	if slices.Index(order, "Drag B") < 0 || slices.Index(order, "Drag B") > slices.Index(order, "Drag A") {
+		t.Errorf("the server's order is %v, want Drag B before Drag A", order)
+	}
 }

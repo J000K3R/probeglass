@@ -167,10 +167,10 @@ promises; the ordering is what the design already supports cheaply.
   sensor. Groups and tags can be named from the picker before the first sensor
   carries them.
 
-- [x] **Drag-to-arrange groups.** The group rows in Settings → Monitoring are
-  dragged into the order the dashboard should show them in; the whole order is
-  written at once, and the position number in the editor remains as the keyboard
-  path. (Per-group colours and icons shipped with the symbols; the comparison view
+- [x] **Drag-to-arrange groups.** The group rows in Settings → Monitoring, or the
+  group headings on the dashboard itself, are dragged into the order the dashboard
+  should show them in; the whole order is written at once, and the position number
+  in the editor remains as the keyboard path. (Per-group colours and icons shipped with the symbols; the comparison view
   this item once promised is the **tree**, the **wall** and the **map**, and pinning
   a sensor to the top is the header built out of widgets.)
 

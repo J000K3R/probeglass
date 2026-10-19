@@ -172,7 +172,16 @@ export function refreshHead(section, sensors) {
  * on a heading that would open whichever sensor happened to be nearest.
  */
 export function renderTree(sensors, sites, ctx) {
-  return groupBySite(sensors, sites).map((bucket) => `
+  return groupBySite(sensors, sites).map((bucket) => {
+    // The groups in the order somebody arranged, not the order their first sensor
+    // arrived in; the ungrouped sensors stay last within their site.
+    const ordered = [...bucket.groups].sort((a, b) => {
+      if (!a.name || !b.name) return a.name === b.name ? 0 : (a.name ? -1 : 1);
+      const ga = groupOf(ctx.groups, a.name);
+      const gb = groupOf(ctx.groups, b.name);
+      return (ga?.sort_order ?? 0) - (gb?.sort_order ?? 0) || a.name.localeCompare(b.name);
+    });
+    return `
     <details class="site-node" open>
       <summary class="site-head">
         ${CARET}
@@ -183,7 +192,7 @@ export function renderTree(sensors, sites, ctx) {
         <span class="site-count">${esc(headCount(bucket))}</span>
       </summary>
       <div class="site-body">
-        ${bucket.groups.map((group) => {
+        ${ordered.map((group) => {
           // What the settings say about this group, if anything: a symbol and a
           // colour, or nothing at all, which is what most groups have.
           const settings = groupOf(ctx.groups, group.name);
@@ -195,7 +204,8 @@ export function renderTree(sensors, sites, ctx) {
           </div>`;
         }).join('')}
       </div>
-    </details>`).join('');
+    </details>`;
+  }).join('');
 }
 
 /**

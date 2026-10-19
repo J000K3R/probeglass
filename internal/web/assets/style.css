@@ -1102,6 +1102,16 @@ button.widget-pick-label {
 }
 .group-title { margin: 0; }
 .groups > .group-title { margin-top: var(--sp-4); }
+/* The dashboard's headings can be dragged into an order, like the rows in
+   Settings; the line says where the heading will land. */
+#groups .group-title[draggable='true'] { cursor: grab; }
+#groups .group-title.dragging { opacity: 0.55; cursor: grabbing; }
+#groups .group-title.drag-over { box-shadow: inset 0 2px 0 var(--accent); }
+/* The grip appears when the heading is hovered: a dashboard of headings should
+   not carry a column of handles, but the thing that can be dragged should say so
+   as soon as somebody is over it. */
+#groups .group-title .drag-grip { opacity: 0; transition: opacity 0.12s; }
+#groups .group-title:hover .drag-grip { opacity: 1; }
 .groups > .group-title:first-child { margin-top: 0; }
 .group-count { margin-left: auto; color: var(--text-faint); font-weight: 400;
   text-transform: none; letter-spacing: 0; }
