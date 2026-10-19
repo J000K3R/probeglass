@@ -686,6 +686,8 @@ const en = {
   'groups.colourNone': 'None — the theme\'s own',
   'groups.order': 'Position in the order',
   'groups.orderHint': 'Lower numbers come first. Groups with the same number stand in alphabetical order.',
+  'groups.dragHint': 'Drag to reorder',
+  'groups.reordered': 'Group order saved.',
   'groups.forget': 'Forget',
   'groups.forgetConfirm': 'Forget the symbol and colour of "{name}"? Its {count} sensor(s) keep the group and the heading stays.',
   'groups.forgotten': 'Group settings removed.',

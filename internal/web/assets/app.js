@@ -4752,11 +4752,13 @@ function sitesPanel() {
  */
 function groupsPanel() {
   const groups = state.groups || [];
+  const admin = can('admin');
   const rows = groups.map((group) => {
     const settings = iconUI.groupOf(groups, group.name);
     return `
-    <tr data-name="${esc(group.name)}"${iconUI.colourAttr(settings)}>
+    <tr data-name="${esc(group.name)}"${iconUI.colourAttr(settings)}${admin ? ' draggable="true"' : ''}>
       <td><span class="group-cell">
+        ${admin ? `<span class="drag-grip" aria-hidden="true" title="${esc(t('groups.dragHint'))}">⠿</span>` : ''}
         <i class="group-dot" aria-hidden="true"></i>
         ${iconUI.groupIcon(settings)}
         <b>${esc(group.name)}</b>
@@ -4837,6 +4839,77 @@ function tagsPanel() {
         <button class="btn btn-primary" data-action="tag-new"${denied('admin')}>${esc(t('tags.new'))}</button>
       </div>
     </section>`;
+}
+
+// --- dragging the group order ----------------------------------------------
+
+let draggedGroup = '';
+
+function groupRowOf(node) {
+  return node.closest('#groups-panel tbody tr[data-name]');
+}
+
+function clearGroupDrag() {
+  draggedGroup = '';
+  for (const row of $$('#groups-panel tbody tr')) row.classList.remove('dragging', 'drag-over');
+}
+
+function onGroupDragStart(event) {
+  const row = groupRowOf(event.target);
+  if (!row || !can('admin')) return;
+  draggedGroup = row.dataset.name;
+  row.classList.add('dragging');
+  if (event.dataTransfer) {
+    event.dataTransfer.setData('text/plain', draggedGroup);
+    event.dataTransfer.effectAllowed = 'move';
+  }
+}
+
+function onGroupDragOver(event) {
+  const row = groupRowOf(event.target);
+  if (!row || !draggedGroup || row.dataset.name === draggedGroup) return;
+  event.preventDefault();
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+  for (const other of $$('#groups-panel tbody tr.drag-over')) other.classList.remove('drag-over');
+  row.classList.add('drag-over');
+}
+
+async function onGroupDrop(event) {
+  const target = groupRowOf(event.target);
+  if (!target || !draggedGroup || target.dataset.name === draggedGroup) return;
+  event.preventDefault();
+  const names = $$('#groups-panel tbody tr[data-name]').map((row) => row.dataset.name);
+  const from = names.indexOf(draggedGroup);
+  const to = names.indexOf(target.dataset.name);
+  if (from < 0 || to < 0) return;
+  const moved = names[from];
+  names.splice(from, 1);
+  // Drop before the row it was released on, which is where the line is drawn.
+  names.splice(from < to ? to - 1 : to, 0, moved);
+  clearGroupDrag();
+  await saveGroupOrder(names);
+}
+
+/**
+ * saveGroupOrder writes the whole order, not just the moved row.
+ *
+ * A gap or a duplicate in the numbers would silently fall back to the alphabet
+ * for the rows it leaves at zero, so every row gets its index. Groups without a
+ * settings row get one: the order is now something somebody chose for them too.
+ */
+async function saveGroupOrder(names) {
+  try {
+    await Promise.all(names.map((name, index) =>
+      api(`/api/groups/${encodeURIComponent(name)}`, {
+        method: 'PUT',
+        body: { sort_order: index },
+      })));
+    await afterLabelChange('group');
+    toast(t('groups.reordered'));
+  } catch (err) {
+    toast(err.message, 'error');
+    await renderSettings();
+  }
 }
 
 /**
@@ -5798,7 +5871,13 @@ function doctorMarkup(out) {
 // Listeners are delegated from the persistent container, so re-rendering the
 // panel never stacks duplicate handlers.
 $('#settings-body').addEventListener('change', onSettingsChange);
-$('#settings-body').addEventListener('click', onSettingsClick);
+const settingsBody = $('#settings-body');
+settingsBody.addEventListener('click', onSettingsClick);
+// Dragging is the mouse path; the number in the editor stays as the keyboard one.
+settingsBody.addEventListener('dragstart', onGroupDragStart);
+settingsBody.addEventListener('dragover', onGroupDragOver);
+settingsBody.addEventListener('drop', onGroupDrop);
+settingsBody.addEventListener('dragend', clearGroupDrag);
 $('#settings-body').addEventListener('submit', (event) => {
   if (event.target.id === 'password-form') onPasswordChange(event);
 });

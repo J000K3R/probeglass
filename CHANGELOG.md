@@ -37,6 +37,11 @@ here and what the release says are the same document.
   lists the other sensors with their current status beside them, a down one first,
   so the choice is made on what is happening rather than on the alphabet.
 
+- **Groups are arranged by dragging.** In Settings → Monitoring the group rows can be
+  dragged into the order the dashboard should show them in; the whole order is
+  written at once, so a drop cannot leave two rows sharing a number. The position
+  number in the editor remains as the keyboard path.
+
 - **An open chooser stays inside the window.** The panels are fixed to the viewport
   and clamped to it rather than absolutely placed inside the dialog: a long
   dependency list or a wide panel no longer adds a scrollbar to the form, and a

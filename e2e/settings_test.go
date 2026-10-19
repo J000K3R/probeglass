@@ -20,6 +20,7 @@ package e2e
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"testing"
 	"time"
@@ -211,4 +212,96 @@ func distinct(values []string) []string {
 		out = append(out, v)
 	}
 	return out
+}
+
+// TestGroupsCanBeReorderedByDragging is the mouse path for the order: a row
+// dropped before another one is written to every group's sort_order, and both
+// the panel and the server list come back in the new order.
+//
+// The rows are dragged with real DragEvents carrying a DataTransfer, because that
+// is what the page listens for; the assertion is on the server's own list as well
+// as on the DOM, since a re-render could otherwise show an order nothing stored.
+func TestGroupsCanBeReorderedByDragging(t *testing.T) {
+	browser := findBrowser(t)
+	base := startServer(t, buildBinary(t))
+	ctx, done := openBrowser(t, browser)
+	defer done()
+	dir := artifactsDir(t)
+
+	firstRun(t, ctx, base, dir)
+
+	if err := withTimeout(ctx, func(tctx context.Context) error {
+		return chromedp.Do(tctx,
+			goTo("#/settings", `!!document.querySelector('#settings-body .settings-tabs [data-category]')`),
+			openSettingsCategory("monitor"),
+			chromedp.WaitVisible(`#groups-panel tbody tr`),
+		)
+	}); err != nil {
+		capture(t, ctx, dir, "groups-panel-missing")
+		t.Fatalf("could not open the groups panel: %v", err)
+	}
+
+	// Three groups with no sensors, made with the panel's own button. They start at
+	// order 0, which means alphabetical: Drag A, Drag B, Drag C.
+	makeGroup := func(name string) {
+		t.Helper()
+		if err := withTimeout(ctx, func(tctx context.Context) error {
+			return chromedp.Do(tctx,
+				chromedp.WaitVisible(`#groups-panel [data-action="group-new"]`),
+				chromedp.Click(`#groups-panel [data-action="group-new"]`),
+				chromedp.WaitVisible(`#modal-group input[name="label_name"]`),
+				chromedp.SetValue(`#modal-group input[name="label_name"]`, name),
+				chromedp.Click(`#group-save`),
+				chromedp.WaitNotPresent(`#modal-group[open]`),
+				chromedp.Poll[chromedp.Void](
+					fmt.Sprintf(`!!document.querySelector('#groups-panel tbody tr[data-name=%q]')`, name),
+					chromedp.WithPollingTimeout(15*time.Second)),
+			)
+		}); err != nil {
+			capture(t, ctx, dir, "group-not-made")
+			t.Fatalf("could not make the group %q: %v", name, err)
+		}
+	}
+	for _, name := range []string{"Drag A", "Drag B", "Drag C"} {
+		makeGroup(name)
+	}
+
+	if _, err := chromedp.Run(ctx, chromedp.Evaluate[bool](`(() => {
+		const row = (name) => document.querySelector('#groups-panel tbody tr[data-name="' + name + '"]');
+		const from = row('Drag C');
+		const to = row('Drag A');
+		if (!from || !to) return false;
+		const dt = new DataTransfer();
+		from.dispatchEvent(new DragEvent('dragstart', { bubbles: true, cancelable: true, dataTransfer: dt }));
+		to.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: dt }));
+		to.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }));
+		from.dispatchEvent(new DragEvent('dragend', { bubbles: true, cancelable: true, dataTransfer: dt }));
+		return true;
+	})()`)); err != nil {
+		t.Fatalf("could not drag the group row: %v", err)
+	}
+
+	if err := withTimeout(ctx, func(tctx context.Context) error {
+		return chromedp.Do(tctx,
+			chromedp.Poll[chromedp.Void](
+				`(() => {
+					const names = [...document.querySelectorAll('#groups-panel tbody tr[data-name]')].map((r) => r.dataset.name);
+					return names.includes('Drag C') && names.indexOf('Drag C') < names.indexOf('Drag A');
+				})()`,
+				chromedp.WithPollingTimeout(15*time.Second)),
+		)
+	}); err != nil {
+		capture(t, ctx, dir, "groups-not-reordered")
+		t.Fatalf("the dragged row did not move: %v", err)
+	}
+
+	order, err := chromedp.Run(ctx, chromedp.Evaluate[[]string](
+		`fetch('/api/groups').then((r) => r.json()).then((d) => (d.groups || []).map((g) => g.name))`,
+		chromedp.EvalAwaitPromise))
+	if err != nil {
+		t.Fatalf("could not read the group order: %v", err)
+	}
+	if len(order) < 2 || order[0] != "Drag C" || order[1] != "Drag A" {
+		t.Errorf("the server's order starts %v, want Drag C then Drag A", order)
+	}
 }

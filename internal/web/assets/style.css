@@ -2979,6 +2979,12 @@ label.field.check > span { color: var(--text); font-size: var(--text-3); }
 .group-cell { display: inline-flex; align-items: center; gap: var(--sp-2); }
 .group-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--group-colour, var(--border-strong)); }
 
+/* Dragging a group row: the grip says it can move, the line says where it lands. */
+.groups-table tr[draggable='true'] { cursor: grab; }
+.groups-table tr.dragging { opacity: 0.55; cursor: grabbing; }
+.groups-table tr.drag-over td { box-shadow: inset 0 2px 0 var(--accent); }
+.drag-grip { color: var(--text-faint); cursor: grab; letter-spacing: -1px; user-select: none; }
+
 /* -------------------------------------------------------------- responsive */
 
 @media (max-width: 1024px) {

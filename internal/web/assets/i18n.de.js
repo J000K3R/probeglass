@@ -685,6 +685,8 @@ export const de = {
   'groups.colourNone': 'Keine — die des Themes',
   'groups.order': 'Platz in der Reihenfolge',
   'groups.orderHint': 'Kleinere Zahlen kommen zuerst. Gruppen mit derselben Zahl stehen alphabetisch.',
+  'groups.dragHint': 'Ziehen, um die Reihenfolge zu ändern',
+  'groups.reordered': 'Gruppen-Reihenfolge gespeichert.',
   'groups.forget': 'Vergessen',
   'groups.forgetConfirm': 'Symbol und Farbe von „{name}" vergessen? Die {count} Sensor(en) behalten die Gruppe, die Überschrift bleibt.',
   'groups.forgotten': 'Gruppeneinstellungen entfernt.',

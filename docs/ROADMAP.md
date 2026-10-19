@@ -167,15 +167,17 @@ promises; the ordering is what the design already supports cheaply.
   sensor. Groups and tags can be named from the picker before the first sensor
   carries them.
 
+- [x] **Drag-to-arrange groups.** The group rows in Settings → Monitoring are
+  dragged into the order the dashboard should show them in; the whole order is
+  written at once, and the position number in the editor remains as the keyboard
+  path. (Per-group colours and icons shipped with the symbols; the comparison view
+  this item once promised is the **tree**, the **wall** and the **map**, and pinning
+  a sensor to the top is the header built out of widgets.)
+
 ## Next — 0.2.x
 
 Ordered by value per unit of work.
 
-- [ ] **Drag-to-arrange groups.** The order is a number in the group editor today,
-  which works and is not a thing anybody wants to do twice. (Per-group colours and
-  icons shipped above; the side-by-side comparison view this item used to promise is
-  the **tree**, the **wall** and the **map**, and pinning a sensor to the top is the
-  header built out of widgets.)
 - [ ] **Escalation.** A second channel that only fires when an incident is still
   open after N minutes.
 - [ ] **Import and export, for the configuration file.** The dashboard can already
