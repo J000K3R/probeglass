@@ -99,6 +99,7 @@ type BackupDoc struct {
 	Settings  *map[string]string `json:"settings"`
 	Sites     *[]BackupSite      `json:"sites"`
 	Groups    *[]BackupGroup     `json:"groups"`
+	Tags      *[]BackupTag       `json:"tags"`
 	Icons     *[]BackupIcon      `json:"icons"`
 	Channels  *[]BackupChannel   `json:"channels"`
 	Sensors   *[]BackupSensor    `json:"sensors"`
@@ -123,6 +124,16 @@ type BackupSite struct {
 // its place in the order. The group itself is a word on a sensor and is not in this
 // document at all — restoring the sensors restores the groups with them.
 type BackupGroup struct {
+	Name      string `json:"name"`
+	Icon      string `json:"icon,omitempty"`
+	Colour    string `json:"colour,omitempty"`
+	SortOrder int    `json:"sort_order"`
+}
+
+// BackupTag is what somebody has said about a tag, in the same shape as a group's
+// settings. Like a group, the tag itself is a word on a sensor and is not in this
+// document: restoring the sensors restores the tags with them.
+type BackupTag struct {
 	Name      string `json:"name"`
 	Icon      string `json:"icon,omitempty"`
 	Colour    string `json:"colour,omitempty"`
@@ -236,6 +247,7 @@ type Counts struct {
 	Settings  int `json:"settings"`
 	Sites     int `json:"sites"`
 	Groups    int `json:"groups"`
+	Tags      int `json:"tags"`
 	Icons     int `json:"icons"`
 	Channels  int `json:"channels"`
 	Sensors   int `json:"sensors"`
@@ -295,6 +307,9 @@ func (s *Store) Export(ctx context.Context, w io.Writer, opts ExportOptions) (Co
 			return err
 		}
 		if err := exportGroups(ctx, tx, jw, &counts); err != nil {
+			return err
+		}
+		if err := exportTags(ctx, tx, jw, &counts); err != nil {
 			return err
 		}
 		if err := exportIcons(ctx, tx, jw, &counts); err != nil {
@@ -403,6 +418,31 @@ func exportGroups(ctx context.Context, tx *sql.Tx, jw *jsonWriter, counts *Count
 		jw.item(first, g)
 		first = false
 		counts.Groups++
+	}
+	jw.close("]", first)
+	return rows.Err()
+}
+
+func exportTags(ctx context.Context, tx *sql.Tx, jw *jsonWriter, counts *Counts) error {
+	rows, err := tx.QueryContext(ctx, `
+		SELECT name, icon, colour, sort_order FROM tags
+		ORDER BY sort_order ASC, name COLLATE NOCASE ASC`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	jw.section("tags")
+	jw.raw("[")
+	first := true
+	for rows.Next() {
+		var t BackupTag
+		if err := rows.Scan(&t.Name, &t.Icon, &t.Colour, &t.SortOrder); err != nil {
+			return err
+		}
+		jw.item(first, t)
+		first = false
+		counts.Tags++
 	}
 	jw.close("]", first)
 	return rows.Err()
@@ -959,6 +999,12 @@ func restoreAll(ctx context.Context, tx *sql.Tx, doc BackupDoc) (Counts, bool, e
 		}
 	}
 
+	if doc.Tags != nil {
+		if err := restoreTags(ctx, tx, *doc.Tags, &counts); err != nil {
+			return counts, false, err
+		}
+	}
+
 	if doc.Icons != nil {
 		if err := restoreIcons(ctx, tx, *doc.Icons, &counts); err != nil {
 			return counts, false, err
@@ -1211,6 +1257,29 @@ func restoreGroups(ctx context.Context, tx *sql.Tx, groups []BackupGroup, counts
 			return fmt.Errorf("group %q: %w", g.Name, err)
 		}
 		counts.Groups++
+	}
+	return nil
+}
+
+// restoreTags replaces what the file says about tags. Like groups, nothing has to be
+// cleared first: no foreign key points here, so a sensor whose tag the file does not
+// mention simply has no settings for it.
+func restoreTags(ctx context.Context, tx *sql.Tx, tags []BackupTag, counts *Counts) error {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM tags`); err != nil {
+		return err
+	}
+	now := time.Now().UTC()
+	for _, t := range tags {
+		if t.Name == "" {
+			return fmt.Errorf("%w: a tag in this backup has no name", ErrBadBackup)
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO tags (name, icon, colour, sort_order, created_at, updated_at)
+			VALUES (?,?,?,?,?,?)`,
+			t.Name, t.Icon, t.Colour, t.SortOrder, fmtTime(now), fmtTime(now)); err != nil {
+			return fmt.Errorf("tag %q: %w", t.Name, err)
+		}
+		counts.Tags++
 	}
 	return nil
 }

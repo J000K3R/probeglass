@@ -255,6 +255,26 @@ func (s Site) Placed() bool { return s.Lat != nil && s.Lon != nil }
 // say on its own: the symbol drawn for it, the colour of its heading, and where it
 // belongs in the order. A group nobody has said anything about has no row here at
 // all, which is the ordinary state of a fresh installation.
+// Tag is what is known about a tag beyond its name: the same symbol, colour and
+// place in the order a group has. A tag itself is still a word in a sensor's
+// comma-separated list, exactly as a group is a word in its group column; this
+// table holds only what a word cannot say on its own.
+//
+// It is a separate type from Group rather than a shared one because the two are
+// written and read by different endpoints and mean different things on screen. The
+// shape is the same because the editor is the same editor.
+type Tag struct {
+	Name string `json:"name"`
+	Icon string `json:"icon"`
+	// Colour is one of Accents, or empty for the theme's own.
+	Colour    string    `json:"colour"`
+	SortOrder int       `json:"sort_order"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	// SensorCount is how many sensors carry this tag, counted when the tag is read.
+	SensorCount int `json:"sensor_count"`
+}
+
 type Group struct {
 	Name string `json:"name"`
 	// Icon is the symbol for the group's heading, in the same three forms a

@@ -166,6 +166,11 @@ sensors:
 | `options` | type-specific, see below |
 | `channels` | names of alert channels, as declared above or created in the UI |
 
+Groups and tags are words on a sensor; their symbols, colours and places in the
+order are set in the dashboard under **Settings → Monitoring**, not in this file.
+A group or a tag named here exists without them, and a settings row for a word
+this file no longer carries is left alone rather than deleted.
+
 | Site field | Notes |
 |---|---|
 | `name` | required, unique; what a sensor's `site` refers to |

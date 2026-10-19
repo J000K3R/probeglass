@@ -1463,6 +1463,26 @@ button.widget-pick-label {
 
 #detail-body { padding: var(--sp-4); display: grid; gap: var(--sp-3); }
 .detail-sub { font-family: var(--mono); font-size: var(--text-4); }
+.detail-tags { display: flex; flex-wrap: wrap; gap: var(--sp-1); margin: 0; }
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: 2px var(--sp-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-dim);
+  font-size: var(--text-4);
+}
+/* A tag with a colour of its own wears it, like a group heading does. */
+.tag-chip[data-colour] {
+  border-color: color-mix(in srgb, var(--group-colour) 45%, transparent);
+  color: var(--group-colour);
+}
+/* The multi-select's checkmark: present in every row so the names stay aligned,
+   empty when the tag is not chosen. */
+.tag-check { width: 14px; flex: none; text-align: center; color: var(--accent); font-size: var(--text-4); }
 
 /* The offer to bring the open window up to date, which appears once a probe has
    landed behind it. It is a button because pressing it is what redraws the body —

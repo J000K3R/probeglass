@@ -690,6 +690,29 @@ ALTER TABLE sensors ADD COLUMN icon TEXT NOT NULL DEFAULT '';
 ALTER TABLE sites   ADD COLUMN icon TEXT NOT NULL DEFAULT '';
 `,
 	},
+	{
+		version: 10,
+		name:    "tag-settings",
+		sql: `
+-- Settings for a tag, in the shape a group's settings already have.
+--
+-- A tag is still a word in the comma-separated list on a sensor, not a row: the
+-- sensors table has no foreign key here, a tag exists from the moment it is typed,
+-- and a tag nobody has said anything about has no row at all. What this holds is
+-- only what a word cannot say — an icon, a colour, a place in the order.
+--
+-- The shape mirrors groups deliberately, because the editor is the same dialog for
+-- both. The two tables are separate because the API and the meaning are separate.
+CREATE TABLE IF NOT EXISTS tags (
+    name       TEXT    NOT NULL PRIMARY KEY,
+    icon       TEXT    NOT NULL DEFAULT '',
+    colour     TEXT    NOT NULL DEFAULT '',
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT    NOT NULL,
+    updated_at TEXT    NOT NULL
+);
+`,
+	},
 }
 
 // rowExecer is the part of *sql.DB and *sql.Tx that the settings sweeps below use.

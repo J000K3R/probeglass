@@ -389,6 +389,99 @@ func TestGroupsOverHTTP(t *testing.T) {
 	}
 }
 
+func TestTagsOverHTTP(t *testing.T) {
+	h := newHarness(t)
+	h.setup()
+
+	placeSensor(t, h, "router", "")
+	placeSensor(t, h, "nas", "")
+	for _, name := range []string{"router", "nas"} {
+		resp := h.do(http.MethodPut, "/api/sensors/"+itoa(sensorID(t, h, name)),
+			map[string]any{"tags": []string{"nettag", "core"}}, origin(h))
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("give %s a tag: status = %d, body = %s", name, resp.StatusCode, readBody(t, resp))
+		}
+		resp.Body.Close()
+	}
+
+	resp := h.do(http.MethodGet, "/api/tags", nil, nil)
+	var listed struct {
+		Tags    []model.Tag `json:"tags"`
+		Accents []string    `json:"accents"`
+	}
+	decode(t, resp, &listed)
+	net, ok := tagNamed(listed.Tags, "nettag")
+	if !ok || net.SensorCount != 2 {
+		t.Fatalf("tags = %+v, want nettag on two sensors", listed.Tags)
+	}
+	if len(listed.Accents) != len(model.Accents) {
+		t.Errorf("the listing offers %d colours, want the palette's %d", len(listed.Accents), len(model.Accents))
+	}
+
+	resp = h.do(http.MethodPut, "/api/tags/nettag", map[string]any{
+		"icon": icon.BuiltinRef("wifi"), "colour": "amber", "sort_order": 2,
+	}, origin(h))
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("set tag: status = %d, body = %s", resp.StatusCode, readBody(t, resp))
+	}
+	var saved model.Tag
+	decode(t, resp, &saved)
+	if saved.Icon != icon.BuiltinRef("wifi") || saved.Colour != "amber" || saved.SortOrder != 2 {
+		t.Errorf("saved tag = %+v", saved)
+	}
+	if saved.SensorCount != 2 {
+		t.Errorf("the answer says %d sensors, want 2", saved.SensorCount)
+	}
+
+	for _, body := range []map[string]any{
+		{"colour": "#f59e0b"},
+		{"icon": icon.BuiltinRef("nope")},
+	} {
+		resp = h.do(http.MethodPut, "/api/tags/nettag", body, origin(h))
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("%v: status = %d, want 400 (body %s)", body, resp.StatusCode, readBody(t, resp))
+		}
+	}
+
+	// A tag no sensor carries yet: the settings row is made by this call, which is
+	// what the editor's "New tag" action does.
+	resp = h.do(http.MethodPut, "/api/tags/print", map[string]any{"colour": "rose"}, origin(h))
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("settings for a tag no sensor carries: status = %d, body = %s",
+			resp.StatusCode, readBody(t, resp))
+	}
+	resp.Body.Close()
+
+	resp = h.do(http.MethodDelete, "/api/tags/nettag", nil, origin(h))
+	var forgotten struct {
+		Forgotten string `json:"forgotten"`
+		Sensors   int    `json:"sensors"`
+	}
+	decode(t, resp, &forgotten)
+	if forgotten.Sensors != 2 {
+		t.Errorf("forgetting nettag reports %d sensors, want 2", forgotten.Sensors)
+	}
+	resp = h.do(http.MethodGet, "/api/tags", nil, nil)
+	decode(t, resp, &listed)
+	for _, tag := range listed.Tags {
+		if tag.Name == "nettag" && (tag.Icon != "" || tag.Colour != "") {
+			t.Errorf("nettag still has settings after being forgotten: %+v", tag)
+		}
+	}
+	if len(h.listSensors()) != 6 {
+		t.Error("forgetting a tag changed the sensors")
+	}
+}
+
+func tagNamed(tags []model.Tag, name string) (model.Tag, bool) {
+	for _, tag := range tags {
+		if tag.Name == name {
+			return tag, true
+		}
+	}
+	return model.Tag{}, false
+}
+
 // groupNamed picks one group out of the list, since the harness's example data
 // brings a group of its own.
 func groupNamed(groups []model.Group, name string) (model.Group, bool) {

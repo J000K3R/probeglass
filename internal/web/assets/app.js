@@ -56,6 +56,11 @@ const state = {
   // a sensor in a group with no row here is the ordinary state of a fresh
   // installation. They arrive with the summary for the same reason the sites do.
   groups: [],
+  // The tags and what somebody has said about them, in the same shape as groups:
+  // an icon, a colour, a place in the order. A tag exists because a sensor carries
+  // it in its comma-separated list, so this is loaded on its own rather than with
+  // the summary — the detail window draws the chips and the editor needs the list.
+  tags: [],
   // The maintenance windows and the kinds the form may offer. Read on the settings
   // page, like the sites, because nowhere else draws them.
   windows: [],
@@ -917,6 +922,11 @@ function showApp() {
   // Panels are fixed to the window; keep them on their button when it moves.
   mountPanelPlacement();
 
+  // Tag settings are small and drawn in the detail window and the editor; load
+  // them with the page rather than at the first click. An installation that has
+  // never made one gets an empty list, and the words still render as plain chips.
+  loadTags().catch(() => {});
+
   applyHash();
 
   // The first load decides whether the dashboard is usable. If it fails, say so
@@ -1685,7 +1695,7 @@ async function loadRouteData(route) {
     } else if (route === 'settings') {
       // Both of these decide whether a panel exists at all, so they have to be
       // there before the panel is drawn rather than filled in afterwards.
-      await Promise.all([loadUsers(), loadExampleData(), loadSites(), loadGroups(), loadWindows()]);
+      await Promise.all([loadUsers(), loadExampleData(), loadSites(), loadGroups(), loadTags(), loadWindows()]);
       await renderSettings();
     }
   } catch (err) {
@@ -2021,6 +2031,18 @@ function channelTone(channel) {
  * in every place a state is drawn — the card, the table row, the tree branch, the wall
  * tile — from one function. A view added later cannot be the only one without it.
  */
+/**
+ * tagChip draws one tag: its symbol and colour when it has settings, the word
+ * alone when it does not. A tag with no settings is still a tag, so the plain
+ * shape has to be the ordinary one and not a broken one.
+ */
+function tagChip(name) {
+  const tag = iconUI.groupOf(state.tags, name);
+  const attr = tag && tag.colour ? ` data-colour="${esc(tag.colour)}"` : '';
+  const icon = tag ? iconUI.groupIcon(tag, 14) : '';
+  return `<span class="tag-chip"${attr}>${icon}${esc(name)}</span>`;
+}
+
 function statusPill(sensor) {
   const s = sensor || {};
   // The pill and its badge are one box, and that is not tidiness: the tree draws a
@@ -2426,6 +2448,8 @@ function detailMarkup(id, series, uptime, results) {
         : '',
   ].filter(Boolean).join('');
   const relationships = links ? `<p class="muted small detail-links">${links}</p>` : '';
+  const tags = (sensor.tags || []).map(tagChip).join('');
+  const tagLine = tags ? `<p class="detail-tags">${tags}</p>` : '';
 
   const rows = (results || []).map((r) => `
     <tr class="${r.success ? '' : 'row-crit'}">
@@ -2438,6 +2462,7 @@ function detailMarkup(id, series, uptime, results) {
   return `
     ${open}
     <p class="muted detail-sub">${esc(sensor.type)} · ${esc(sensor.target)}${sensor.group ? ` · ${esc(sensor.group)}` : ''}</p>
+    ${tagLine}
     ${relationships}
     <div class="detail-stats">
       <div class="stat"><span class="stat-label">${esc(t('detail.uptime'))}</span><span class="stat-value">${esc(C.fmtPct(stats.percent))}</span></div>
@@ -3188,7 +3213,12 @@ function parentPanelMarkup(selected, selfName) {
 
 /** groupNames is every group a sensor names, in the dashboard's order. */
 function groupNames() {
-  const names = [...new Set((state.sensors || []).map((s) => s.group).filter(Boolean))];
+  // Both sources: the words on the sensors, and the groups somebody has named and
+  // arranged before a sensor carries them. A settings-only group is a group.
+  const names = [...new Set([
+    ...(state.groups || []).map((g) => g.name),
+    ...(state.sensors || []).map((s) => s.group).filter(Boolean),
+  ])];
   const order = (name) => iconUI.groupOf(state.groups, name)?.sort_order ?? 0;
   return names.sort((a, b) => order(a) - order(b) || a.localeCompare(b));
 }
@@ -3239,12 +3269,10 @@ function groupPanelMarkup(selected) {
         ? `<div class="type-grid">${tiles}</div>`
         : `<p class="type-search-note">${esc(t('sensor.groupEmpty'))}</p>`}
     </section>
-    <div class="type-grid pick-new" data-group-create hidden>
-      <button type="button" class="type-tile" data-pick-create>
+    <div class="type-grid pick-new">
+      <button type="button" class="type-tile" data-pick-new-group>
         <span class="type-tile-icon" aria-hidden="true">+</span>
-        <span class="type-tile-text">
-          <span class="type-tile-label" data-group-create-label></span>
-        </span>
+        <span class="type-tile-text"><span class="type-tile-label">${esc(t('groups.newOption'))}</span></span>
       </button>
     </div>`;
 }
@@ -3270,6 +3298,106 @@ function groupFieldMarkup(selected) {
                   stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
         <div class="type-panel pick-panel" id="sensor-group-panel" hidden>${groupPanelMarkup(selected)}</div>
+      </div>
+    </div>`;
+}
+
+function tagSelectedNames(field) {
+  return (pickValueOf(field) || '').split(',').map((v) => v.trim()).filter(Boolean);
+}
+
+/** setTagValue writes a multi-selection into the tag field and its panel. */
+function setTagValue(field, names) {
+  if (!field) return;
+  const unique = [...new Set(names.map((n) => n.trim()).filter(Boolean))];
+  const input = field.querySelector('input[type="hidden"]');
+  if (input) input.value = unique.join(',');
+  const label = field.querySelector('[data-pick-label]');
+  if (label) label.textContent = unique.length ? unique.join(', ') : t('tags.none');
+  const icon = field.querySelector('[data-pick-icon]');
+  if (icon) icon.innerHTML = unique.length ? iconUI.iconMarkup('builtin:tag', { size: 18 }) : '';
+  for (const tile of field.querySelectorAll('[data-pick-value]')) {
+    const on = unique.includes(tile.dataset.pickValue);
+    tile.classList.toggle('is-current', on);
+    const box = tile.querySelector('[data-tag-check]');
+    if (box) box.textContent = on ? '✓' : '';
+  }
+}
+
+/** tagTile is one tag in the multi-select, with a checkmark rather than a single choice. */
+function tagTile(name, selected, count) {
+  const settings = iconUI.groupOf(state.tags, name);
+  const icon = (settings && iconUI.groupIcon(settings, 18)) ||
+    iconUI.iconMarkup('builtin:tag', { size: 18 });
+  return `<button type="button" class="type-tile pick-sensor tag-tile${selected.includes(name) ? ' is-current' : ''}"
+      data-pick-value="${esc(name)}" title="${esc(name)}">
+    <span class="tag-check" data-tag-check aria-hidden="true">${selected.includes(name) ? '✓' : ''}</span>
+    <span class="type-tile-icon">${icon}</span>
+    <span class="type-tile-text">
+      <span class="type-tile-label">${esc(name)}</span>
+      <small class="type-tile-target">${esc(t('tags.count', { count }))}</small>
+    </span>
+  </button>`;
+}
+
+/** tagPanelMarkup is the multi-select: existing tags, a clear entry, and "New tag…". */
+function tagPanelMarkup(selected) {
+  const counts = new Map();
+  for (const s of state.sensors || []) {
+    for (const name of s.tags || []) counts.set(name, (counts.get(name) || 0) + 1);
+  }
+  const names = [...new Set([...(state.tags || []).map((t) => t.name), ...counts.keys()])];
+  names.sort((a, b) => {
+    const ga = iconUI.groupOf(state.tags, a);
+    const gb = iconUI.groupOf(state.tags, b);
+    return (ga?.sort_order ?? 0) - (gb?.sort_order ?? 0) || a.localeCompare(b);
+  });
+  const tiles = names.map((name) => tagTile(name, selected, counts.get(name) || 0)).join('');
+  return `
+    <div class="type-search">
+      <label class="type-search-label" for="sensor-tags-search">${esc(t('tags.search'))}</label>
+      <input type="search" id="sensor-tags-search" data-pick-query
+             placeholder="${esc(t('tags.searchPlaceholder'))}" autocomplete="off" spellcheck="false">
+      <p class="type-search-note" data-pick-note hidden></p>
+    </div>
+    <div class="type-grid pick-grid">
+      <button type="button" class="type-tile${selected.length ? '' : ' is-current'}" data-pick-clear
+              title="${esc(t('tags.none'))}">
+        <span class="type-tile-label">${esc(t('tags.none'))}</span>
+      </button>
+    </div>
+    <section class="type-group" data-pick-group="tags">
+      <p class="type-group-title">${esc(t('tags.heading'))}</p>
+      ${tiles
+        ? `<div class="type-grid pick-grid">${tiles}</div>`
+        : `<p class="type-search-note">${esc(t('tags.emptyPicker'))}</p>`}
+    </section>
+    <div class="type-grid pick-new">
+      <button type="button" class="type-tile" data-pick-new-tag>
+        <span class="type-tile-icon" aria-hidden="true">+</span>
+        <span class="type-tile-text"><span class="type-tile-label">${esc(t('tags.newOption'))}</span></span>
+      </button>
+    </div>`;
+}
+
+/** tagFieldMarkup is the tag multi-select as a field, in the type chooser's style. */
+function tagFieldMarkup(selected) {
+  const names = selected || [];
+  return `
+    <div class="field-row">
+      <label id="sensor-tags-label">${withHelp(t('sensor.tags'), 'help.sensor.tags')}</label>
+      <div class="icon-field type-field pick-field" data-pick-field="tags" data-pick-multi="true">
+        <input type="hidden" name="tags" id="sensor-tags" value="${esc(names.join(','))}">
+        <button type="button" class="icon-button" data-pick-open
+                aria-haspopup="true" aria-expanded="false" aria-controls="sensor-tags-panel"
+                aria-labelledby="sensor-tags-label sensor-tags-value">
+          <span class="icon-slot" data-pick-icon>${names.length ? iconUI.iconMarkup('builtin:tag', { size: 18 }) : ''}</span>
+          <span class="icon-button-label" id="sensor-tags-value" data-pick-label>${esc(names.length ? names.join(', ') : t('tags.none'))}</span>
+          <svg class="icon-caret" viewBox="0 0 12 12" width="12" height="12" aria-hidden="true">
+            <path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.8"
+                  stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <div class="type-panel pick-panel" id="sensor-tags-panel" hidden>${tagPanelMarkup(names)}</div>
       </div>
     </div>`;
 }
@@ -3533,6 +3661,18 @@ function renderSitePanel(field) {
   if (panel) panel.innerHTML = sitePanelMarkup(pickValueOf(field));
 }
 
+/** renderGroupPanel redraws the group list after one was made from this form. */
+function renderGroupPanel(field) {
+  const panel = field?.querySelector('.pick-panel');
+  if (panel) panel.innerHTML = groupPanelMarkup(pickValueOf(field));
+}
+
+/** renderTagPanel redraws the tag list after one was made from this form. */
+function renderTagPanel(field) {
+  const panel = field?.querySelector('.pick-panel');
+  if (panel) panel.innerHTML = tagPanelMarkup(tagSelectedNames(field));
+}
+
 /** openPickPanel shows one picker, closes any other and focuses its search. */
 function openPickPanel(field) {
   const panel = field.querySelector('.pick-panel');
@@ -3587,25 +3727,12 @@ function filterPickTiles(field, term) {
     group.hidden = ![...group.querySelectorAll('[data-pick-value]')].some((tile) => !tile.hidden);
   }
 
-  let creating = false;
-  if (kind === 'group') {
-    const exact = [...panel.querySelectorAll('[data-pick-value]')]
-      .some((tile) => tile.dataset.pickValue.toLowerCase() === needle);
-    creating = needle !== '' && !exact;
-    const create = panel.querySelector('[data-group-create]');
-    if (create) {
-      create.hidden = !creating;
-      const label = create.querySelector('[data-group-create-label]');
-      if (label) label.textContent = t('sensor.groupCreate', { name: term.trim() });
-    }
-  }
-
   const note = panel.querySelector('[data-pick-note]');
   if (note) {
-    const key = { site: 'sensor.siteNoMatch', group: 'sensor.groupNoMatch' }[kind]
+    const key = { site: 'sensor.siteNoMatch', group: 'sensor.groupNoMatch', tags: 'tags.noMatch' }[kind]
       || 'sensor.parentNoMatch';
-    note.hidden = visible !== 0 || creating;
-    note.textContent = visible === 0 && !creating ? t(key, { query: term.trim() }) : '';
+    note.hidden = visible !== 0;
+    note.textContent = visible === 0 ? t(key, { query: term.trim() }) : '';
   }
 }
 
@@ -3626,6 +3753,19 @@ function mountPickPanels() {
       return;
     }
 
+    const freshGroup = event.target.closest('[data-pick-new-group]');
+    if (freshGroup) {
+      const field = pickFieldOf(freshGroup);
+      closePickPanel(field);
+      openLabelEditor('group', '', null, { creating: true, onSaved: (name) => {
+        renderGroupPanel(field);
+        setPickValue(field, name);
+        const button = field?.querySelector('[data-pick-open]');
+        if (button) setTimeout(() => button.focus(), 0);
+      }});
+      return;
+    }
+
     const fresh = event.target.closest('[data-pick-new-site]');
     if (fresh) {
       const field = pickFieldOf(fresh);
@@ -3639,22 +3779,39 @@ function mountPickPanels() {
       return;
     }
 
-    const create = event.target.closest('[data-pick-create]');
-    if (create) {
-      const field = pickFieldOf(create);
-      const term = field?.querySelector('[data-pick-query]')?.value.trim() || '';
-      if (term) {
-        setPickValue(field, term);
-        closePickPanel(field);
+    const clearTags = event.target.closest('[data-pick-clear]');
+    if (clearTags) {
+      setTagValue(pickFieldOf(clearTags), []);
+      return;
+    }
+
+    const freshTag = event.target.closest('[data-pick-new-tag]');
+    if (freshTag) {
+      const field = pickFieldOf(freshTag);
+      closePickPanel(field);
+      openLabelEditor('tag', '', null, { creating: true, onSaved: (name) => {
+        const names = new Set(tagSelectedNames(field));
+        names.add(name);
+        renderTagPanel(field);
+        setTagValue(field, [...names]);
         const button = field?.querySelector('[data-pick-open]');
         if (button) setTimeout(() => button.focus(), 0);
-      }
+      }});
       return;
     }
 
     const pick = event.target.closest('[data-pick-value]');
     if (pick) {
       const field = pickFieldOf(pick);
+      if (field?.dataset.pickMulti === 'true') {
+        const names = new Set(tagSelectedNames(field));
+        const value = pick.dataset.pickValue;
+        if (names.has(value)) names.delete(value);
+        else names.add(value);
+        setTagValue(field, [...names]);
+        // A multi-select stays open: choosing one tag is rarely the whole answer.
+        return;
+      }
       setPickValue(field, pick.dataset.pickValue);
       closePickPanel(field);
       const button = field?.querySelector('[data-pick-open]');
@@ -3680,18 +3837,18 @@ function mountPickPanels() {
       const field = pickFieldOf(query);
       const term = query.value.trim();
 
-      // In the group picker the search box is also where a new group is named:
-      // a term no existing group matches is the group being made.
-      if (field?.dataset.pickField === 'group' && term) {
-        const exact = [...field.querySelectorAll('[data-pick-value]')]
-          .some((tile) => tile.dataset.pickValue.toLowerCase() === term.toLowerCase());
-        if (!exact) {
-          setPickValue(field, term);
-          closePickPanel(field);
-          const button = field?.querySelector('[data-pick-open]');
-          if (button) setTimeout(() => button.focus(), 0);
-          return;
+      // In a multi-select Enter toggles the first match and leaves the panel open,
+      // because the next thing somebody types is usually another tag.
+      if (field?.dataset.pickMulti === 'true') {
+        const first = field.querySelector('[data-pick-value]:not([hidden])');
+        if (first) {
+          const names = new Set(tagSelectedNames(field));
+          const value = first.dataset.pickValue;
+          if (names.has(value)) names.delete(value);
+          else names.add(value);
+          setTagValue(field, [...names]);
         }
+        return;
       }
 
       let first = term
@@ -3818,8 +3975,7 @@ function sensorFormMarkup(sensor) {
     <div class="grid-3 adv-hide">
       ${groupFieldMarkup(sensor?.group || '')}
       ${siteFieldMarkup(sensor?.site)}
-      <label class="field"><span>${withHelp(t('sensor.tags'), 'help.sensor.tags')}</span>
-        <input name="tags" type="text" value="${esc((sensor?.tags || []).join(', '))}"></label>
+      ${tagFieldMarkup(sensor?.tags || [])}
       ${parentFieldMarkup(sensor?.parent, sensor?.name)}
     </div>
 
@@ -3842,6 +3998,9 @@ function sensorFormMarkup(sensor) {
 
 async function openSensorEditor(existing = null) {
   await loadChannels(existing === null);
+  // The tag field draws the symbols and colours from the tag settings, and the
+  // picker offers "New tag…"; both need the list before the form is built.
+  await loadTags();
   const isNew = existing === null;
   const form = $('#modal-form');
 
@@ -4021,7 +4180,7 @@ $('#group-form').addEventListener('submit', async (event) => {
   const save = $('#group-save');
   save.disabled = true;
   try {
-    await submitGroup(form);
+    await submitLabel(form);
     groupModal.close();
   } catch (err) {
     // In the dialog and not in a toast, for the reason the site form gives: these
@@ -4587,9 +4746,9 @@ function sitesPanel() {
  *
  * Every row is a word some sensor carries, and some of those rows have settings and
  * some have none — the two are drawn the same way, because a group with no settings
- * is a group, not an unfinished one. There is no "new group" button: a group is made
- * by typing its name on a sensor, and a button here that made a row with no sensors
- * on it would be inventing a second way to do that.
+ * is a group, not an unfinished one. "New group" names one before a sensor carries
+ * it, which is the same act the sensor form's picker offers; the row can then be
+ * given a symbol and a colour before anything is put in it.
  */
 function groupsPanel() {
   const groups = state.groups || [];
@@ -4627,6 +4786,56 @@ function groupsPanel() {
           <tbody>${rows}</tbody>
         </table>
       </div>` : emptyBlock(t('groups.empty'))}
+      <div class="form-actions">
+        <button class="btn btn-primary" data-action="group-new"${denied('admin')}>${esc(t('groups.new'))}</button>
+      </div>
+    </section>`;
+}
+
+/**
+ * tagsPanel is groupsPanel's twin for tags. A tag is a word in a sensor's
+ * comma-separated list, and the settings are what a word cannot say: the symbol,
+ * the colour and the place in the order.
+ */
+function tagsPanel() {
+  const tags = state.tags || [];
+  const rows = tags.map((tag) => {
+    const settings = iconUI.groupOf(tags, tag.name);
+    return `
+    <tr data-name="${esc(tag.name)}"${iconUI.colourAttr(settings)}>
+      <td><span class="group-cell">
+        <i class="group-dot" aria-hidden="true"></i>
+        ${iconUI.groupIcon(settings)}
+        <b>${esc(tag.name)}</b>
+      </span></td>
+      <td class="num">${tag.sensor_count || 0}</td>
+      <td class="row-actions">
+        <button class="btn" data-action="tag-edit" data-name="${esc(tag.name)}"${denied('admin')}>${esc(t('common.edit'))}</button>
+        <button class="btn btn-danger" data-action="tag-forget" data-name="${esc(tag.name)}"${denied('admin')}>${esc(t('tags.forget'))}</button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  return `
+    <section class="panel" id="tags-panel" data-panel="tags" data-group="monitor">
+      <div class="panel-head">
+        <h2>${esc(t('tags.title'))}</h2>
+        <p class="panel-hint">${esc(t('tags.hint'))}</p>
+      </div>
+      ${tags.length ? `
+      <div class="table-wrap">
+        <table class="data-table groups-table">
+          <thead><tr>
+            <th>${esc(t('sensor.tags'))}</th>
+            <th class="num">${esc(t('settings.sensors'))}</th>
+            <th></th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>` : emptyBlock(t('tags.emptyBody'))}
+      <div class="form-actions">
+        <button class="btn btn-primary" data-action="tag-new"${denied('admin')}>${esc(t('tags.new'))}</button>
+      </div>
     </section>`;
 }
 
@@ -4823,84 +5032,122 @@ async function loadGroups(force = false) {
 }
 
 /**
- * openGroupEditor edits what is about a group: its symbol, its colour, and where it
- * stands in the order.
- *
- * The name is printed and not editable, and that is the design talking: a group is a
- * word on a sensor, so "renaming" one here would mean rewriting it on every sensor
- * that carries it — which is editing sensors, and not what this window is for. An
- * empty row is a group nobody has said anything about yet, which is why this opens
- * with nothing filled in rather than refusing to exist.
+ * loadTags reads the tag settings. Like groups, the list is the server's and is a
+ * superset of the words on the sensors: a tag with no settings is still a tag.
  */
-function openGroupEditor(name, group) {
-  const settings = group || { name, icon: '', colour: '', sort_order: 0 };
+async function loadTags(force = false) {
+  if (state.tags.length && !force) return state.tags;
+  const data = await api('/api/tags');
+  state.tags = data.tags || [];
+  if (data.accents && data.accents.length) state.accents = data.accents;
+  return state.tags;
+}
+
+let labelSaved = null;
+
+/**
+ * openLabelEditor edits what is about a group or a tag: its symbol, its colour and
+ * where it stands in the order.
+ *
+ * One dialog for both because the decision is the same shape; the titles, the words
+ * and the endpoint differ. In creating mode the name is a field, because a group or
+ * a tag can be named before the first sensor carries it — that is what a "New…"
+ * entry in the picker means.
+ *
+ * Editing keeps the name printed: a group or a tag is a word on sensors, so
+ * renaming it here would mean rewriting every sensor that carries it, which is
+ * editing sensors and not what this window is for.
+ */
+function openLabelEditor(kind, name, settings, { creating = false, initialName = '', onSaved = null } = {}) {
+  const isTag = kind === 'tag';
+  const row = settings || { name, icon: '', colour: '', sort_order: 0 };
+  labelSaved = onSaved;
   groupModal.open({
-    title: t('groups.editorTitle', { name }),
-    mode: 'group',
-    id: name,
+    title: creating
+      ? t(isTag ? 'tags.new' : 'groups.new')
+      : t(isTag ? 'tags.editorTitle' : 'groups.editorTitle', { name }),
+    mode: kind,
+    id: creating ? '' : name,
     body: `
-      <p class="muted small sheet-note">${esc(t('groups.editorNote', {
-        count: settings.sensor_count || 0,
-      }))}</p>
-      <div class="field"><span>${withHelp(t('icons.label'), 'help.groups.icon')}</span>
-        ${iconUI.iconFieldMarkup(settings.icon || '')}</div>
-      <label class="field"><span>${withHelp(t('groups.colour'), 'help.groups.colour')}</span>
+      <p class="muted small sheet-note">${esc(creating
+        ? t(isTag ? 'tags.newHint' : 'groups.newHint')
+        : t(isTag ? 'tags.editorNote' : 'groups.editorNote', { count: row.sensor_count || 0 }))}</p>
+      ${creating ? `
+      <label class="field"><span>${esc(t(isTag ? 'tags.name' : 'groups.name'))}</span>
+        <input name="label_name" type="text" required maxlength="64" autocomplete="off"
+               value="${esc(initialName)}"></label>` : ''}
+      <div class="field"><span>${withHelp(t('icons.label'), isTag ? 'help.tags.icon' : 'help.groups.icon')}</span>
+        ${iconUI.iconFieldMarkup(row.icon || '')}</div>
+      <label class="field"><span>${withHelp(t(isTag ? 'tags.colour' : 'groups.colour'), isTag ? 'help.tags.colour' : 'help.groups.colour')}</span>
         <select name="colour">
           <option value="">${esc(t('groups.colourNone'))}</option>
           ${(state.accents || ACCENTS).map((c) =>
-            `<option value="${esc(c)}"${c === settings.colour ? ' selected' : ''}>${esc(t(`settings.accent.${c}`))}</option>`).join('')}
+            `<option value="${esc(c)}"${c === row.colour ? ' selected' : ''}>${esc(t(`settings.accent.${c}`))}</option>`).join('')}
         </select></label>
-      <label class="field"><span>${esc(t('groups.order'))}</span>
-        <input name="sort_order" type="number" value="${Number(settings.sort_order) || 0}"></label>
-      <p class="muted small">${esc(t('groups.orderHint'))}</p>`,
+      <label class="field"><span>${esc(t(isTag ? 'tags.order' : 'groups.order'))}</span>
+        <input name="sort_order" type="number" value="${Number(row.sort_order) || 0}"></label>
+      <p class="muted small">${esc(t(isTag ? 'tags.orderHint' : 'groups.orderHint'))}</p>`,
   });
+  // The kind and the mode have nowhere else to live: the sheet carries the title
+  // and the id, and the form needs to know which endpoint to write.
+  const form = $('#group-form');
+  form.dataset.kind = kind;
+  form.dataset.creating = creating ? '1' : '0';
 }
 
-/** readGroupForm turns the editor into what the API takes. */
-function readGroupForm(form) {
-  return {
+/** readLabelForm turns the editor into what the API takes. */
+function readLabelForm(form) {
+  const body = {
     icon: iconUI.readIconField(form),
     colour: form.elements.colour.value,
     sort_order: Number(form.elements.sort_order.value) || 0,
   };
+  if (form.dataset.creating === '1') body.name = form.elements.label_name.value.trim();
+  return body;
 }
 
-async function submitGroup(form) {
-  const name = form.dataset.id;
-  await api(`/api/groups/${encodeURIComponent(name)}`, {
-    method: 'PUT',
-    body: readGroupForm(form),
-  });
-  await afterGroupChange();
-  toast(t('groups.saved'));
+async function submitLabel(form) {
+  const kind = form.dataset.kind === 'tag' ? 'tag' : 'group';
+  const creating = form.dataset.creating === '1';
+  const body = readLabelForm(form);
+  const name = creating ? body.name : form.dataset.id;
+  delete body.name;
+  if (!name) {
+    throw new Error(t(kind === 'tag' ? 'tags.nameRequired' : 'groups.nameRequired'));
+  }
+  await api(`/api/${kind}s/${encodeURIComponent(name)}`, { method: 'PUT', body });
+  await afterLabelChange(kind);
+  toast(t(kind === 'tag' ? 'tags.saved' : 'groups.saved'));
+  const done = labelSaved;
+  labelSaved = null;
+  if (done) done(name);
 }
 
 /**
- * forgetGroup removes what was said about a group and leaves the group alone.
- *
- * The question says so in as many words, because the button sits in a table of rows
- * that look like things and "delete" next to a row reads like deleting the row. What
- * goes is the symbol, the colour and the place in the order; the sensors keep the
- * word and the heading keeps standing there.
+ * forgetLabel removes what was said about a group or a tag and leaves the word on
+ * the sensors. The question says so in as many words, because the button sits in a
+ * table of rows that look like things and "delete" next to a row reads like deleting
+ * the row. What goes is the symbol, the colour and the place in the order.
  */
-async function forgetGroup(name, group) {
-  const count = (group && group.sensor_count) || 0;
-  if (!confirmDialog(t('groups.forgetConfirm', { name, count }))) return;
-  await api(`/api/groups/${encodeURIComponent(name)}`, { method: 'DELETE' });
-  await afterGroupChange();
-  toast(t('groups.forgotten'));
+async function forgetLabel(kind, name, row) {
+  const count = (row && row.sensor_count) || 0;
+  const confirmKey = kind === 'tag' ? 'tags.forgetConfirm' : 'groups.forgetConfirm';
+  if (!confirmDialog(t(confirmKey, { name, count }))) return;
+  await api(`/api/${kind}s/${encodeURIComponent(name)}`, { method: 'DELETE' });
+  await afterLabelChange(kind);
+  toast(t(kind === 'tag' ? 'tags.forgotten' : 'groups.forgotten'));
 }
 
 /**
- * afterGroupChange redraws every place a group appears.
+ * afterLabelChange redraws every place a group or a tag appears.
  *
  * The headings are drawn from the summary the dashboard was last given, so a change
- * to a group's symbol or colour has to reach the summary as well as this panel —
- * otherwise the tree goes on drawing the old heading and the edit looks like it did
- * not take.
+ * to a symbol or colour has to reach the summary as well as this panel — otherwise
+ * the tree goes on drawing the old heading and the edit looks like it did not take.
  */
-async function afterGroupChange() {
-  await loadGroups(true);
+async function afterLabelChange(kind) {
+  if (kind === 'tag') await loadTags(true);
+  else await loadGroups(true);
   await refresh({ background: true });
   await renderSettings();
 }
@@ -5272,7 +5519,7 @@ const SETTINGS_GROUPS = [
   // arrangement used to sit: what the top of the dashboard shows is not what is being
   // monitored, and Monitoring had grown to four panels.
   { key: 'widgets', panels: ['widgets'] },
-  { key: 'monitor', panels: ['dashboard', 'sites', 'groups', 'maintenance', 'examples'] },
+  { key: 'monitor', panels: ['dashboard', 'sites', 'groups', 'tags', 'maintenance', 'examples'] },
   { key: 'access', panels: ['access', 'users'] },
   { key: 'backup', panels: ['backup'] },
   { key: 'help', panels: ['help', 'diagnostics', 'about'] },
@@ -5421,6 +5668,8 @@ async function renderSettings() {
     ${sitesPanel()}
 
     ${groupsPanel()}
+
+    ${tagsPanel()}
 
     ${maintenancePanel()}
 
@@ -5848,12 +6097,22 @@ async function onSettingsClick(event) {
     } else if (action === 'site-delete') {
       const site = state.sites.find((s) => s.name === button.dataset.name);
       if (site) await removeSite(site);
+    } else if (action === 'group-new') {
+      openLabelEditor('group', '', null, { creating: true });
     } else if (action === 'group-edit') {
       const group = iconUI.groupOf(state.groups, button.dataset.name);
-      openGroupEditor(button.dataset.name, group);
+      openLabelEditor('group', button.dataset.name, group);
     } else if (action === 'group-forget') {
       const group = iconUI.groupOf(state.groups, button.dataset.name);
-      await forgetGroup(button.dataset.name, group);
+      await forgetLabel('group', button.dataset.name, group);
+    } else if (action === 'tag-new') {
+      openLabelEditor('tag', '', null, { creating: true });
+    } else if (action === 'tag-edit') {
+      const tag = iconUI.groupOf(state.tags, button.dataset.name);
+      openLabelEditor('tag', button.dataset.name, tag);
+    } else if (action === 'tag-forget') {
+      const tag = iconUI.groupOf(state.tags, button.dataset.name);
+      await forgetLabel('tag', button.dataset.name, tag);
     } else if (action === 'window-new') {
       openWindowEditor(null);
     } else if (action === 'window-edit') {

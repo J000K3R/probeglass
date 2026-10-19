@@ -1109,23 +1109,22 @@ func TestTheSensorFormPicksTypesAndOptionsWithoutSelects(t *testing.T) {
 	const madeGroup = "E2E Group"
 	if _, err := chromedp.Run(ctx, chromedp.Evaluate[bool](`(() => {
 		const field = document.querySelector('#modal [data-pick-field="group"]');
-		field.querySelector('[data-pick-open]').click();
 		field.scrollIntoView({ block: 'center' });
+		field.querySelector('[data-pick-open]').click();
+		field.querySelector('[data-pick-new-group]').click();
 		return true;
 	})()`)); err != nil {
-		t.Fatalf("could not reopen the group picker: %v", err)
+		t.Fatalf("could not open the new-group dialog: %v", err)
 	}
 	if err := withTimeout(ctx, func(tctx context.Context) error {
 		return chromedp.Do(tctx,
-			chromedp.SendKeys(`#modal [data-pick-field="group"] [data-pick-query]`, madeGroup),
+			chromedp.WaitVisible(`#modal-group input[name="label_name"]`),
+			chromedp.SetValue(`#modal-group input[name="label_name"]`, madeGroup),
+			chromedp.Click(`#group-save`),
+			chromedp.WaitNotPresent(`#modal-group[open]`),
 			chromedp.Poll[chromedp.Void](
-				`!document.querySelector('#modal [data-group-create]').hidden &&
-				 document.querySelector('#modal [data-group-create-label]').textContent.trim() !== ''`,
-				chromedp.WithPollingTimeout(5*time.Second)),
-			chromedp.KeyEvent("\r"),
-			chromedp.Poll[chromedp.Void](
-				`document.activeElement === document.querySelector('#modal [data-pick-field="group"] [data-pick-open]')`,
-				chromedp.WithPollingTimeout(5*time.Second)),
+				fmt.Sprintf(`document.querySelector('#modal input[name="group"]').value === %s`, jsQuote(madeGroup)),
+				chromedp.WithPollingTimeout(15*time.Second)),
 		)
 	}); err != nil {
 		capture(t, ctx, dir, "group-create-missing")
@@ -1137,6 +1136,76 @@ func TestTheSensorFormPicksTypesAndOptionsWithoutSelects(t *testing.T) {
 	}))()`, "the created group")
 	if created["value"] != madeGroup || created["label"] != madeGroup {
 		t.Errorf("creating a group left value=%q label=%q, want %q", created["value"], created["label"], madeGroup)
+	}
+
+	// Tags are a multi-select: the panel stays open while more than one is chosen,
+	// a click toggles, and New tag creates one through the same editor.
+	const madeTag = "E2E Tag"
+	if _, err := chromedp.Run(ctx, chromedp.Evaluate[bool](`(() => {
+		const field = document.querySelector('#modal [data-pick-field="tags"]');
+		field.scrollIntoView({ block: 'center' });
+		field.querySelector('[data-pick-open]').click();
+		field.querySelector('[data-pick-new-tag]').click();
+		return true;
+	})()`)); err != nil {
+		t.Fatalf("could not open the new-tag dialog: %v", err)
+	}
+	if err := withTimeout(ctx, func(tctx context.Context) error {
+		return chromedp.Do(tctx,
+			chromedp.WaitVisible(`#modal-group input[name="label_name"]`),
+			chromedp.SetValue(`#modal-group input[name="label_name"]`, madeTag),
+			chromedp.Click(`#group-save`),
+			chromedp.WaitNotPresent(`#modal-group[open]`),
+			chromedp.Poll[chromedp.Void](
+				fmt.Sprintf(`document.querySelector('#modal input[name="tags"]').value === %s`, jsQuote(madeTag)),
+				chromedp.WithPollingTimeout(15*time.Second)),
+		)
+	}); err != nil {
+		capture(t, ctx, dir, "tag-create-missing")
+		t.Fatalf("could not create a tag from the picker: %v", err)
+	}
+
+	// Reopen and toggle the tag off; the panel has to stay open for a second tag.
+	if _, err := chromedp.Run(ctx, chromedp.Evaluate[bool](`(() => {
+		const field = document.querySelector('#modal [data-pick-field="tags"]');
+		field.querySelector('[data-pick-open]').click();
+		field.querySelector('[data-pick-value="E2E Tag"]').click();
+		return true;
+	})()`)); err != nil {
+		t.Fatalf("could not toggle the tag: %v", err)
+	}
+	toggled := read[map[string]bool](t, ctx, `(() => {
+		const field = document.querySelector('#modal [data-pick-field="tags"]');
+		return {
+			empty: document.querySelector('#modal input[name="tags"]').value === '',
+			open: !field.querySelector('.pick-panel').hidden,
+		};
+	})()`, "the tag after toggling it off")
+	if !toggled["empty"] || !toggled["open"] {
+		t.Errorf("toggling the only tag left it empty=%v and the panel open=%v, want both",
+			toggled["empty"], toggled["open"])
+	}
+
+	if _, err := chromedp.Run(ctx, chromedp.Evaluate[bool](`(() => {
+		const field = document.querySelector('#modal [data-pick-field="tags"]');
+		field.querySelector('[data-pick-value="E2E Tag"]').click();
+		return true;
+	})()`)); err != nil {
+		t.Fatalf("could not toggle the tag back on: %v", err)
+	}
+	if got := read[string](t, ctx,
+		`document.querySelector('#modal input[name="tags"]').value`, "the chosen tag"); got != madeTag {
+		t.Errorf("toggling the tag back on left %q, want %q", got, madeTag)
+	}
+	if _, err := chromedp.Run(ctx, chromedp.Evaluate[bool](`(() => {
+		document.querySelector('#modal [data-pick-field="tags"] [data-pick-clear]').click();
+		return true;
+	})()`)); err != nil {
+		t.Fatalf("could not clear the tags: %v", err)
+	}
+	if got := read[string](t, ctx,
+		`document.querySelector('#modal input[name="tags"]').value`, "the tags after clearing"); got != "" {
+		t.Errorf("clearing the tags left %q", got)
 	}
 
 	// A panel larger than the dialog must not add scrollbars to it or to the

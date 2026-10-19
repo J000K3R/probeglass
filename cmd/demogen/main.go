@@ -390,11 +390,12 @@ func (r *recorder) recordDashboard(ctx context.Context, st *store.Store) error {
 		// this list itself for the chips, which is exact — the filters are a
 		// comparison against columns that are in the recorded rows.
 		"/api/incidents?limit=200",
-		// The groups and the icons. Both are read when somebody opens a picker or
-		// the group editor, and both are one click away from a sensor form in the
-		// demo — a route missing from this list is a demo that breaks under the
-		// mouse rather than one that quietly shows less.
+		// The groups, the tags and the icons. All are read when somebody opens a
+		// picker or a label editor, and all are one click away from a sensor form
+		// in the demo — a route missing from this list is a demo that breaks under
+		// the mouse rather than one that quietly shows less.
 		"/api/groups",
+		"/api/tags",
 		"/api/icons",
 		// The maintenance windows the dataset arranges. The panel is two clicks
 		// from the dashboard, and one of the two is in force, so its timestamps are

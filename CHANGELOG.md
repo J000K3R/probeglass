@@ -11,7 +11,7 @@ here and what the release says are the same document.
 
 | Version | Released | In one line |
 | --- | --- | --- |
-| [Unreleased] | — | Six more sensor types, a grouped sensor chooser, Gotify as a seventh channel, and example pictures and maintenance windows on the first dashboard |
+| [Unreleased] | — | Six more sensor types, a grouped sensor chooser with tag settings, Gotify as a seventh channel, and example pictures and maintenance windows on the first dashboard |
 | [0.2.2] | 2026-10-18 | A symbol on every sensor, place and group — ours, yours, or searched for online — and one set of measurements for the whole dashboard |
 | [0.2.1] | 2026-10-16 | A sensor under maintenance says so |
 | [0.2.0] | 2026-10-16 | Maintenance windows, a second interface language, and the container as the only thing that ships |
@@ -27,12 +27,15 @@ here and what the release says are the same document.
   per-type choices below it (method, record type, SNMP version, health, and every
   yes/no) are chips, so a value is one click and visible. "Leave it at the default"
   is a chip of its own, not an empty field somebody has to work out how to clear.
-  The group field is the same picker, and its search box doubles as the place to
-  name a new group: a term no existing group matches is the group being made. The
-  place picker groups sites by kind and still carries the entry that makes a new
-  one; the **Depends on** picker lists the other sensors with their current status
-  beside them, a down one first, so the choice is made on what is happening rather
-  than on the alphabet.
+  The group and tag fields are the same picker. Both carry a **New…** entry that
+  opens the editor Settings uses, so a group or a tag can be named and given a
+  symbol and colour before the first sensor carries it; tags are a multi-select,
+  and their chips wear the colour and symbol from Settings. Tags become settings
+  of their own — a table, an API, a Settings panel — while remaining the words in
+  a sensor's tag list, exactly as groups are. The place picker groups sites by
+  kind and still carries the entry that makes a new one; the **Depends on** picker
+  lists the other sensors with their current status beside them, a down one first,
+  so the choice is made on what is happening rather than on the alphabet.
 
 - **An open chooser stays inside the window.** The panels are fixed to the viewport
   and clamped to it rather than absolutely placed inside the dialog: a long

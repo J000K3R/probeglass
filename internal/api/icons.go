@@ -445,6 +445,92 @@ func (s *Server) handleForgetGroup(w http.ResponseWriter, r *http.Request) {
 }
 
 // ---------------------------------------------------------------------------
+// tags
+// ---------------------------------------------------------------------------
+
+// handleListTags answers GET /api/tags.
+//
+// Every tag a sensor carries, plus every tag somebody has said something about, each
+// with the number of sensors carrying it and the colours a tag may be given. The
+// shape is the group list's, because the editor is the same editor.
+func (s *Server) handleListTags(w http.ResponseWriter, r *http.Request) {
+	tags, err := s.store.ListTags(r.Context())
+	if err != nil {
+		s.fail(w, err, http.StatusInternalServerError, "could not load the tags")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"tags":    tags,
+		"accents": model.Accents,
+	})
+}
+
+// tagInput is the body of a tag write. Every field is a pointer for the reason
+// groupInput's are: leaving one out keeps what is stored.
+type tagInput struct {
+	Icon      *string `json:"icon"`
+	Colour    *string `json:"colour"`
+	SortOrder *int    `json:"sort_order"`
+}
+
+// handleSetTag answers PUT /api/tags/{name}.
+//
+// It creates the settings row if this is the first thing anybody has said about the
+// tag, which is why there is no POST: a tag exists from the moment it is typed into
+// a sensor's list, so the first save is not a different act from the second.
+func (s *Server) handleSetTag(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	var in tagInput
+	if err := decodeJSON(r, &in); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body: %s", err.Error())
+		return
+	}
+	ctx := r.Context()
+	t, err := s.store.GetTag(ctx, name)
+	if errors.Is(err, store.ErrNotFound) {
+		t = model.Tag{Name: name}
+	} else if err != nil {
+		s.fail(w, err, http.StatusInternalServerError, "could not load the tag")
+		return
+	}
+	if in.Icon != nil {
+		t.Icon = *in.Icon
+	}
+	if in.Colour != nil {
+		t.Colour = *in.Colour
+	}
+	if in.SortOrder != nil {
+		t.SortOrder = *in.SortOrder
+	}
+	if err := s.store.SetTag(ctx, &t); err != nil {
+		if isValidationError(err) {
+			writeError(w, http.StatusBadRequest, "%s", err.Error())
+			return
+		}
+		s.fail(w, err, http.StatusInternalServerError, "could not save the tag")
+		return
+	}
+	s.log.Info("tag settings saved", "name", t.Name, "icon", t.Icon, "colour", t.Colour)
+	writeJSON(w, http.StatusOK, t)
+}
+
+// handleForgetTag answers DELETE /api/tags/{name}.
+//
+// It removes what was said about a tag and leaves the word on the sensors, exactly
+// as forgetting a group leaves the group standing. The answer says how many sensors
+// still carry it.
+func (s *Server) handleForgetTag(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	count, err := s.store.ForgetTag(r.Context(), name)
+	if err != nil {
+		s.fail(w, err, http.StatusInternalServerError, "could not forget the tag")
+		return
+	}
+	s.log.Info("tag settings forgotten", "name", name, "sensors", count)
+	writeJSON(w, http.StatusOK, map[string]any{"forgotten": name, "sensors": count})
+}
+
+// ---------------------------------------------------------------------------
 // helpers
 // ---------------------------------------------------------------------------
 

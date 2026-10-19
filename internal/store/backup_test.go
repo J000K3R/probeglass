@@ -30,10 +30,12 @@ type backupFixture struct {
 	sampleHour time.Time
 	probes     int
 	failures   int
-	// icon and group are the two tables that exist because somebody chose
-	// something: an uploaded image, and what a group's heading looks like.
+	// icon, group and tag are the tables that exist because somebody chose
+	// something: an uploaded image, and what a group's heading and a tag's chip
+	// look like.
 	icon  model.Icon
 	group model.Group
+	tag   model.Tag
 }
 
 // newBackupFixture builds an installation that has history: two complete hours of
@@ -66,6 +68,10 @@ func newBackupFixture(t *testing.T) *backupFixture {
 	f.group = model.Group{Name: "LAN", Icon: icon.UploadRef(f.icon.ID), Colour: "amber", SortOrder: 3}
 	if err := st.SetGroup(ctx, &f.group); err != nil {
 		t.Fatalf("set group: %v", err)
+	}
+	f.tag = model.Tag{Name: "core", Icon: icon.UploadRef(f.icon.ID), Colour: "rose", SortOrder: 2}
+	if err := st.SetTag(ctx, &f.tag); err != nil {
+		t.Fatalf("set tag: %v", err)
 	}
 
 	f.channel = model.Channel{
@@ -395,6 +401,25 @@ func TestExportRestoreRoundTrip(t *testing.T) {
 	if g := groups[0]; g.Name != "LAN" || g.Icon != icon.UploadRef(f.icon.ID) ||
 		g.Colour != "amber" || g.SortOrder != 3 || g.SensorCount != 1 {
 		t.Errorf("restored group = %+v, want LAN with the fixture's icon, colour and order", g)
+	}
+	tags, err := fresh.ListTags(ctx)
+	if err != nil {
+		t.Fatalf("list tags: %v", err)
+	}
+	// Router carries two words, "lan" and "core"; only "core" has settings, and a
+	// tag with none is still a tag, so both come back.
+	if len(tags) != 2 {
+		t.Fatalf("restored %d tags, want the two Router carries: %+v", len(tags), tags)
+	}
+	var core model.Tag
+	for _, tag := range tags {
+		if tag.Name == "core" {
+			core = tag
+		}
+	}
+	if core.Name != "core" || core.Icon != icon.UploadRef(f.icon.ID) ||
+		core.Colour != "rose" || core.SortOrder != 2 || core.SensorCount != 1 {
+		t.Errorf("restored tag = %+v, want core with the fixture's icon, colour and order", core)
 	}
 	if sites, err := fresh.ListSites(ctx); err != nil {
 		t.Fatalf("list sites: %v", err)

@@ -209,6 +209,7 @@ func (s *Server) Handler() http.Handler {
 	view("GET /api/icons/preview/{name}", s.handleIconPreview)
 	view("GET /api/icons/{id}", s.handleIconBytes)
 	view("GET /api/groups", s.handleListGroups)
+	view("GET /api/tags", s.handleListTags)
 
 	// Acting on an outage that has already happened. Nothing here changes what is
 	// monitored or how.
@@ -264,6 +265,8 @@ func (s *Server) Handler() http.Handler {
 	adm("DELETE /api/icons/{id}", s.handleDeleteIcon)
 	adm("PUT /api/groups/{name}", s.handleSetGroup)
 	adm("DELETE /api/groups/{name}", s.handleForgetGroup)
+	adm("PUT /api/tags/{name}", s.handleSetTag)
+	adm("DELETE /api/tags/{name}", s.handleForgetTag)
 	// Maintenance windows are configuration, not an action taken during an outage:
 	// an administrator decides in advance that a box is allowed to be away, exactly
 	// as they decide which boxes exist. Acknowledging an incident is the other thing,
