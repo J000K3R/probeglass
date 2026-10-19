@@ -159,6 +159,14 @@ promises; the ordering is what the design already supports cheaply.
   ends. Each is the smallest exchange that answers its question, and each is one
   file in `internal/sensor`.
 
+- [x] **A sensor editor that chooses.** The type is a grouped, searchable chooser;
+  group, place, tag and dependency fields use the same picker; the per-type options
+  are chips, with the default as a visible choice. Tags gained settings of their own
+  — a symbol, a colour and a place in the order, under Settings → Monitoring — in
+  the same table-and-editor shape groups have, while both remain words written on a
+  sensor. Groups and tags can be named from the picker before the first sensor
+  carries them.
+
 ## Next — 0.2.x
 
 Ordered by value per unit of work.
