@@ -15,12 +15,11 @@
   <a href="https://j000k3r.github.io/probeglass-docs/about"><img src="https://img.shields.io/badge/hobby%20project-no%20support%2C%20no%20warranty-orange" alt="Hobby project" height="20"></a>
 </p>
 
-<p align="center">
+
   <b>Website:</b> <a href="https://j000k3r.github.io/probeglass-website/">j000k3r.github.io/probeglass-website</a> — what it does, with pictures ·
 
   
   <b>Documentation:</b> <a href="https://j000k3r.github.io/probeglass-docs/">j000k3r.github.io/probeglass-docs</a> — installation, configuration, the sensor and channel references, the HTTP API, and troubleshooting
-</p>
 
 **ProbeGlass** is a single-container monitoring daemon: it probes your services
 on a schedule, keeps their history, draws the graphs, and shouts at you when
