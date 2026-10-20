@@ -185,13 +185,17 @@ promises; the ordering is what the design already supports cheaply.
   Accounts, incidents and history stay out; that is what the JSON backup is for.
   Example data is left out unless it is asked for.
 
+## In progress — 0.3.x
+
+- [x] **A `/metrics` endpoint**, so a homelab that already runs a monitoring stack
+  can scrape ProbeGlass instead of duplicating the checks it already makes. A
+  read-only token of its own — not the API key — guarding sensor status, uptime,
+  the last latency and the open incidents in the Prometheus text format.
+
 ## Next — 0.3.x and beyond
 
-The 0.2.x list is complete. What follows is the next body of work, ordered by
-value per unit of work.
+The rest of 0.3.0, ordered by value per unit of work.
 
-- [ ] **A `/metrics` endpoint**, so a homelab that already runs a monitoring stack
-  can scrape ProbeGlass instead of duplicating the checks it already makes.
 - [ ] **Public status page.** A read-only view on its own path and its own
   token, safe to share outside the LAN, with the incidents you choose to publish.
 - [ ] **SLA reports.** Monthly uptime per sensor and per group as a printable

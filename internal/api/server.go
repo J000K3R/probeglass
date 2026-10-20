@@ -157,6 +157,9 @@ func (s *Server) Handler() http.Handler {
 	// and the only one of them that changes anything is /api/setup, which refuses
 	// to run once an account exists.
 	mux.HandleFunc("GET /healthz", s.handleHealth)
+	// Prometheus scrapes without a session; the handler checks the read-only
+	// metrics token itself.
+	mux.HandleFunc("GET /metrics", s.handleMetrics)
 	mux.HandleFunc("GET /api/version", s.handleVersion)
 	mux.HandleFunc("GET /api/session", s.handleSession)
 	mux.HandleFunc("POST /api/login", s.handleLogin)
@@ -245,6 +248,11 @@ func (s *Server) Handler() http.Handler {
 	adm("POST /api/channels/{id}/test", s.handleTestChannel)
 	adm("POST /api/api-key", s.handleRotateAPIKey)
 	adm("DELETE /api/api-key", s.handleDeleteAPIKey)
+	// The metrics token is a read-only credential, but managing it is still an
+	// administrator's decision about who may scrape the installation.
+	adm("GET /api/metrics-token", s.handleGetMetricsToken)
+	adm("PUT /api/metrics-token", s.handleRotateMetricsToken)
+	adm("DELETE /api/metrics-token", s.handleDeleteMetricsToken)
 
 	// Administering the installation and the people who may use it.
 	adm("GET /api/users", s.handleListUsers)

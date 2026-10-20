@@ -77,6 +77,9 @@ const state = {
   // exampleData is the count behind the "Example data" panel: it decides whether
   // the removal button is there at all, and how much it says it will take.
   exampleData: null,
+  // metricsToken is the read-only credential a Prometheus scraper uses. Empty
+  // means the endpoint is off; it is only ever loaded for an administrator.
+  metricsToken: '',
   settings: null,
   // The colours a group may be given, as the server lists them. Defaulted to the
   // same six names so that the editor is complete before the first answer arrives.
@@ -1695,7 +1698,9 @@ async function loadRouteData(route) {
     } else if (route === 'settings') {
       // Both of these decide whether a panel exists at all, so they have to be
       // there before the panel is drawn rather than filled in afterwards.
-      await Promise.all([loadUsers(), loadExampleData(), loadSites(), loadGroups(), loadTags(), loadWindows()]);
+      const jobs = [loadUsers(), loadExampleData(), loadSites(), loadGroups(), loadTags(), loadWindows()];
+      if (can('admin')) jobs.push(loadMetricsToken());
+      await Promise.all(jobs);
       await renderSettings();
     }
   } catch (err) {
@@ -4881,6 +4886,56 @@ function tagsPanel() {
     </section>`;
 }
 
+/**
+ * metricsPanel manages the read-only token a Prometheus scraper uses.
+ *
+ * The token is shown rather than hidden: it is a credential, but one that can do
+ * nothing except read the numbers on /metrics, and a scraper's configuration is
+ * somewhere the person setting it up has to copy it to.
+ */
+function metricsPanel() {
+  if (!can('admin')) return '';
+  const token = state.metricsToken || '';
+  const endpoint = `${location.origin}/metrics`;
+  return `
+    <section class="panel" id="metrics-panel" data-panel="metrics" data-group="monitor">
+      <div class="panel-head">
+        <h2>${esc(t('metrics.title'))}</h2>
+        <p class="panel-hint">${esc(t('metrics.hint'))}</p>
+      </div>
+      ${token ? `
+      <label class="field"><span>${esc(t('metrics.token'))}</span>
+        <input id="metrics-token" type="text" readonly value="${esc(token)}" spellcheck="false"></label>
+      <p class="muted small">${esc(t('metrics.example', { url: endpoint }))}</p>
+      <div class="form-actions">
+        <button class="btn" data-action="metrics-copy">${esc(t('settings.copy'))}</button>
+        <button class="btn" data-action="metrics-rotate">${esc(t('metrics.rotate'))}</button>
+        <button class="btn btn-danger" data-action="metrics-disable">${esc(t('metrics.disable'))}</button>
+      </div>` : `
+      <p class="muted small">${esc(t('metrics.off'))}</p>
+      <div class="form-actions">
+        <button class="btn btn-primary" data-action="metrics-rotate">${esc(t('metrics.enable'))}</button>
+      </div>`}
+      <p class="form-error" id="metrics-error"></p>
+    </section>`;
+}
+
+async function rotateMetricsToken() {
+  if (!confirmDialog(t('metrics.rotateConfirm'))) return;
+  const data = await api('/api/metrics-token', { method: 'PUT' });
+  state.metricsToken = data.token || '';
+  await renderSettings();
+  toast(t('metrics.rotated'));
+}
+
+async function disableMetricsToken() {
+  if (!confirmDialog(t('metrics.disableConfirm'))) return;
+  await api('/api/metrics-token', { method: 'DELETE' });
+  state.metricsToken = '';
+  await renderSettings();
+  toast(t('metrics.disabled'));
+}
+
 // --- dragging the group order ----------------------------------------------
 
 let draggedGroup = '';
@@ -5172,6 +5227,17 @@ async function loadTags(force = false) {
   state.tags = data.tags || [];
   if (data.accents && data.accents.length) state.accents = data.accents;
   return state.tags;
+}
+
+/**
+ * loadMetricsToken reads the read-only token /metrics uses. It is loaded with the
+ * settings page rather than on the first render of the panel, because the panel
+ * decides whether to show a token or the way to make one.
+ */
+async function loadMetricsToken() {
+  const data = await api('/api/metrics-token');
+  state.metricsToken = data.token || '';
+  return state.metricsToken;
 }
 
 let labelSaved = null;
@@ -5649,7 +5715,7 @@ const SETTINGS_GROUPS = [
   // arrangement used to sit: what the top of the dashboard shows is not what is being
   // monitored, and Monitoring had grown to four panels.
   { key: 'widgets', panels: ['widgets'] },
-  { key: 'monitor', panels: ['dashboard', 'sites', 'groups', 'tags', 'maintenance', 'examples'] },
+  { key: 'monitor', panels: ['dashboard', 'sites', 'groups', 'tags', 'metrics', 'maintenance', 'examples'] },
   { key: 'access', panels: ['access', 'users'] },
   { key: 'backup', panels: ['backup'] },
   { key: 'help', panels: ['help', 'diagnostics', 'about'] },
@@ -5800,6 +5866,8 @@ async function renderSettings() {
     ${groupsPanel()}
 
     ${tagsPanel()}
+
+    ${metricsPanel()}
 
     ${maintenancePanel()}
 
@@ -6227,6 +6295,13 @@ async function onSettingsClick(event) {
       await downloadBackup(button);
     } else if (action === 'config-export') {
       await downloadConfig(button);
+    } else if (action === 'metrics-copy') {
+      await copyText($('#metrics-token').value);
+      toast(t('settings.copied'));
+    } else if (action === 'metrics-rotate') {
+      await rotateMetricsToken();
+    } else if (action === 'metrics-disable') {
+      await disableMetricsToken();
     } else if (action === 'backup-file') {
       $('#restore-file').click();
     } else if (action === 'tour') {

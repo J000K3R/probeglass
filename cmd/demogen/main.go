@@ -397,6 +397,10 @@ func (r *recorder) recordDashboard(ctx context.Context, st *store.Store) error {
 		"/api/groups",
 		"/api/tags",
 		"/api/icons",
+		// The settings page asks whether a metrics token exists as soon as the
+		// Monitoring category is opened. It is admin-only and off in a fresh demo,
+		// which is exactly what the recorded answer says.
+		"/api/metrics-token",
 		// The maintenance windows the dataset arranges. The panel is two clicks
 		// from the dashboard, and one of the two is in force, so its timestamps are
 		// what the cards' badges are drawn from as well.

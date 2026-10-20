@@ -20,6 +20,16 @@ here and what the release says are the same document.
 
 ## [Unreleased]
 
+### Added
+
+- **A `/metrics` endpoint for Prometheus.** Sensor status, the 24-hour, 7-day and
+  30-day uptime ratios, the last latency and the open incidents, in the Prometheus
+  text format, so a homelab that already runs a monitoring stack can scrape
+  ProbeGlass instead of repeating its checks. The endpoint is off until a token is
+  generated under **Settings → Monitoring → Metrics**, and that token is read-only
+  and separate from the API key: a scraper gets the numbers and no write route.
+  Rotating it closes the old one; removing it makes `/metrics` answer `404`.
+
 ## [0.2.3] - 2026-10-20
 
 ### Added

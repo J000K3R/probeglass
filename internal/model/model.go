@@ -1074,7 +1074,12 @@ const (
 	SettingLegacyPasswordHash = "auth.password_hash"
 	SettingAPIKey             = "auth.api_key"
 	SettingSessionSecret      = "auth.session_secret"
-	SettingRetentionRaw       = "retention.raw"
+	// SettingMetricsToken is the read-only credential a Prometheus scraper uses
+	// for /metrics. It is separate from the API key on purpose: a scraper does not
+	// need an administrator's key, and the key it is given should be able to read
+	// nothing else.
+	SettingMetricsToken = "metrics.token"
+	SettingRetentionRaw = "retention.raw"
 	// SettingTileURL and SettingTileAttribution configure the map. They are
 	// installation-wide rather than per user, so they live here and not in the
 	// preferences: the tiles a homelab is allowed to fetch is an operator's
