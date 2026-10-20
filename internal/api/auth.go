@@ -357,34 +357,50 @@ func (s *Server) verifyChallenge(value string) (int64, bool) {
 	return userID, true
 }
 
-func (s *Server) setSessionCookie(w http.ResponseWriter, userID, epoch int64, expiry time.Time) {
+func (s *Server) setSessionCookie(w http.ResponseWriter, r *http.Request, userID, epoch int64, expiry time.Time) {
 	_, secret := s.secrets()
-	//nolint:gosec // G124: HttpOnly and SameSite are set; Secure is left off on
-	// purpose, for the homelab-over-plain-HTTP reason spelled out below.
-	http.SetCookie(w, &http.Cookie{
+	//nolint:gosec // G124: HttpOnly and SameSite are set, and Secure follows the
+	// connection; it is left off on purpose for a homelab reached over plain HTTP.
+	http.SetCookie(w, &http.Cookie{ // codeql[go/cookie-secure-not-set]
 		Name:     sessionCookie,
 		Value:    signSession(secret, userID, epoch, expiry),
 		Path:     "/",
 		Expires:  expiry,
 		HttpOnly: true,
 		SameSite: http.SameSiteStrictMode,
-		// Secure is deliberately not set: homelab installs are commonly reached
-		// over plain HTTP on a LAN. Put a TLS reverse proxy in front when the
-		// dashboard is reachable from anywhere else.
+		// Secure follows the connection. A homelab install is commonly reached
+		// over plain HTTP on a LAN, where a Secure cookie would simply never be
+		// sent and nobody could sign in; behind a TLS proxy the header is set.
+		Secure: requestIsHTTPS(r),
 	})
 }
 
-func (s *Server) clearSessionCookie(w http.ResponseWriter) {
-	//nolint:gosec // G124: same deliberate omission of Secure as above; the
-	// cookie is being expired, so it carries no session either way.
-	http.SetCookie(w, &http.Cookie{
+func (s *Server) clearSessionCookie(w http.ResponseWriter, r *http.Request) {
+	//nolint:gosec // G124: same deliberate rule as above; the cookie is being
+	// expired, so it carries no session either way.
+	http.SetCookie(w, &http.Cookie{ // codeql[go/cookie-secure-not-set]
 		Name:     sessionCookie,
 		Value:    "",
 		Path:     "/",
 		MaxAge:   -1,
 		HttpOnly: true,
 		SameSite: http.SameSiteStrictMode,
+		Secure:   requestIsHTTPS(r),
 	})
+}
+
+// requestIsHTTPS reports whether the browser reached ProbeGlass over TLS,
+// either directly or through a reverse proxy that says so. The header is read
+// for the cookie's Secure flag only; it is not used to make a trust decision.
+func requestIsHTTPS(r *http.Request) bool {
+	if r.TLS != nil {
+		return true
+	}
+	proto := r.Header.Get("X-Forwarded-Proto")
+	if i := strings.IndexByte(proto, ','); i >= 0 {
+		proto = proto[:i]
+	}
+	return strings.EqualFold(strings.TrimSpace(proto), "https")
 }
 
 // sessionUser resolves a session cookie to the account it belongs to.
@@ -776,7 +792,7 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 		s.log.Info("created example sensors", "count", n)
 	}
 
-	s.setSessionCookie(w, u.ID, u.TokenEpoch, time.Now().Add(sessionTTL))
+	s.setSessionCookie(w, r, u.ID, u.TokenEpoch, time.Now().Add(sessionTTL))
 	s.log.Info("first user account created", "username", u.Username)
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
@@ -846,7 +862,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.recordLogin(r, user.ID)
-	s.setSessionCookie(w, user.ID, user.TokenEpoch, time.Now().Add(sessionTTL))
+	s.setSessionCookie(w, r, user.ID, user.TokenEpoch, time.Now().Add(sessionTTL))
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
@@ -916,12 +932,12 @@ func (s *Server) handleLoginTOTP(w http.ResponseWriter, r *http.Request) {
 
 	s.totpLogins.succeed(key)
 	s.recordLogin(r, user.ID)
-	s.setSessionCookie(w, user.ID, user.TokenEpoch, time.Now().Add(sessionTTL))
+	s.setSessionCookie(w, r, user.ID, user.TokenEpoch, time.Now().Add(sessionTTL))
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
-	s.clearSessionCookie(w)
+	s.clearSessionCookie(w, r)
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
@@ -992,7 +1008,7 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err, http.StatusInternalServerError, "could not re-read the account")
 		return
 	}
-	s.setSessionCookie(w, u.ID, u.TokenEpoch, time.Now().Add(sessionTTL))
+	s.setSessionCookie(w, r, u.ID, u.TokenEpoch, time.Now().Add(sessionTTL))
 	s.log.Info("password changed", "username", u.Username)
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }

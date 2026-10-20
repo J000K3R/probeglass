@@ -30,6 +30,17 @@ here and what the release says are the same document.
   and separate from the API key: a scraper gets the numbers and no write route.
   Rotating it closes the old one; removing it makes `/metrics` answer `404`.
 
+### Fixed
+
+- **Session cookies are `Secure` when the dashboard is reached over HTTPS.** The
+  flag follows the connection: a direct TLS request or a reverse proxy sending
+  `X-Forwarded-Proto: https` marks the cookie `Secure`. A homelab reached over
+  plain HTTP keeps the old behaviour, because a browser refuses to send a
+  `Secure` cookie on an HTTP origin and nobody could sign in.
+- **The OpenStreetMap attribution link checks the tile server's hostname**, not
+  whether `openstreetmap.org` appears anywhere in the address, so a look-alike
+  domain no longer gets the credit link.
+
 ## [0.2.3] - 2026-10-20
 
 ### Added

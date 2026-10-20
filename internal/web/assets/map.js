@@ -668,8 +668,27 @@ function placed(site) {
 function attributionMarkup(attribution, tileURL) {
   if (!tileURL) return '';
   const text = attribution || '© OpenStreetMap contributors';
-  if (tileURL.includes('openstreetmap.org')) {
+  if (isOpenStreetMapTileURL(tileURL)) {
     return `<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">${esc(text)}</a>`;
   }
   return esc(text);
+}
+
+/**
+ * isOpenStreetMapTileURL says whether a tile address is served by OSM itself.
+ *
+ * The test is on the parsed host, not on a substring: "openstreetmap.org" may
+ * appear in a query string, in a path, or in somebody else's domain such as
+ * "openstreetmap.org.example.com". Tile templates also carry {s}, {z}, {x} and
+ * {y}, which are not valid host characters, so they are replaced before the
+ * address is parsed.
+ */
+function isOpenStreetMapTileURL(tileURL) {
+  try {
+    const parsed = new URL(String(tileURL).replace(/\{[^}]*\}/g, 'x'));
+    const host = parsed.hostname.toLowerCase();
+    return host === 'openstreetmap.org' || host.endsWith('.openstreetmap.org');
+  } catch {
+    return false;
+  }
 }

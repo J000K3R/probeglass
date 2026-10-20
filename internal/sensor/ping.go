@@ -51,8 +51,8 @@ func (PingProber) Validate(c model.Sensor) error {
 	if strings.ContainsAny(t, "/ \t") {
 		return errors.New("target must be a hostname or IP address, without a path or port")
 	}
-	if n := c.Options.Int("count", 3); n < 1 || n > 20 {
-		return fmt.Errorf("count must be between 1 and 20, got %d", n)
+	if n := c.Options.Int("count", 3); n < 1 || n > maxPingCount {
+		return fmt.Errorf("count must be between 1 and %d, got %d", maxPingCount, n)
 	}
 	return nil
 }
@@ -61,6 +61,11 @@ func (PingProber) Validate(c model.Sensor) error {
 // single most common cause, and the one that is hardest to guess from the
 // syscall error alone.
 const icmpHint = "grant the container CAP_NET_RAW (docker: cap_add: [NET_RAW])"
+
+// maxPingCount is the most echo requests one probe may send. Validate refuses a
+// larger count; Run clamps to the same number, and uses it as the allocation cap
+// so that no stored value can size an allocation.
+const maxPingCount = 20
 
 // openICMP returns a socket for sending echo requests, the IANA protocol number
 // that goes with it, and which of the two flavours came back.
@@ -141,8 +146,8 @@ func (PingProber) Run(ctx context.Context, c model.Sensor) Outcome {
 	if count < 1 {
 		count = 1
 	}
-	if count > 20 {
-		count = 20
+	if count > maxPingCount {
+		count = maxPingCount
 	}
 
 	start := time.Now()
@@ -179,7 +184,7 @@ func (PingProber) Run(ctx context.Context, c model.Sensor) Outcome {
 	}
 
 	id := os.Getpid() & 0xffff
-	rtts := make([]float64, 0, count)
+	rtts := make([]float64, 0, maxPingCount)
 	loss := 0
 	sent := 0
 	lastErr := ""

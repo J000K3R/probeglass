@@ -97,7 +97,11 @@ func (RedirectProber) Run(ctx context.Context, c model.Sensor) Outcome {
 		}
 		req.Header.Set("User-Agent", "ProbeGlass/"+model.Version)
 
-		resp, err := client.Do(req)
+		// The target is the sensor's whole purpose: an administrator chooses the
+		// address, and this prober requests exactly that address and the places it
+		// redirects to. Private addresses cannot be refused — the homelab is where
+		// the sensors point.
+		resp, err := client.Do(req) // codeql[go/request-forgery]
 		if err != nil {
 			return Errf(time.Since(start), "%s", describeRequestError(err))
 		}
