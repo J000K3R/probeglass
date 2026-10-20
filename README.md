@@ -17,6 +17,7 @@
 
 <p align="center">
   <b>Website:</b> <a href="https://j000k3r.github.io/probeglass-website/">j000k3r.github.io/probeglass-website</a> — what it does, with pictures ·
+
   
   <b>Documentation:</b> <a href="https://j000k3r.github.io/probeglass-docs/">j000k3r.github.io/probeglass-docs</a> — installation, configuration, the sensor and channel references, the HTTP API, and troubleshooting
 </p>
