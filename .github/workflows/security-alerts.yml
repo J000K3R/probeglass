@@ -1,0 +1,33 @@
+name: Security alerts
+
+# A second look at the security tabs, every week. CodeQL and secret scanning
+# already run on every push; what nothing did was notice an alert nobody opened.
+# This job fails when one is open, so a scheduled red run is the reminder.
+#
+# `SECURITY_ALERTS_TOKEN` is a fine-grained personal access token with "Code
+# scanning alerts: read" and "Secret scanning alerts: read". Without it the
+# fallback token reads code scanning but not secret scanning, and the job says
+# so instead of pretending it checked both.
+
+on:
+  schedule:
+    - cron: "23 6 * * 1"   # Mondays, 06:23 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: read
+
+jobs:
+  alerts:
+    name: Check for open alerts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # The check is a script rather than a third-party action: the runner has
+      # python3, and the project does not grow a dependency for four GETs.
+      - name: Check for open code and secret scanning alerts
+        env:
+          GH_TOKEN: ${{ secrets.SECURITY_ALERTS_TOKEN || github.token }}
+        run: python3 scripts/security-alerts.py
