@@ -12,7 +12,7 @@ services:
     # `0.1` follows the 0.1.x patch releases and `latest` the newest release; `dev`
     # is a build of whatever is in the tree today and moves on its own. Change this
     # one line to move between them.
-    image: ghcr.io/j000k3r/probeglass:0.1.0
+    image: ghcr.io/j000k3r/probeglass:0.2.3
     # To build from a checkout instead of pulling, replace the line above with:
     # build: .
     container_name: probeglass

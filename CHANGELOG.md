@@ -11,13 +11,16 @@ here and what the release says are the same document.
 
 | Version | Released | In one line |
 | --- | --- | --- |
-| [Unreleased] | — | Six more sensor types, a grouped sensor chooser with tag settings, escalation, a YAML export, Gotify as a seventh channel, and example pictures and maintenance windows on the first dashboard |
+| [Unreleased] | — | Nothing yet |
+| [0.2.3] | 2026-10-20 | Six more sensor types, a grouped sensor chooser with tag settings, escalation, a YAML export, Gotify as a seventh channel, and example pictures and maintenance windows on the first dashboard |
 | [0.2.2] | 2026-10-18 | A symbol on every sensor, place and group — ours, yours, or searched for online — and one set of measurements for the whole dashboard |
 | [0.2.1] | 2026-10-16 | A sensor under maintenance says so |
 | [0.2.0] | 2026-10-16 | Maintenance windows, a second interface language, and the container as the only thing that ships |
 | [0.1.0] | 2026-10-12 | The first release: sensors, history, incidents, alerts, accounts, and the dashboard |
 
 ## [Unreleased]
+
+## [0.2.3] - 2026-10-20
 
 ### Added
 
@@ -1458,7 +1461,8 @@ it lands with, and every change made on the way to the tag.
 - The session cookie is `HttpOnly` and `SameSite=Strict` and deliberately omits
   `Secure`, because homelab installs commonly serve plain HTTP on the LAN.
 
-[Unreleased]: https://github.com/j000k3r/probeglass/compare/v0.2.2...HEAD
+[Unreleased]: https://github.com/j000k3r/probeglass/compare/v0.2.3...HEAD
+[0.2.3]: https://github.com/j000k3r/probeglass/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/j000k3r/probeglass/compare/v0.2.1...v0.2.2
 [0.2.0]: https://github.com/j000k3r/probeglass/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/j000k3r/probeglass/releases/tag/v0.1.0

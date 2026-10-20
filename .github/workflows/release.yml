@@ -44,7 +44,10 @@ jobs:
 
       # The test suite decides whether the tag becomes a release.
       - name: Test
-        run: go test ./... -count=1 -race
+        # The same timeout the CI job uses: internal/api alone takes over seven
+        # minutes under the race detector, and Go's default ten-minute per-package
+        # limit is close enough that a slower release runner would trip it.
+        run: go test ./... -count=1 -race -timeout=20m
 
       # The release body is the changelog — the whole of it, so that the tag page
       # carries the history with it. `--generate-notes` would say which commits landed
