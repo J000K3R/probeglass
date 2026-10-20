@@ -1,15 +1,15 @@
 #!/bin/sh
 #
-# release-notes.sh — the body of a GitHub release: the whole changelog.
+# release-notes.sh — the body of a GitHub release: that version's own section.
 #
 # Not a paragraph of commit subjects. `--generate-notes` says which commits landed,
 # which is a different question, and one that nobody outside this repository can
 # answer usefully. The changelog is written for a reader: what changed, in an order
 # somebody chose, grouped by what kind of change it is.
 #
-# The whole file rather than the section for the tag, so that the tag page carries
-# the history with it. A reader landing on v0.3.0's page can see what 0.2.0 was
-# without going anywhere.
+# Only the section for the tag. A release page is about one release; the older
+# sections stay on their own release pages and in CHANGELOG.md, so the notes do not
+# grow with the whole history every time.
 #
 # The version still has to have a section of its own, and the script fails if it
 # does not. That check is the point of running this before `gh release create`: a
@@ -34,8 +34,8 @@ root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 changelog="$root/CHANGELOG.md"
 [ -f "$changelog" ] || { echo "$0: no CHANGELOG.md at $changelog" >&2; exit 2; }
 
-# This version's own section, which is only wanted for the check below. From its
-# heading to the next one at the same level. `index(...) == 1` rather than a regex,
+# This version's own section: from its heading to the next one at the same level.
+# `index(...) == 1` rather than a regex,
 # because the heading text is interpolated and a version number contains dots, which
 # a regex would read as metacharacters. The second stop is for the link definitions
 # at the foot of the file — the `[0.2.0]: https://...` lines that make each heading a
@@ -56,4 +56,5 @@ if [ -z "$(printf '%s' "$section" | tr -d '[:space:]')" ]; then
   exit 1
 fi
 
-cat "$changelog"
+# That section and nothing else. The check above guarantees it is not empty.
+printf '%s\n' "$section"

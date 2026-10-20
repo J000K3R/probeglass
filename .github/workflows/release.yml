@@ -49,10 +49,12 @@ jobs:
         # limit is close enough that a slower release runner would trip it.
         run: go test ./... -count=1 -race -timeout=20m
 
-      # The release body is the changelog — the whole of it, so that the tag page
-      # carries the history with it. `--generate-notes` would say which commits landed
-      # instead, which is a different question and one nobody outside this repository
-      # can answer usefully.
+      # The release body is this version's section of the changelog — only the
+      # changes since the release before it. The older sections stay on their own
+      # release pages and in CHANGELOG.md; repeating them here would make every
+      # release note longer with each release. `--generate-notes` would say which
+      # commits landed instead, which is a different question and one nobody
+      # outside this repository can answer usefully.
       #
       # The script refuses to print anything for a version CHANGELOG.md has no section
       # for, so this step is also what stops a release being published with empty
@@ -64,9 +66,8 @@ jobs:
           {
             echo "**Container image:** \`ghcr.io/${IMAGE_NAMESPACE}/${IMAGE_NAME}:${{ steps.version.outputs.value }}\`"
             echo ""
-            echo "Every change since the first release, in full. This is"
-            echo "[CHANGELOG.md](https://github.com/${GITHUB_REPOSITORY}/blob/main/CHANGELOG.md)"
-            echo "as it stands at this tag."
+            echo "What changed in this release. Earlier releases and the full history are in"
+            echo "[CHANGELOG.md](https://github.com/${GITHUB_REPOSITORY}/blob/main/CHANGELOG.md)."
             echo ""
             echo "---"
             echo ""
@@ -100,9 +101,18 @@ jobs:
           # Unquoted on purpose: it is either one flag or nothing at all, and quoting
           # it would pass an empty argument that gh reads as a title.
           # shellcheck disable=SC2086
-          gh release create "${GITHUB_REF_NAME}" \
-            --title "${GITHUB_REF_NAME}" \
-            --notes-file release-notes.md $flags
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            # A tag that was re-pointed at a newer commit runs this job again. The
+            # release already exists, so its notes are replaced instead of the whole
+            # step failing on "already exists".
+            gh release edit "${GITHUB_REF_NAME}" \
+              --title "${GITHUB_REF_NAME}" \
+              --notes-file release-notes.md $flags
+          else
+            gh release create "${GITHUB_REF_NAME}" \
+              --title "${GITHUB_REF_NAME}" \
+              --notes-file release-notes.md $flags
+          fi
 
   docker:
     name: Publish the container image
