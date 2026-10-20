@@ -236,7 +236,8 @@ func (HTTPProber) Run(ctx context.Context, c model.Sensor) Outcome {
 	start := time.Now()
 	// The target is the sensor: an administrator chooses it, and an HTTP sensor
 	// that refused private addresses could not watch the homelab it exists for.
-	resp, err := client.Do(req) // codeql[go/request-forgery]
+	// codeql[go/request-forgery]
+	resp, err := client.Do(req)
 	latency := time.Since(start)
 	if err != nil {
 		return Errf(latency, "%s", describeRequestError(err))

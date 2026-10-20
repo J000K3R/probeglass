@@ -101,7 +101,8 @@ func (RedirectProber) Run(ctx context.Context, c model.Sensor) Outcome {
 		// address, and this prober requests exactly that address and the places it
 		// redirects to. Private addresses cannot be refused — the homelab is where
 		// the sensors point.
-		resp, err := client.Do(req) // codeql[go/request-forgery]
+		// codeql[go/request-forgery]
+		resp, err := client.Do(req)
 		if err != nil {
 			return Errf(time.Since(start), "%s", describeRequestError(err))
 		}

@@ -359,9 +359,10 @@ func (s *Server) verifyChallenge(value string) (int64, bool) {
 
 func (s *Server) setSessionCookie(w http.ResponseWriter, r *http.Request, userID, epoch int64, expiry time.Time) {
 	_, secret := s.secrets()
-	//nolint:gosec // G124: HttpOnly and SameSite are set, and Secure follows the
-	// connection; it is left off on purpose for a homelab reached over plain HTTP.
-	http.SetCookie(w, &http.Cookie{ // codeql[go/cookie-secure-not-set]
+	// HttpOnly and SameSite are set, and Secure follows the connection; it is
+	// left off on purpose for a homelab reached over plain HTTP.
+	// codeql[go/cookie-secure-not-set]
+	http.SetCookie(w, &http.Cookie{ //nolint:gosec // G124: explained above
 		Name:     sessionCookie,
 		Value:    signSession(secret, userID, epoch, expiry),
 		Path:     "/",
@@ -376,9 +377,10 @@ func (s *Server) setSessionCookie(w http.ResponseWriter, r *http.Request, userID
 }
 
 func (s *Server) clearSessionCookie(w http.ResponseWriter, r *http.Request) {
-	//nolint:gosec // G124: same deliberate rule as above; the cookie is being
-	// expired, so it carries no session either way.
-	http.SetCookie(w, &http.Cookie{ // codeql[go/cookie-secure-not-set]
+	// Same deliberate rule as above; the cookie is being expired, so it carries
+	// no session either way.
+	// codeql[go/cookie-secure-not-set]
+	http.SetCookie(w, &http.Cookie{ //nolint:gosec // G124: explained above
 		Name:     sessionCookie,
 		Value:    "",
 		Path:     "/",
