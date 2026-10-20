@@ -26,8 +26,8 @@ jobs:
       - uses: actions/checkout@v7
 
       # The check is a script rather than a third-party action: the runner has
-      # curl and jq, and the project does not grow a dependency for four GETs.
+      # python3, and the project does not grow a dependency for four GETs.
       - name: Check for open code and secret scanning alerts
         env:
           GH_TOKEN: ${{ secrets.SECURITY_ALERTS_TOKEN || github.token }}
-        run: ./scripts/security-alerts.sh
+        run: ./scripts/security-alerts.py

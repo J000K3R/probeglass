@@ -98,7 +98,7 @@ tidy: ## Tidy go.mod / go.sum
 check: fmt vet test ## What CI runs before building
 
 security: ## List open code- and secret-scanning alerts (needs GH_TOKEN)
-	./scripts/security-alerts.sh
+	./scripts/security-alerts.py
 
 seed: build ## Fill ./data with demo sensors and a week of history
 	./bin/$(BINARY) seed --demo --days 7 --data ./data
