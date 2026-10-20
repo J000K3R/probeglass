@@ -158,16 +158,22 @@ func read[T any](t *testing.T, ctx context.Context, expr, what string) T {
 // after the route changes has nothing to click yet.
 func openSettingsCategory(key string) chromedp.Action[chromedp.Void] {
 	selector := fmt.Sprintf(`.settings-tabs [data-category=%q]`, key)
-	ready := fmt.Sprintf(
-		"(() => { const tab = document.querySelector(%s); return !!tab && !tab.hidden; })()",
-		strconv.Quote(selector))
+	// Poll and click in one evaluation. The settings page is rebuilt on every
+	// poll and route change, so a separate Poll-then-Click can find the tab,
+	// lose it to a rebuild, and click a node that is no longer in the document
+	// — which is a red CI run, not a broken page. Clicking from inside the
+	// polled expression is idempotent: the next poll sees the new tab and
+	// clicks it again if the first click was lost.
+	choose := fmt.Sprintf(`(() => {
+  const tab = document.querySelector(%s);
+  if (!tab || tab.hidden) return false;
+  tab.click();
+  return true;
+})()`, strconv.Quote(selector))
 	return func(ctx context.Context, _ *chromedp.Target) (chromedp.Void, error) {
-		if err := chromedp.Do(ctx, chromedp.Poll[chromedp.Void](ready,
+		if err := chromedp.Do(ctx, chromedp.Poll[chromedp.Void](choose,
 			chromedp.WithPollingTimeout(10*time.Second))); err != nil {
 			return chromedp.Void{}, fmt.Errorf("the %q category never appeared on the settings page: %w", key, err)
-		}
-		if err := chromedp.Do(ctx, chromedp.Click(selector)); err != nil {
-			return chromedp.Void{}, fmt.Errorf("could not choose the %q category: %w", key, err)
 		}
 		return chromedp.Void{}, nil
 	}
@@ -1232,13 +1238,12 @@ func TestSitesReachEveryViewAndTheMapIsHonest(t *testing.T) {
 	if err := withTimeout(ctx, func(tctx context.Context) error {
 		return chromedp.Do(tctx,
 			chromedp.Evaluate[chromedp.Void](`location.hash = '#/settings'`),
-			chromedp.Poll[chromedp.Void](`document.querySelector('#sites-panel') !== null`,
-				chromedp.WithPollingTimeout(15*time.Second)),
 			// The page shows one category at a time, and the sites panel is not
 			// in the one a fresh visit opens. The dialog below is clicked from
 			// outside, which needs the button on screen rather than merely in the
 			// document.
 			openSettingsCategory("monitor"),
+			chromedp.WaitVisible(`#sites-panel`),
 		)
 	}); err != nil {
 		capture(t, ctx, dir, "sites-panel-missing")
@@ -1462,9 +1467,8 @@ func TestTheMapDrawsItsOwnBordersAndNames(t *testing.T) {
 	if err := withTimeout(ctx, func(tctx context.Context) error {
 		return chromedp.Do(tctx,
 			chromedp.Evaluate[chromedp.Void](`location.hash = '#/settings'`),
-			chromedp.Poll[chromedp.Void](`document.querySelector('#sites-panel') !== null`,
-				chromedp.WithPollingTimeout(15*time.Second)),
 			openSettingsCategory("monitor"),
+			chromedp.WaitVisible(`#sites-panel`),
 		)
 	}); err != nil {
 		capture(t, ctx, dir, "sites-panel-missing")
@@ -2165,9 +2169,8 @@ func TestTheMapNamesAustriasDistricts(t *testing.T) {
 	if err := withTimeout(ctx, func(tctx context.Context) error {
 		return chromedp.Do(tctx,
 			chromedp.Evaluate[chromedp.Void](`location.hash = '#/settings'`),
-			chromedp.Poll[chromedp.Void](`document.querySelector('#sites-panel') !== null`,
-				chromedp.WithPollingTimeout(15*time.Second)),
 			openSettingsCategory("monitor"),
+			chromedp.WaitVisible(`#sites-panel`),
 		)
 	}); err != nil {
 		capture(t, ctx, dir, "sites-panel-missing")
