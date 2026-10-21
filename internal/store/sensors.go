@@ -282,6 +282,20 @@ func (s *Store) CreateSensor(ctx context.Context, c *model.Sensor) error {
 	return s.tx(ctx, func(tx *sql.Tx) error { return insertSensor(ctx, tx, c) })
 }
 
+// CreateSensors writes several sensors in one transaction. A template is either
+// applied completely or not at all: a half-made device would leave the dashboard
+// with three of a QNAP's four checks and no way to tell which one is missing.
+func (s *Store) CreateSensors(ctx context.Context, sensors []*model.Sensor) error {
+	return s.tx(ctx, func(tx *sql.Tx) error {
+		for _, c := range sensors {
+			if err := insertSensor(ctx, tx, c); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
 // insertSensor writes one sensor row and its channel assignments inside the given
 // transaction.
 //

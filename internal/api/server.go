@@ -188,6 +188,7 @@ func (s *Server) Handler() http.Handler {
 	view("GET /api/summary", s.handleSummary)
 	view("GET /api/events", s.handleEvents)
 	view("GET /api/sensors", s.handleListSensors)
+	view("GET /api/sensor-templates", s.handleSensorTemplates)
 	view("GET /api/sensors/{id}", s.handleGetSensor)
 	view("GET /api/sensors/{id}/results", s.handleSensorResults)
 	view("GET /api/sensors/{id}/series", s.handleSensorSeries)
@@ -238,6 +239,7 @@ func (s *Server) Handler() http.Handler {
 
 	// Changing the configuration.
 	adm("POST /api/sensors", s.handleCreateSensor)
+	adm("POST /api/sensors/bulk", s.handleCreateSensorsBulk)
 	adm("PUT /api/sensors/{id}", s.handleUpdateSensor)
 	adm("DELETE /api/sensors/{id}", s.handleDeleteSensor)
 	adm("PUT /api/sensor-order", s.handleSensorOrder)

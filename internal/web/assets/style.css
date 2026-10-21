@@ -1471,6 +1471,53 @@ button.widget-pick-label {
   border-top: 1px solid var(--border);
 }
 
+/* The sensor catalogue: the type field's window. The tabs are buttons rather
+   than radios, so the selected one needs the accent the chip group gets from its
+   checked input. */
+#modal-catalog { overflow-y: auto; }
+.catalog-tabs {
+  display: flex;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4) 0;
+}
+.catalog-tabs .chip-choice[aria-selected='true'] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+.template-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: var(--gap);
+}
+.template-card {
+  display: flex;
+  gap: var(--sp-3);
+  align-items: flex-start;
+  padding: var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: inherit;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+.template-card:hover { border-color: var(--accent); }
+.template-card .pill { margin-left: auto; white-space: nowrap; }
+.template-icon { flex: none; color: var(--text-dim); }
+.template-text { display: grid; gap: 2px; min-width: 0; }
+.template-text strong { overflow-wrap: anywhere; }
+.template-description { color: var(--text-dim); font-size: var(--text-4); }
+.template-detail-head { display: flex; gap: var(--sp-3); align-items: flex-start; }
+.template-detail-head h3 { margin: 0 0 var(--sp-1); }
+.catalog-back { justify-self: start; }
+.catalog-checks { display: grid; gap: var(--sp-2); }
+.catalog-check { display: flex; gap: var(--sp-2); align-items: center; }
+.catalog-check small { margin-left: auto; }
+.catalog-credentials { display: grid; gap: var(--gap); }
+.catalog-credentials > h3 { margin: 0; }
+
 #detail-body { padding: var(--sp-4); display: grid; gap: var(--sp-3); }
 .detail-sub { font-family: var(--mono); font-size: var(--text-4); }
 .detail-tags { display: flex; flex-wrap: wrap; gap: var(--sp-1); margin: 0; }

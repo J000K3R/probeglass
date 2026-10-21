@@ -299,17 +299,29 @@ func TestDashboardIsActuallyUsable(t *testing.T) {
 		wantTypes = append(wantTypes, string(st))
 	}
 	slices.Sort(wantTypes)
+	// The catalogue is a window of its own: the type field opens it, and the tiles
+	// are drawn when it opens. Wait for them rather than reading a panel that is
+	// no longer pre-rendered inside the sensor dialog.
+	if err := withTimeout(ctx, func(tctx context.Context) error {
+		return chromedp.Do(tctx,
+			chromedp.Click(`#modal [data-type-open]`),
+			chromedp.Poll[chromedp.Void](
+				`document.querySelectorAll('#modal-catalog [data-sensor-type]').length > 0`,
+				chromedp.WithPollingTimeout(15*time.Second)),
+		)
+	}); err != nil {
+		capture(t, ctx, screenshotDir, "sensor-catalogue-missing")
+		t.Fatalf("the sensor catalogue never opened: %v", err)
+	}
 	offered, err := chromedp.Run(ctx, chromedp.Evaluate[string](`(() => {
-		// The chooser is pre-rendered inside the dialog, so every type is in the
-		// document whether or not the panel happens to be open.
-		return [...document.querySelectorAll('#modal [data-sensor-type]')]
+		return [...document.querySelectorAll('#modal-catalog [data-sensor-type]')]
 			.map((tile) => tile.dataset.sensorType).sort().join(',');
 	})()`))
 	if err != nil {
 		t.Errorf("could not read the sensor type choices: %v", err)
 	} else if offered != strings.Join(wantTypes, ",") {
 		capture(t, ctx, screenshotDir, "sensor-types")
-		t.Errorf("the form offers the sensor types %q, want %q: a type the server "+
+		t.Errorf("the catalogue offers the sensor types %q, want %q: a type the server "+
 			"implements has to be reachable from the form that configures it",
 			offered, strings.Join(wantTypes, ","))
 	}
@@ -319,13 +331,20 @@ func TestDashboardIsActuallyUsable(t *testing.T) {
 	// HEALTHCHECK can never report healthy, so a form that offers only the three
 	// statuses — or that leaves the empty choice to be found by clearing a text
 	// box — hands the operator a card that is red for good.
+	if err := withTimeout(ctx, func(tctx context.Context) error {
+		return chromedp.Do(tctx,
+			chromedp.Poll[chromedp.Void](
+				`!!document.querySelector('#modal-catalog [data-sensor-type="docker"]')`,
+				chromedp.WithPollingTimeout(15*time.Second)),
+			chromedp.Click(`#modal-catalog [data-sensor-type="docker"]`),
+			chromedp.WaitNotPresent(`#modal-catalog[open]`),
+			chromedp.WaitVisible(`#modal [name="opt_expect_health"]`),
+		)
+	}); err != nil {
+		capture(t, ctx, screenshotDir, "docker-health-field")
+		t.Fatalf("could not choose the docker type: %v", err)
+	}
 	dockerHealth := `(() => {
-		const open = document.querySelector('#modal [data-type-open]');
-		if (!open) return 'the form has no sensor type button';
-		open.click();
-		const tile = document.querySelector('#modal [data-sensor-type="docker"]');
-		if (!tile) return 'the form offers no docker type';
-		tile.click();
 		const inputs = [...document.querySelectorAll('#modal [name="opt_expect_health"]')];
 		if (!inputs.length) return 'the docker form has no expect_health field';
 		if (inputs.some((el) => el.tagName !== 'INPUT' || el.type !== 'radio')) {
@@ -350,13 +369,21 @@ func TestDashboardIsActuallyUsable(t *testing.T) {
 	// and it arrives while the sensor form is open — the moment a toast left on
 	// the page is painted behind the dialog's backdrop. The same question as the
 	// help panel above, by the same means: what is under the pointer.
+	if err := withTimeout(ctx, func(tctx context.Context) error {
+		return chromedp.Do(tctx,
+			chromedp.Click(`#modal [data-type-open]`),
+			chromedp.Poll[chromedp.Void](
+				`!!document.querySelector('#modal-catalog [data-sensor-type="http"]')`,
+				chromedp.WithPollingTimeout(15*time.Second)),
+			chromedp.Click(`#modal-catalog [data-sensor-type="http"]`),
+			chromedp.WaitNotPresent(`#modal-catalog[open]`),
+			chromedp.WaitVisible(`#modal [name="name"]`),
+		)
+	}); err != nil {
+		capture(t, ctx, screenshotDir, "http-type-missing")
+		t.Fatalf("could not choose the http type: %v", err)
+	}
 	toastForm := `(() => {
-		const open = document.querySelector('#modal [data-type-open]');
-		if (!open) return 'the form has no sensor type button';
-		open.click();
-		const tile = document.querySelector('#modal [data-sensor-type="http"]');
-		if (!tile) return 'the form offers no http type';
-		tile.click();
 		const fill = (name, value) => {
 			const field = document.querySelector('#modal [name="' + name + '"]');
 			if (!field) return false;
@@ -753,15 +780,11 @@ func TestTheSensorFormPicksTypesAndOptionsWithoutSelects(t *testing.T) {
 		Selects int    `json:"selects"`
 		Hidden  string `json:"hidden"`
 		Value   string `json:"value"`
-		Tiles   int    `json:"tiles"`
-		Groups  int    `json:"groups"`
 	}
 	got := read[initial](t, ctx, `(() => ({
 		selects: document.querySelectorAll('#modal select[name="type"]').length,
 		hidden: document.querySelector('#sensor-type')?.type || '',
 		value: document.querySelector('#sensor-type')?.value || '',
-		tiles: document.querySelectorAll('#modal [data-sensor-type]').length,
-		groups: document.querySelectorAll('#modal [data-type-group]').length,
 	}))()`, "the type field")
 
 	if got.Selects != 0 {
@@ -771,31 +794,53 @@ func TestTheSensorFormPicksTypesAndOptionsWithoutSelects(t *testing.T) {
 		t.Errorf("the form control is %q with value %q, want a hidden input holding http",
 			got.Hidden, got.Value)
 	}
-	if got.Tiles != 13 || got.Groups != 4 {
-		t.Errorf("the chooser has %d tiles in %d groups, want 13 in 4",
-			got.Tiles, got.Groups)
-	}
 
-	// Escape closes the panel and leaves the dialog — and the half-filled form —
-	// where it was.
+	// The catalogue is a window of its own now; the tiles are drawn when it opens.
 	if err := withTimeout(ctx, func(tctx context.Context) error {
 		return chromedp.Do(tctx,
 			chromedp.Click(`#modal [data-type-open]`),
-			chromedp.WaitVisible(`#modal .type-panel:not([hidden])`),
-			chromedp.KeyEvent("\x1b"),
+			chromedp.Poll[chromedp.Void](
+				`document.querySelectorAll('#modal-catalog [data-sensor-type]').length > 0`,
+				chromedp.WithPollingTimeout(15*time.Second)),
 		)
 	}); err != nil {
-		capture(t, ctx, dir, "sensor-type-escape")
-		t.Fatalf("could not exercise Escape in the type chooser: %v", err)
+		capture(t, ctx, dir, "sensor-catalogue")
+		t.Fatalf("the sensor catalogue never opened: %v", err)
+	}
+	type catalogue struct {
+		Tiles  int `json:"tiles"`
+		Groups int `json:"groups"`
+	}
+	opened := read[catalogue](t, ctx, `(() => ({
+		tiles: document.querySelectorAll('#modal-catalog [data-sensor-type]').length,
+		groups: document.querySelectorAll('#modal-catalog [data-type-group]').length,
+	}))()`, "the sensor catalogue")
+	if opened.Tiles != 13 || opened.Groups != 4 {
+		t.Errorf("the catalogue has %d tiles in %d groups, want 13 in 4",
+			opened.Tiles, opened.Groups)
+	}
+
+	// Escape closes the catalogue and leaves the sensor dialog — and the
+	// half-filled form — where it was.
+	if err := withTimeout(ctx, func(tctx context.Context) error {
+		return chromedp.Do(tctx,
+			chromedp.KeyEvent("\x1b"),
+			chromedp.Poll[chromedp.Void](
+				`!document.querySelector('#modal-catalog').open`,
+				chromedp.WithPollingTimeout(5*time.Second)),
+		)
+	}); err != nil {
+		capture(t, ctx, dir, "sensor-catalogue-escape")
+		t.Fatalf("could not exercise Escape in the catalogue: %v", err)
 	}
 	escaped := read[map[string]bool](t, ctx, `(() => ({
 		dialog: document.querySelector('#modal').open,
-		panel: !document.querySelector('#modal .type-panel').hidden,
+		catalogue: document.querySelector('#modal-catalog').open,
 		focused: document.activeElement === document.querySelector('#modal [data-type-open]'),
 	}))()`, "the state after Escape")
-	if !escaped["dialog"] || escaped["panel"] || !escaped["focused"] {
-		t.Errorf("Escape left dialog=%v panel=%v focused=%v, want true false true",
-			escaped["dialog"], escaped["panel"], escaped["focused"])
+	if !escaped["dialog"] || escaped["catalogue"] || !escaped["focused"] {
+		t.Errorf("Escape left dialog=%v catalogue=%v focused=%v, want true false true",
+			escaped["dialog"], escaped["catalogue"], escaped["focused"])
 	}
 
 	// The search narrows the tiles and Enter picks the first one; it must not
@@ -803,21 +848,23 @@ func TestTheSensorFormPicksTypesAndOptionsWithoutSelects(t *testing.T) {
 	if err := withTimeout(ctx, func(tctx context.Context) error {
 		return chromedp.Do(tctx,
 			chromedp.Click(`#modal [data-type-open]`),
-			chromedp.WaitVisible(`#modal .type-panel:not([hidden])`),
-			chromedp.SendKeys(`#modal [data-type-query]`, "dock"),
+			chromedp.Poll[chromedp.Void](
+				`document.querySelectorAll('#modal-catalog [data-sensor-type]').length > 0`,
+				chromedp.WithPollingTimeout(15*time.Second)),
+			chromedp.SendKeys(`#modal-catalog [data-type-query]`, "dock"),
 		)
 	}); err != nil {
-		capture(t, ctx, dir, "sensor-type-search")
-		t.Fatalf("could not search the type chooser: %v", err)
+		capture(t, ctx, dir, "sensor-catalogue-search")
+		t.Fatalf("could not search the catalogue: %v", err)
 	}
 	type filtered struct {
 		Visible []string `json:"visible"`
 		Groups  int      `json:"groups"`
 	}
 	found := read[filtered](t, ctx, `(() => ({
-		visible: [...document.querySelectorAll('#modal [data-sensor-type]')]
+		visible: [...document.querySelectorAll('#modal-catalog [data-sensor-type]')]
 			.filter((tile) => !tile.hidden).map((tile) => tile.dataset.sensorType),
-		groups: [...document.querySelectorAll('#modal [data-type-group]')].filter((g) => !g.hidden).length,
+		groups: [...document.querySelectorAll('#modal-catalog [data-type-group]')].filter((g) => !g.hidden).length,
 	}))()`, "the filtered type tiles")
 	if !slices.Equal(found.Visible, []string{"docker"}) || found.Groups != 1 {
 		t.Errorf("searching for dock shows %v in %d groups, want [docker] in 1",
@@ -826,8 +873,8 @@ func TestTheSensorFormPicksTypesAndOptionsWithoutSelects(t *testing.T) {
 
 	if err := withTimeout(ctx, func(tctx context.Context) error {
 		return chromedp.Do(tctx,
-			chromedp.KeyEvent("\r"),
-			// The chooser returns focus in a task of its own, after Enter's
+			chromedp.SendKeys(`#modal-catalog [data-type-query]`, "\r"),
+			// The catalogue returns focus in a task of its own, after Enter's
 			// default action has been resolved; waiting for it is what makes the
 			// assertion below about the settled state rather than a race.
 			chromedp.Poll[chromedp.Void](
@@ -835,19 +882,19 @@ func TestTheSensorFormPicksTypesAndOptionsWithoutSelects(t *testing.T) {
 				chromedp.WithPollingTimeout(5*time.Second)),
 		)
 	}); err != nil {
-		t.Fatalf("could not press Enter in the type search: %v", err)
+		t.Fatalf("could not press Enter in the catalogue search: %v", err)
 	}
 	type afterPick struct {
-		PanelHidden bool   `json:"panelHidden"`
-		Value       string `json:"value"`
-		Label       string `json:"label"`
-		Placeholder string `json:"placeholder"`
-		Summary     string `json:"summary"`
-		Focused     bool   `json:"focused"`
-		Help        bool   `json:"help"`
+		CatalogueOpen bool   `json:"catalogueOpen"`
+		Value         string `json:"value"`
+		Label         string `json:"label"`
+		Placeholder   string `json:"placeholder"`
+		Summary       string `json:"summary"`
+		Focused       bool   `json:"focused"`
+		Help          bool   `json:"help"`
 	}
 	picked := read[afterPick](t, ctx, `(() => ({
-		panelHidden: document.querySelector('#modal .type-panel').hidden,
+		catalogueOpen: document.querySelector('#modal-catalog').open,
 		value: document.querySelector('#sensor-type').value,
 		label: document.querySelector('#modal [data-type-label]').textContent.trim(),
 		placeholder: document.querySelector('#modal [name="target"]').placeholder,
@@ -855,9 +902,9 @@ func TestTheSensorFormPicksTypesAndOptionsWithoutSelects(t *testing.T) {
 		focused: document.activeElement === document.querySelector('#modal [data-type-open]'),
 		help: !!document.querySelector('#target-label .help-dot'),
 	}))()`, "the form after choosing docker")
-	if !picked.PanelHidden || picked.Value != "docker" || !picked.Focused {
-		t.Errorf("after Enter the panel is hidden=%v, value=%q, focused=%v, want true docker true",
-			picked.PanelHidden, picked.Value, picked.Focused)
+	if picked.CatalogueOpen || picked.Value != "docker" || !picked.Focused {
+		t.Errorf("after Enter the catalogue is open=%v, value=%q, focused=%v, want false docker true",
+			picked.CatalogueOpen, picked.Value, picked.Focused)
 	}
 	if picked.Label != "Docker container" || picked.Summary != "Docker container" {
 		t.Errorf("the type reads %q and the fold %q, want Docker container in both",
@@ -915,12 +962,17 @@ func TestTheSensorFormPicksTypesAndOptionsWithoutSelects(t *testing.T) {
 
 	switchType := func(value string) {
 		t.Helper()
-		expr := fmt.Sprintf(`(() => {
-			document.querySelector('#modal [data-type-open]').click();
-			document.querySelector('#modal [data-sensor-type="%s"]').click();
-			return true;
-		})()`, value)
-		if _, err := chromedp.Run(ctx, chromedp.Evaluate[bool](expr)); err != nil {
+		if err := withTimeout(ctx, func(tctx context.Context) error {
+			return chromedp.Do(tctx,
+				chromedp.Click(`#modal [data-type-open]`),
+				chromedp.Poll[chromedp.Void](
+					fmt.Sprintf(`!!document.querySelector('#modal-catalog [data-sensor-type="%s"]')`, value),
+					chromedp.WithPollingTimeout(15*time.Second)),
+				chromedp.Click(fmt.Sprintf(`#modal-catalog [data-sensor-type="%s"]`, value)),
+				chromedp.WaitNotPresent(`#modal-catalog[open]`),
+			)
+		}); err != nil {
+			capture(t, ctx, dir, "sensor-type-switch-"+value)
 			t.Fatalf("could not switch the sensor type to %s: %v", value, err)
 		}
 	}

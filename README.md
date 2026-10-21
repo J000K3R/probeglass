@@ -124,8 +124,9 @@ frontend pipeline to keep alive.
 ## Features
 
 - **Sensors** — HTTP(S), TCP (with optional TLS and send/expect), TLS certificate
-  expiry, ICMP ping, DNS, Docker containers, and SNMP. Configured in the web UI or
-  declared in YAML.
+  expiry, ICMP ping, DNS, Docker containers, and SNMP over v1, v2c or v3. A
+  searchable catalogue, with device templates for QNAP, Synology, UniFi and APC.
+  Configured in the web UI or declared in YAML.
 - **Dashboard** — five views of the same sensors: cards, a dense list, a foldable
   **tree** by site and group, a **wall** of tiles carrying the last forty checks as
   a heartbeat, and a **map** of your sites. The map draws the world from

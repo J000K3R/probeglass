@@ -19,23 +19,30 @@ import (
 
 // SNMPProber asks one OID and checks what comes back.
 //
-// Deliberately one OID with one GET: no walk, no traps, no v3. A switch, a router
-// or a NAS answers "how warm is the CPU", "how long has it been up" and "how much
-// ink is left" with a single request each, and that is the whole job. A walk
+// Deliberately one OID with one GET: no walk, no traps. A switch, a router or a
+// NAS answers "how warm is the CPU", "how long has it been up" and "how much ink
+// is left" with a single request each, and that is the whole job. A walk
 // enumerates a device's entire MIB, which is a different tool with a different
 // cost.
 //
-// v2c is unauthenticated and sends the community string in clear text. That is
-// stated in SECURITY.md rather than buried here, because it decides which network
-// the sensor belongs on.
+// v2c is unauthenticated and sends the community string in clear text; v3 can
+// authenticate and encrypt. Both are stated in SECURITY.md rather than buried
+// here, because they decide which network the sensor belongs on.
 //
 // Options:
 //
-//	community  v2c community, default "public"
-//	version    "2c" (default) or "1"
-//	oid        the object to ask for, dotted, required
-//	expect     substring the value must contain
-//	min, max   bounds the value must lie within, for a numeric object
+//	community        v1/v2c community, default "public"
+//	version          "2c" (default), "1" or "3"
+//	username         v3 user name, required for v3
+//	security_level   v3 noAuthNoPriv, authNoPriv or authPriv (default)
+//	auth_protocol    v3 MD5, SHA, SHA-224, SHA-256, SHA-384 or SHA-512
+//	auth_pass        v3 authentication passphrase
+//	priv_protocol    v3 DES, AES, AES-192 or AES-256
+//	priv_pass        v3 privacy passphrase
+//	context_name     v3 context, usually empty
+//	oid              the object to ask for, dotted, required
+//	expect           substring the value must contain
+//	min, max         bounds the value must lie within, for a numeric object
 type SNMPProber struct{}
 
 // Type implements Prober.
@@ -59,12 +66,35 @@ func (SNMPProber) Validate(c model.Sensor) error {
 		return fmt.Errorf("oid must be a dotted number such as 1.3.6.1.2.1.1.3.0, got %q", s)
 	}
 
-	switch v := c.Options.Str("version", "2c"); v {
+	switch v := strings.ToLower(c.Options.Str("version", "2c")); v {
 	case "2c", "1":
 	case "3":
-		return errors.New("version 3 is not supported; use 2c")
+		if strings.TrimSpace(c.Options.Str("username", "")) == "" {
+			return errors.New("username is required for SNMP v3")
+		}
+		level := strings.ToLower(c.Options.Str("security_level", "authPriv"))
+		switch level {
+		case "noauthnopriv":
+		case "authnopriv", "authpriv":
+			if _, err := snmpAuthProtocol(c.Options.Str("auth_protocol", "SHA")); err != nil {
+				return err
+			}
+			if strings.TrimSpace(c.Options.Str("auth_pass", "")) == "" {
+				return errors.New("auth_pass is required for an authenticated SNMP v3 user")
+			}
+			if level == "authpriv" {
+				if _, err := snmpPrivProtocol(c.Options.Str("priv_protocol", "AES")); err != nil {
+					return err
+				}
+				if strings.TrimSpace(c.Options.Str("priv_pass", "")) == "" {
+					return errors.New("priv_pass is required for an encrypted SNMP v3 user")
+				}
+			}
+		default:
+			return fmt.Errorf("security_level must be noAuthNoPriv, authNoPriv or authPriv, got %q", level)
+		}
 	default:
-		return fmt.Errorf("version must be 2c or 1, got %q", v)
+		return fmt.Errorf("version must be 2c, 1 or 3, got %q", v)
 	}
 
 	// At least one assertion, because "the agent answered something" is what a
@@ -98,9 +128,13 @@ func (SNMPProber) Run(ctx context.Context, c model.Sensor) Outcome {
 	oid := normaliseOID(o.Str("oid", ""))
 	version := gosnmp.Version2c
 	versionText := "2c"
-	if o.Str("version", "2c") == "1" {
+	switch strings.ToLower(o.Str("version", "2c")) {
+	case "1":
 		version = gosnmp.Version1
 		versionText = "1"
+	case "3":
+		version = gosnmp.Version3
+		versionText = "3"
 	}
 
 	// The probe's own timeout is the shorter of the sensor's and what is left of
@@ -116,7 +150,6 @@ func (SNMPProber) Run(ctx context.Context, c model.Sensor) Outcome {
 	client := &gosnmp.GoSNMP{
 		Target:    host,
 		Port:      port,
-		Community: o.Str("community", "public"),
 		Version:   version,
 		Transport: "udp",
 		Timeout:   timeout,
@@ -128,6 +161,34 @@ func (SNMPProber) Run(ctx context.Context, c model.Sensor) Outcome {
 		// means the number the request is built from is the one written down.
 		MaxOids: 1,
 		Context: ctx,
+	}
+	if version == gosnmp.Version3 {
+		// Validation has already refused a v3 user without the fields its level
+		// needs, so the mappings here cannot fail on a sensor that reached the
+		// scheduler.
+		auth, _ := snmpAuthProtocol(o.Str("auth_protocol", "SHA"))
+		priv, _ := snmpPrivProtocol(o.Str("priv_protocol", "AES"))
+		client.SecurityModel = gosnmp.UserSecurityModel
+		switch strings.ToLower(o.Str("security_level", "authPriv")) {
+		case "noauthnopriv":
+			client.MsgFlags = gosnmp.NoAuthNoPriv
+			auth, priv = gosnmp.NoAuth, gosnmp.NoPriv
+		case "authnopriv":
+			client.MsgFlags = gosnmp.AuthNoPriv
+			priv = gosnmp.NoPriv
+		default:
+			client.MsgFlags = gosnmp.AuthPriv
+		}
+		client.SecurityParameters = &gosnmp.UsmSecurityParameters{
+			UserName:                 o.Str("username", ""),
+			AuthenticationProtocol:   auth,
+			AuthenticationPassphrase: o.Str("auth_pass", ""),
+			PrivacyProtocol:          priv,
+			PrivacyPassphrase:        o.Str("priv_pass", ""),
+		}
+		client.ContextName = o.Str("context_name", "")
+	} else {
+		client.Community = o.Str("community", "public")
 	}
 
 	start := time.Now()
@@ -190,6 +251,44 @@ func (SNMPProber) Run(ctx context.Context, c model.Sensor) Outcome {
 		Latency: latency,
 		Message: fmt.Sprintf("SNMP v%s · %s = %s · %.0fms",
 			versionText, oid, text, float64(latency.Microseconds())/1000),
+	}
+}
+
+// snmpAuthProtocol maps the option's spelling to the library's constant. The
+// spellings are the ones people see in device menus; hyphens are accepted so
+// that SHA-256 and SHA256 both work.
+func snmpAuthProtocol(name string) (gosnmp.SnmpV3AuthProtocol, error) {
+	switch strings.ToUpper(strings.ReplaceAll(strings.TrimSpace(name), "-", "")) {
+	case "MD5":
+		return gosnmp.MD5, nil
+	case "SHA", "SHA1":
+		return gosnmp.SHA, nil
+	case "SHA224":
+		return gosnmp.SHA224, nil
+	case "SHA256":
+		return gosnmp.SHA256, nil
+	case "SHA384":
+		return gosnmp.SHA384, nil
+	case "SHA512":
+		return gosnmp.SHA512, nil
+	default:
+		return 0, fmt.Errorf("auth_protocol must be MD5, SHA, SHA-224, SHA-256, SHA-384 or SHA-512, got %q", name)
+	}
+}
+
+// snmpPrivProtocol maps the option's spelling to the library's constant.
+func snmpPrivProtocol(name string) (gosnmp.SnmpV3PrivProtocol, error) {
+	switch strings.ToUpper(strings.ReplaceAll(strings.TrimSpace(name), "-", "")) {
+	case "DES":
+		return gosnmp.DES, nil
+	case "AES", "AES128":
+		return gosnmp.AES, nil
+	case "AES192":
+		return gosnmp.AES192, nil
+	case "AES256":
+		return gosnmp.AES256, nil
+	default:
+		return 0, fmt.Errorf("priv_protocol must be DES, AES, AES-192 or AES-256, got %q", name)
 	}
 }
 

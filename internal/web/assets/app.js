@@ -2892,11 +2892,30 @@ const SENSOR_TYPES = [
     placeholder: '192.168.1.2',
     fields: [
       { key: 'oid', type: 'text', placeholder: '1.3.6.1.2.1.1.3.0' },
-      { key: 'community', type: 'password' },
-      { key: 'version', type: 'select', options: ['2c', '1'] },
       { key: 'expect', type: 'text' },
       { key: 'min', type: 'number' },
       { key: 'max', type: 'number' },
+      { key: 'version', type: 'select', options: ['2c', '1', '3'], emptyLabel: 'opt.versionDefault' },
+      // The v1/v2c community and the v3 user are alternatives; the form shows the
+      // one belonging to the chosen version. An empty version chip means 2c, an
+      // empty security level means authPriv — the same defaults the prober uses.
+      { key: 'community', type: 'password', showWhen: [{ key: 'version', in: ['2c', '1'], default: '2c' }] },
+      { key: 'username', type: 'text', showWhen: [{ key: 'version', in: ['3'] }] },
+      { key: 'security_level', type: 'select', options: ['noAuthNoPriv', 'authNoPriv', 'authPriv'],
+        emptyLabel: 'opt.securityLevelDefault', showWhen: [{ key: 'version', in: ['3'] }] },
+      { key: 'auth_protocol', type: 'select', options: ['SHA-256', 'SHA', 'SHA-224', 'SHA-384', 'SHA-512', 'MD5'],
+        showWhen: [{ key: 'version', in: ['3'] },
+          { key: 'security_level', in: ['authNoPriv', 'authPriv'], default: 'authPriv' }] },
+      { key: 'auth_pass', type: 'password',
+        showWhen: [{ key: 'version', in: ['3'] },
+          { key: 'security_level', in: ['authNoPriv', 'authPriv'], default: 'authPriv' }] },
+      { key: 'priv_protocol', type: 'select', options: ['AES', 'AES-256', 'AES-192', 'DES'],
+        showWhen: [{ key: 'version', in: ['3'] },
+          { key: 'security_level', in: ['authPriv'], default: 'authPriv' }] },
+      { key: 'priv_pass', type: 'password',
+        showWhen: [{ key: 'version', in: ['3'] },
+          { key: 'security_level', in: ['authPriv'], default: 'authPriv' }] },
+      { key: 'context_name', type: 'text', showWhen: [{ key: 'version', in: ['3'] }] },
     ],
   },
   {
@@ -3001,8 +3020,8 @@ function sensorTypeFieldMarkup(def) {
       <label id="sensor-type-label">${withHelp(t('sensor.type'), 'help.sensor.type')}</label>
       <div class="icon-field type-field" data-type-field>
         <input type="hidden" name="type" id="sensor-type" value="${esc(def.value)}">
-        <button type="button" class="icon-button" data-type-open
-                aria-haspopup="true" aria-expanded="false" aria-controls="sensor-type-panel"
+        <button type="button" class="icon-button" data-type-open data-catalog-open
+                aria-haspopup="dialog" aria-controls="modal-catalog"
                 aria-labelledby="sensor-type-label">
           <span class="icon-slot" data-type-icon>${iconUI.iconMarkup(def.icon, { size: 18 })}</span>
           <span class="icon-button-label" data-type-label>${esc(t(def.labelKey))}</span>
@@ -3010,7 +3029,6 @@ function sensorTypeFieldMarkup(def) {
             <path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.8"
                   stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
-        <div class="type-panel" id="sensor-type-panel" hidden>${sensorTypePanelMarkup(def)}</div>
       </div>
     </div>`;
 }
@@ -3091,17 +3109,30 @@ function optionField(field, options) {
 
 /** Read the option widgets back into the shape the API expects. */
 function readOptions(form, def) {
+  return readOptionValues(form, def.fields);
+}
+
+/**
+ * readOptionValues reads chip groups and inputs out of a form or any container.
+ *
+ * The template window has the SNMP credential fields without a form of its own,
+ * so the reader cannot rely on form.elements. A field the chosen version or
+ * security level hides is left out: reading it would carry a v2c community into a
+ * v3 sensor.
+ */
+function readOptionValues(scope, fields) {
   const options = {};
-  for (const field of def.fields) {
-    const input = form.elements[`opt_${field.key}`];
-    if (!input) continue;
-    // A chip group is several radios under one name, which the form exposes as a
-    // RadioNodeList. Its .value is the checked one already; reading the checked
-    // element explicitly keeps the "nothing chosen" case visible rather than
-    // relying on that.
-    const raw = input.type === undefined
-      ? ([...input].find((el) => el.checked)?.value ?? '')
-      : input.value;
+  for (const field of fields) {
+    const slot = scope.querySelector(`[data-option-key="${field.key}"]`);
+    if (slot && slot.hidden) continue;
+    const inputs = [...scope.querySelectorAll(`[name="opt_${field.key}"]`)];
+    if (!inputs.length) continue;
+    // A chip group is several radios under one name. Reading the checked element
+    // explicitly keeps the "nothing chosen" case visible rather than relying on a
+    // RadioNodeList that a plain container does not provide.
+    const raw = inputs.length > 1
+      ? (inputs.find((el) => el.checked)?.value ?? '')
+      : inputs[0].value;
     if (field.type === 'bool') {
       if (raw === '') continue;
       options[field.key] = raw === 'true';
@@ -3510,7 +3541,10 @@ function closeTypePanels(except) {
 
 /** filterTypeTiles narrows the tiles to those matching the search box. */
 function filterTypeTiles(field, term) {
-  const panel = field.querySelector('.type-panel');
+  // The old chooser wrapped the tiles in .type-panel; the catalogue draws them
+  // directly in its own container, so the wrapper is either there or the field
+  // itself.
+  const panel = field.querySelector('.type-panel') || field;
   if (!panel) return;
   const needle = term.trim().toLowerCase();
   let visible = 0;
@@ -3564,9 +3598,39 @@ function applySensorType(form, value) {
   if (target) target.placeholder = next.placeholder;
 
   const fields = $('#option-fields');
-  if (fields) fields.innerHTML = next.fields.map((f) => optionField(f, values)).join('');
+  if (fields) {
+    fields.innerHTML = next.fields.map((f) => `
+      <div class="option-slot" data-option-key="${esc(f.key)}">${optionField(f, values)}</div>`).join('');
+    syncConditionalOptions(next.fields);
+  }
   const summary = $('#option-summary');
   if (summary) summary.textContent = t(next.labelKey);
+}
+
+/**
+ * optionChoice is the value a chip group currently carries. An empty choice
+ * means the prober's default, which is why each condition says what its own
+ * empty value stands for.
+ */
+function optionChoice(container, key, fallback) {
+  const checked = container.querySelector(`input[name="opt_${key}"]:checked`);
+  return checked && checked.value !== '' ? checked.value : fallback;
+}
+
+/**
+ * syncConditionalOptions hides the fields the chosen version and security level
+ * do not use. Without it a v3 sensor asks for a community string it will ignore,
+ * and a v2c sensor asks for a username that means nothing.
+ */
+function syncConditionalOptions(fields, container = $('#option-fields')) {
+  if (!container) return;
+  for (const field of fields) {
+    if (!field.showWhen) continue;
+    const slot = container.querySelector(`[data-option-key="${field.key}"]`);
+    if (!slot) continue;
+    slot.hidden = !field.showWhen.every((cond) =>
+      cond.in.includes(optionChoice(container, cond.key, cond.default || '')));
+  }
 }
 
 /** pickTypeTile applies one tile and puts the chooser away. */
@@ -3591,6 +3655,10 @@ function mountSensorTypePicker() {
   document.addEventListener('click', (event) => {
     const open = event.target.closest('[data-type-open]');
     if (open) {
+      if (open.hasAttribute('data-catalog-open')) {
+        openSensorCatalog(open.closest('form'));
+        return;
+      }
       const field = open.closest('[data-type-field]');
       const panel = field?.querySelector('.type-panel');
       if (panel && !panel.hidden) closeTypePanel(field, { restoreFocus: true });
@@ -3616,6 +3684,15 @@ function mountSensorTypePicker() {
     if (field) filterTypeTiles(field, query.value);
   });
 
+  // Version and security level decide which credential fields the SNMP form
+  // shows. The listener is on the document for the same reason as the others:
+  // the option fields are rebuilt with every type switch.
+  document.addEventListener('change', (event) => {
+    if (!event.target.closest('#option-fields')) return;
+    const form = event.target.closest('form');
+    if (form?.elements.type) syncConditionalOptions(typeDef(form.elements.type.value).fields);
+  });
+
   // Enter in the search picks the first visible tile. It must not reach the
   // form: #modal-form is method="dialog", so an unhandled Enter saves and closes.
   document.addEventListener('keydown', (event) => {
@@ -3625,7 +3702,29 @@ function mountSensorTypePicker() {
     event.preventDefault();
     const field = query.closest('[data-type-field]');
     const first = field?.querySelector('[data-sensor-type]:not([hidden])');
-    if (first) pickTypeTile(field, first, field.closest('form'));
+    if (!first) return;
+    if (field.closest('#modal-catalog') && catalogForm) {
+      const form = catalogForm;
+      applySensorType(form, first.dataset.sensorType);
+      // Closing a modal dialog hands focus back to the button that opened it.
+      // If that happens while Enter is still being resolved, the same key
+      // activates the button and opens the catalogue again. Wait for the keyup,
+      // then close; the timeout is for a key that never reports one.
+      let done = false;
+      const button = form.querySelector('[data-type-open]');
+      const finish = () => {
+        if (done) return;
+        done = true;
+        document.removeEventListener('keyup', finish, true);
+        clearTimeout(timer);
+        closeCatalog();
+        setTimeout(() => button?.focus(), 0);
+      };
+      const timer = setTimeout(finish, 500);
+      document.addEventListener('keyup', finish, true);
+      return;
+    }
+    pickTypeTile(field, first, field.closest('form'));
   });
 
   // Escape closes the chooser and not the dialog. The dialog's own cancel
@@ -3639,6 +3738,241 @@ function mountSensorTypePicker() {
     closeTypePanel(panel.closest('[data-type-field]'), { restoreFocus: true });
   });
 }
+
+// --- the sensor catalogue --------------------------------------------------
+//
+// The type field opens a window rather than a corner panel, because the answer it
+// carries is larger than a list of types: alongside the individual sensors there
+// are device templates, and a template needs room to show what it will add before
+// it adds it.
+//
+// The individual sensors are the same tiles the old panel drew, from the same
+// SENSOR_TYPES list, so there is one catalogue and not two. Picking one applies it
+// to the sensor form behind the window and closes the window; the template half
+// never touches the sensor form at all — it creates its sensors directly and the
+// dashboard refreshes behind it.
+
+let catalogForm = null;
+let catalogTemplates = null;
+let catalogDetail = null;
+let catalogCredentialFields = [];
+
+// The SNMP fields a template needs, in the order the sensor form draws them.
+const CATALOG_CREDENTIAL_KEYS = new Set([
+  'version', 'community', 'username', 'security_level', 'auth_protocol',
+  'auth_pass', 'priv_protocol', 'priv_pass', 'context_name',
+]);
+
+/** openSensorCatalog draws the catalogue for the sensor form behind it. */
+async function openSensorCatalog(form) {
+  catalogForm = form;
+  const dialog = $('#modal-catalog');
+  catalogDetail = null;
+  if (!catalogTemplates) {
+    try {
+      const data = await api('/api/sensor-templates');
+      catalogTemplates = data.templates || [];
+    } catch (err) {
+      catalogTemplates = [];
+      toast(err.message, 'error');
+    }
+  }
+  applyTranslations(dialog);
+  setCatalogTab('sensors');
+  if (!dialog.open) dialog.showModal();
+  setTimeout(() => dialog.querySelector('[data-type-query]')?.focus(), 0);
+}
+
+/** closeCatalog puts the window away and forgets which form it belonged to. */
+function closeCatalog() {
+  const dialog = $('#modal-catalog');
+  if (dialog?.open) dialog.close();
+  catalogForm = null;
+  catalogDetail = null;
+}
+
+/** setCatalogTab switches between the individual sensors and the templates. */
+function setCatalogTab(tab) {
+  catalogDetail = null;
+  const dialog = $('#modal-catalog');
+  for (const button of dialog.querySelectorAll('[data-catalog-tab]')) {
+    button.setAttribute('aria-selected', String(button.dataset.catalogTab === tab));
+  }
+  $('#catalog-body').innerHTML = tab === 'templates' ? catalogTemplatesMarkup() : catalogSensorsMarkup();
+  const add = $('#catalog-add');
+  add.hidden = true;
+  add.disabled = true;
+  $('#catalog-error').textContent = '';
+}
+
+/** catalogSensorsMarkup is the old type panel, in the catalog window. */
+function catalogSensorsMarkup() {
+  const def = typeDef(catalogForm?.elements.type?.value || 'http');
+  return `<div data-type-field data-catalog-sensors>${sensorTypePanelMarkup(def)}</div>`;
+}
+
+/** catalogTemplatesMarkup draws one card per device template. */
+function catalogTemplatesMarkup() {
+  if (!catalogTemplates?.length) return `<p class="muted">${esc(t('catalog.templateHint'))}</p>`;
+  const cards = catalogTemplates.map((template) => `
+    <button type="button" class="template-card" data-template-id="${esc(template.id)}">
+      <span class="template-icon">${iconUI.iconMarkup(template.icon, { size: 22 })}</span>
+      <span class="template-text">
+        <strong>${esc(t(template.name_key))}</strong>
+        <small>${esc([template.vendor, template.product].filter(Boolean).join(' · '))}</small>
+        <span class="template-description">${esc(t(template.description_key))}</span>
+      </span>
+      <span class="pill">${esc(t('catalog.checks', { count: template.checks.length }))}</span>
+    </button>`).join('');
+  return `
+    <p class="panel-hint">${esc(t('catalog.templateHint'))}</p>
+    <div class="template-grid">${cards}</div>`;
+}
+
+/** openTemplateDetail shows the checks a template would add. */
+function openTemplateDetail(template) {
+  catalogDetail = template;
+  catalogCredentialFields = typeDef('snmp').fields.filter((f) => CATALOG_CREDENTIAL_KEYS.has(f.key));
+  const name = t(template.name_key);
+  const checks = template.checks.map((check) => `
+    <label class="catalog-check">
+      <input type="checkbox" data-catalog-check="${esc(check.key)}" checked>
+      <span>${esc(t(check.label_key))}</span>
+      <small class="muted">${esc(check.type === 'ping' ? t('type.ping') : t('type.snmp'))}</small>
+    </label>`).join('');
+  const fields = catalogCredentialFields.map((f) => `
+    <div class="option-slot" data-option-key="${esc(f.key)}">${optionField(f, { version: '2c' })}</div>`).join('');
+  $('#catalog-body').innerHTML = `
+    <button type="button" class="btn btn-small catalog-back" data-catalog-back>← ${esc(t('catalog.back'))}</button>
+    <div class="template-detail-head">
+      <span class="template-icon">${iconUI.iconMarkup(template.icon, { size: 26 })}</span>
+      <div>
+        <h3>${esc(name)}</h3>
+        <p class="muted">${esc(t(template.description_key))}</p>
+      </div>
+    </div>
+    <p class="muted small">${esc(t('catalog.templateNote'))}</p>
+    <div class="grid-2">
+      <label class="field"><span>${esc(t('catalog.deviceName'))}</span>
+        <input id="catalog-name" type="text" value="${esc(name)}" autocomplete="off"></label>
+      <label class="field"><span>${esc(t('catalog.address'))}</span>
+        <input id="catalog-target" type="text" placeholder="192.168.1.2" autocomplete="off" spellcheck="false"></label>
+    </div>
+    <label class="field"><span>${esc(t('catalog.group'))}</span>
+      <input id="catalog-group" type="text" value="${esc(name)}" autocomplete="off"></label>
+    <p class="muted small">${esc(t('catalog.groupHint'))}</p>
+    <fieldset class="field catalog-checks">
+      <legend>${esc(t('catalog.checks', { count: template.checks.length }))}</legend>
+      ${checks}
+    </fieldset>
+    <section class="catalog-credentials">
+      <h3>${esc(t('catalog.credentials'))}</h3>
+      <div id="catalog-options">${fields}</div>
+    </section>`;
+  syncConditionalOptions(catalogCredentialFields, $('#catalog-options'));
+  updateCatalogAdd();
+  $('#catalog-add').hidden = false;
+  $('#catalog-error').textContent = '';
+  $('#catalog-name')?.focus();
+}
+
+/** updateCatalogAdd says how many of the template's checks are ticked. */
+function updateCatalogAdd() {
+  if (!catalogDetail) return;
+  const count = $$('#catalog-body [data-catalog-check]:checked').length;
+  const add = $('#catalog-add');
+  add.textContent = t('catalog.apply', { count });
+  add.disabled = count === 0;
+}
+
+/** applyCatalogTemplate creates the ticked sensors in one request. */
+async function applyCatalogTemplate() {
+  if (!catalogDetail) return;
+  const error = $('#catalog-error');
+  const name = $('#catalog-name').value.trim();
+  const target = $('#catalog-target').value.trim();
+  const group = $('#catalog-group').value.trim();
+  if (!name || !target) {
+    error.textContent = t('catalog.missing', { field: !name ? t('catalog.deviceName') : t('catalog.address') });
+    return;
+  }
+  const checks = catalogDetail.checks.filter((check) =>
+    $(`#catalog-body [data-catalog-check="${check.key}"]`)?.checked);
+  if (!checks.length) {
+    error.textContent = t('catalog.noneSelected');
+    return;
+  }
+  const credentials = readOptionValues($('#catalog-options'), catalogCredentialFields);
+  const sensors = checks.map((check) => ({
+    name: `${name} · ${t(check.label_key)}`,
+    type: check.type,
+    target,
+    interval: check.interval || 60,
+    timeout: 10,
+    retries: 1,
+    enabled: true,
+    group,
+    options: check.type === 'snmp'
+      ? { ...(check.options || {}), ...credentials }
+      : { ...(check.options || {}) },
+  }));
+  try {
+    await api('/api/sensors/bulk', { method: 'POST', body: { sensors } });
+    toast(t('catalog.added', { count: sensors.length }));
+    closeCatalog();
+    await refresh({ background: true });
+  } catch (err) {
+    error.textContent = err.message;
+  }
+}
+
+// One delegated listener for the catalogue: tabs, template cards, the back link,
+// the individual type tiles and the Add button. The window's body is rebuilt on
+// every view change, so listeners on its children would be lost with them.
+document.addEventListener('click', (event) => {
+  if (!event.target.closest('#modal-catalog')) return;
+
+  const tab = event.target.closest('[data-catalog-tab]');
+  if (tab) {
+    setCatalogTab(tab.dataset.catalogTab);
+    return;
+  }
+  const card = event.target.closest('[data-template-id]');
+  if (card) {
+    const template = (catalogTemplates || []).find((entry) => entry.id === card.dataset.templateId);
+    if (template) openTemplateDetail(template);
+    return;
+  }
+  if (event.target.closest('[data-catalog-back]')) {
+    setCatalogTab('templates');
+    return;
+  }
+  const tile = event.target.closest('#modal-catalog [data-sensor-type]');
+  if (tile && catalogForm) {
+    const form = catalogForm;
+    applySensorType(form, tile.dataset.sensorType);
+    closeCatalog();
+    setTimeout(() => form.querySelector('[data-type-open]')?.focus(), 0);
+    return;
+  }
+  if (event.target.closest('#catalog-add')) applyCatalogTemplate();
+});
+
+document.addEventListener('change', (event) => {
+  if (event.target.closest('#catalog-body [data-catalog-check]')) updateCatalogAdd();
+  if (event.target.closest('#catalog-options')) {
+    syncConditionalOptions(catalogCredentialFields, $('#catalog-options'));
+  }
+});
+
+$('#modal-catalog').addEventListener('close', () => {
+  // A close event from an Escape can arrive after the same window has already
+  // been opened again; clearing the form here would leave the reopened catalogue
+  // with nothing to apply a type to.
+  if ($('#modal-catalog').open) return;
+  catalogForm = null;
+  catalogDetail = null;
+});
 
 // --- the site and dependency choosers ---------------------------------------
 
@@ -4011,7 +4345,8 @@ function sensorFormMarkup(sensor) {
 
     <details class="options adv-hide"${isNew ? ' open' : ''}>
       <summary id="option-summary">${esc(t(def.labelKey))}</summary>
-      <div id="option-fields" class="grid-2">${def.fields.map((f) => optionField(f, sensor?.options)).join('')}</div>
+      <div id="option-fields" class="grid-2">${def.fields.map((f) => `
+        <div class="option-slot" data-option-key="${esc(f.key)}">${optionField(f, sensor?.options)}</div>`).join('')}</div>
     </details>
 
     <fieldset class="channels-pick adv-hide">
@@ -4050,6 +4385,7 @@ async function openSensorEditor(existing = null) {
   });
 
   form.dataset.lastType = existing?.type || 'http';
+  syncConditionalOptions(typeDef(form.dataset.lastType).fields);
   // The tiles call applySensorType directly; the hidden input keeps a change
   // from a script — or from a test — working the way the old select did.
   const typeInput = $('#sensor-type');

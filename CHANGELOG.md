@@ -22,6 +22,18 @@ here and what the release says are the same document.
 
 ### Added
 
+- **SNMP v3.** User name, security level, SHA authentication and AES privacy, on
+  top of the v1 and v2c the sensor already spoke. The form shows only the fields
+  the chosen level uses; the two v3 passphrases are masked in the API like a
+  community string. v3 with `authPriv` is the answer to v2c's clear-text community,
+  and the security notes now say so.
+- **A sensor catalogue with device templates.** The type field opens a searchable
+  catalogue of every sensor, and beside the individual ones there are templates:
+  QNAP, Synology, UniFi, APC UPS and a generic HOST-RESOURCES set. Choosing one
+  asks for the device's address and SNMP credentials, shows the checks it would
+  add, and creates the ticked ones as ordinary sensors in one group — all of them
+  or none, in one transaction. They stay editable afterwards, because vendor OIDs
+  move between firmware versions.
 - **A `/metrics` endpoint for Prometheus.** Sensor status, the 24-hour, 7-day and
   30-day uptime ratios, the last latency and the open incidents, in the Prometheus
   text format, so a homelab that already runs a monitoring stack can scrape

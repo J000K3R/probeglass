@@ -429,6 +429,31 @@
   </form>
 </dialog>
 
+<!-- ------------------------------------------------------------ sensor catalogue -->
+<!-- The type field opens this instead of a corner panel. It is the whole list of
+     sensors — grouped and searchable — plus the device templates, which add a
+     set of sensors for one box at once. A template is a starting point: every
+     check it proposes is a checkbox, and every sensor it creates is an ordinary
+     one that can be edited afterwards. -->
+<dialog id="modal-catalog" class="sheet" aria-labelledby="catalog-title">
+  <div class="sheet-head">
+    <h2 id="catalog-title" data-i18n="catalog.title">Sensor catalogue</h2>
+    <button class="icon-btn" type="button" data-close data-i18n-aria="common.close" aria-label="Close">&times;</button>
+  </div>
+  <div class="catalog-tabs" role="tablist" data-i18n-aria="catalog.title">
+    <button type="button" class="chip chip-choice" role="tab" data-catalog-tab="sensors"
+            aria-selected="true" data-i18n="catalog.sensors"></button>
+    <button type="button" class="chip chip-choice" role="tab" data-catalog-tab="templates"
+            aria-selected="false" data-i18n="catalog.templates"></button>
+  </div>
+  <div class="sheet-body" id="catalog-body"></div>
+  <p id="catalog-error" class="form-error" role="alert"></p>
+  <div class="sheet-foot">
+    <button class="btn" type="button" id="catalog-cancel" data-close data-i18n="common.cancel">Cancel</button>
+    <button class="btn btn-primary" type="button" id="catalog-add" hidden></button>
+  </div>
+</dialog>
+
 <!-- --------------------------------------------------------- widget picker -->
 <!-- What else there is to put in the header. It is a window of its own rather
      than dashed tiles inside the strip: the strip is what the dashboard looks

@@ -397,6 +397,10 @@ func (r *recorder) recordDashboard(ctx context.Context, st *store.Store) error {
 		"/api/groups",
 		"/api/tags",
 		"/api/icons",
+		// The sensor catalogue's device templates. The dialogue asks for them the
+		// first time it opens, so a demo without this answer is a catalogue whose
+		// second tab is empty.
+		"/api/sensor-templates",
 		// The settings page asks whether a metrics token exists as soon as the
 		// Monitoring category is opened. It is admin-only and off in a fresh demo,
 		// which is exactly what the recorded answer says.

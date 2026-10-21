@@ -75,9 +75,9 @@ promises; the ordering is what the design already supports cheaply.
   unix socket, and nothing else — the probe never starts, stops or changes a
   container. It checks the running state, the `HEALTHCHECK` result where there is
   one, and the restart count.
-- [x] **SNMP sensors.** A single `GET` of a single OID over v2c, checked against a
-  substring or a numeric range. Enough for a switch, a router or a NAS, and
-  deliberately not a walk, not traps and not v3.
+- [x] **SNMP sensors.** A single `GET` of a single OID over v1, v2c or v3, checked
+  against a substring or a numeric range. Enough for a switch, a router or a NAS, and
+  deliberately not a walk and not traps.
 - [x] **Sites.** A named place — the cellar rack, the VPS at a hoster — with a kind
   and optional coordinates. Sensors point at one by name, which is what lets the
   configuration file describe a place with a single line. Optional throughout: a
@@ -191,6 +191,11 @@ promises; the ordering is what the design already supports cheaply.
   can scrape ProbeGlass instead of duplicating the checks it already makes. A
   read-only token of its own — not the API key — guarding sensor status, uptime,
   the last latency and the open incidents in the Prometheus text format.
+- [x] **SNMP v3 and a sensor catalogue with device templates.** v3 adds a user,
+  authentication and encryption; the catalogue turns the type field into a
+  searchable list of every sensor, with QNAP, Synology, UniFi, APC UPS and generic
+  HOST-RESOURCES templates that create a sensible set of checks for one device in
+  one step.
 
 ## Next — 0.3.x and beyond
 
@@ -215,11 +220,11 @@ The rest of 0.3.0, ordered by value per unit of work.
   to watch; it is not a service-discovery or inventory tool.
 - **Windows and macOS at all.** The container is the only thing that ships;
   there is no archive to unpack on a desktop.
-- **A full SNMP poller.** ProbeGlass reads single OIDs over v2c, because that is
-  what a switch, a router or a NAS is asked for. What stays out is the rest of it:
-  a MIB walk, trap receivers, v3 with its authentication and privacy protocols, and
-  the table-and-rate model that a serious poller is built around. A homelab that
-  needs those wants a different program, and the generic webhook is the bridge.
+- **A full SNMP poller.** ProbeGlass reads single OIDs over v1, v2c or v3, because
+  that is what a switch, a router or a NAS is asked for. What stays out is the rest
+  of it: a MIB walk, trap receivers, and the table-and-rate model that a serious
+  poller is built around. A homelab that needs those wants a different program, and
+  the generic webhook is the bridge.
 - **Multi-tenancy.** One instance, one homelab. Several people can have accounts
   on it with different roles, but they all see the same sensors, the same history
   and the same incidents — ProbeGlass assumes one group of people who trust each

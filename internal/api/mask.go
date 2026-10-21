@@ -16,11 +16,11 @@ import (
 // treatment.
 var secretOptionKeys = map[model.SensorType][]string{
 	model.SensorHTTP: {"bearer_token", "basic_auth_pass"},
-	// An SNMP v2c community is a shared password, and it is the only thing
-	// standing between a stranger on the LAN and a device's whole MIB. It travels
-	// unencrypted on the wire; there is nothing to be done about that, but there
-	// is no reason for it to sit in clear text in an API response as well.
-	model.SensorSNMP: {"community"},
+	// SNMP credentials are shared passwords, and they are the only thing standing
+	// between a stranger on the LAN and a device's whole MIB. A v2c community
+	// travels unencrypted; a v3 passphrase is the key to an authenticated session.
+	// There is no reason for either to sit in clear text in an API response.
+	model.SensorSNMP: {"community", "auth_pass", "priv_pass"},
 }
 
 func sensorSecretKeys(t model.SensorType) []string { return secretOptionKeys[t] }

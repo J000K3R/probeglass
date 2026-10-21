@@ -449,7 +449,12 @@ func TestSNMPValidate(t *testing.T) {
 		{"an empty oid", "192.168.1.2", model.Options{"oid": "  ", "min": 0}, "oid must not be empty"},
 		{"a named oid", "192.168.1.2", model.Options{"oid": "sysUpTime.0", "min": 0}, "dotted number"},
 		{"a truncated oid", "192.168.1.2", model.Options{"oid": "1.3.", "min": 0}, "dotted number"},
-		{"v3", "192.168.1.2", model.Options{"oid": uptimeOID, "version": "3", "min": 0}, "not supported"},
+		{"v3 without a user", "192.168.1.2", model.Options{"oid": uptimeOID, "version": "3", "min": 0}, "username is required"},
+		{"v3 with a bad level", "192.168.1.2", model.Options{"oid": uptimeOID, "version": "3", "username": "monitor", "security_level": "none", "min": 0}, "security_level must be"},
+		{"v3 auth without a pass", "192.168.1.2", model.Options{"oid": uptimeOID, "version": "3", "username": "monitor", "security_level": "authNoPriv", "min": 0}, "auth_pass is required"},
+		{"v3 priv without a pass", "192.168.1.2", model.Options{"oid": uptimeOID, "version": "3", "username": "monitor", "security_level": "authPriv", "auth_pass": "secret", "min": 0}, "priv_pass is required"},
+		{"v3 with a bad auth protocol", "192.168.1.2", model.Options{"oid": uptimeOID, "version": "3", "username": "monitor", "auth_protocol": "SHA-5120", "auth_pass": "secret", "min": 0}, "auth_protocol must be"},
+		{"v3 with a bad priv protocol", "192.168.1.2", model.Options{"oid": uptimeOID, "version": "3", "username": "monitor", "priv_protocol": "ROT13", "auth_pass": "secret", "priv_pass": "secret", "min": 0}, "priv_protocol must be"},
 		{"an unknown version", "192.168.1.2", model.Options{"oid": uptimeOID, "version": "2", "min": 0}, "version must be"},
 		{"no assertion at all", "192.168.1.2", model.Options{"oid": uptimeOID}, "at least one of expect"},
 		{"a bound that is not a number", "192.168.1.2", model.Options{"oid": uptimeOID, "min": "warm"}, "must be a number"},
@@ -478,6 +483,41 @@ func TestSNMPValidateAcceptsThePlainForm(t *testing.T) {
 	c.Target = "192.168.1.2:1611"
 	if err := (SNMPProber{}).Validate(c); err != nil {
 		t.Fatalf("host:port was rejected: %v", err)
+	}
+}
+
+func TestSNMPValidateAcceptsEveryV3Level(t *testing.T) {
+	cases := []model.Options{
+		{"oid": uptimeOID, "version": "3", "username": "monitor",
+			"security_level": "noAuthNoPriv", "min": 0},
+		{"oid": uptimeOID, "version": "3", "username": "monitor",
+			"security_level": "authNoPriv", "auth_protocol": "SHA-256", "auth_pass": "secret", "min": 0},
+		{"oid": uptimeOID, "version": "3", "username": "monitor",
+			"security_level": "authPriv", "auth_protocol": "SHA", "auth_pass": "secret",
+			"priv_protocol": "AES-256", "priv_pass": "secret", "min": 0},
+	}
+	for _, opts := range cases {
+		c := snmpSensor("192.168.1.2", opts)
+		if err := (SNMPProber{}).Validate(c); err != nil {
+			t.Errorf("v3 options %v were rejected: %v", opts, err)
+		}
+	}
+}
+
+func TestSNMPProtocolSpellings(t *testing.T) {
+	for _, name := range []string{"SHA", "sha", "SHA1", "SHA-1"} {
+		if got, err := snmpAuthProtocol(name); err != nil || got != gosnmp.SHA {
+			t.Errorf("snmpAuthProtocol(%q) = %v, %v; want SHA", name, got, err)
+		}
+	}
+	if got, err := snmpAuthProtocol("SHA-256"); err != nil || got != gosnmp.SHA256 {
+		t.Errorf("snmpAuthProtocol(\"SHA-256\") = %v, %v; want SHA256", got, err)
+	}
+	if got, err := snmpPrivProtocol("AES-192"); err != nil || got != gosnmp.AES192 {
+		t.Errorf("snmpPrivProtocol(\"AES-192\") = %v, %v; want AES192", got, err)
+	}
+	if _, err := snmpPrivProtocol("3DES"); err == nil {
+		t.Error("an unknown privacy protocol should be refused")
 	}
 }
 

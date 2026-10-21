@@ -382,15 +382,22 @@ the security notes before you do.
 
 Asks one OID from a switch, router or NAS and checks what comes back. The target
 is a host or `host:port`; a bare host means port 161. Deliberately a single `GET`
-of a single OID: no walk, no traps, no v3. A walk enumerates a device's whole MIB
-and is a different tool with a different cost; a single OID answers "how warm is
-the CPU", "how long has it been up" and "how much ink is left" in one request.
+of a single OID: no walk, no traps. A walk enumerates a device's whole MIB and is a
+different tool with a different cost; a single OID answers "how warm is the CPU",
+"how long has it been up" and "how much ink is left" in one request.
 
 | Option | Default | Notes |
 |---|---|---|
 | `oid` | — | the object to ask for, dotted, required — `1.3.6.1.2.1.1.3.0` is uptime |
-| `community` | `public` | v2c community string; a shared secret, so it is masked in the API |
-| `version` | `2c` | `2c` or `1`; v3 is not supported |
+| `community` | `public` | v1/v2c community string; a shared secret, so it is masked in the API |
+| `version` | `2c` | `2c`, `1` or `3` |
+| `username` | — | v3 user name, required for version 3 |
+| `security_level` | `authPriv` | v3: `noAuthNoPriv`, `authNoPriv` or `authPriv` |
+| `auth_protocol` | `SHA` | v3: `MD5`, `SHA`, `SHA-224`, `SHA-256`, `SHA-384` or `SHA-512` |
+| `auth_pass` | — | v3 authentication passphrase; masked in the API |
+| `priv_protocol` | `AES` | v3: `DES`, `AES`, `AES-192` or `AES-256` |
+| `priv_pass` | — | v3 privacy passphrase; masked in the API |
+| `context_name` | — | v3 context, usually empty |
 | `expect` | — | substring the value must contain |
 | `min`, `max` | — | bounds a numeric value must lie within |
 
@@ -403,7 +410,14 @@ a tool that quietly guesses at one quietly watches the wrong thing. Values are
 reported plainly, except uptime, which is shown as `1h 11m` as well as raw.
 
 **SNMP v2c is unauthenticated and sends the community string in clear text.** It
-belongs on a trusted network, not across the internet. See the security notes.
+belongs on a trusted network, not across the internet. Version 3 can authenticate
+and encrypt the request; its two passphrases are masked in the API exactly as the
+community is. See the security notes.
+
+The dashboard's sensor catalogue also offers **device templates** — QNAP,
+Synology, UniFi, APC UPS and a generic HOST-RESOURCES set — which create several of
+these sensors at once from the browser. They are a starting point, not a promise:
+the OIDs stay editable, and this file only ever declares individual sensors.
 
 `insecure_skip_verify` exists for homelab appliances with self-signed
 certificates. It has to be asked for per sensor; there is no global switch.
