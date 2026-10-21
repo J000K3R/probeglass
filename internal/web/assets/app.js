@@ -3918,8 +3918,11 @@ async function applyCatalogTemplate() {
   }));
   try {
     await api('/api/sensors/bulk', { method: 'POST', body: { sensors } });
-    toast(t('catalog.added', { count: sensors.length }));
+    // The catalogue is only opened from a sensor form, and a template is not
+    // that form: close the half-filled new sensor behind it as well.
     closeCatalog();
+    $('#modal').close();
+    toast(t('catalog.added', { count: sensors.length }));
     await refresh({ background: true });
   } catch (err) {
     error.textContent = err.message;
