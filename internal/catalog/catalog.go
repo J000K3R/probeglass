@@ -99,11 +99,13 @@ func Templates() []Template {
 			NameKey:        "catalog.template.unifi.name",
 			DescriptionKey: "catalog.template.unifi.description",
 			Checks: []Check{
-				// The UniFi MIB has no CPU, memory or temperature scalars. Uptime and
-				// reachability are the honest checks it does support; a newer UniFi OS
-				// exposes more under UI-MIB, which can be added as sensors by hand.
+				// The UniFi MIB has no CPU, memory or temperature scalars, and not every
+				// firmware answers its private uptime object. The standard uptime is on
+				// every agent, so that is what the template asks for; reachability is the
+				// other honest check. A newer UniFi OS exposes more under UI-MIB, which
+				// can be added as sensors by hand.
 				{Key: "uptime", LabelKey: "catalog.template.unifi.uptime", Type: model.SensorSNMP,
-					Interval: 300, Options: model.Options{"oid": "1.3.6.1.4.1.41112.1.6.3.5.0", "min": 1}},
+					Interval: 300, Options: model.Options{"oid": uptimeOID, "min": 1}},
 				{Key: "reachable", LabelKey: "catalog.template.unifi.reachable", Type: model.SensorPing,
 					Interval: 60},
 			},

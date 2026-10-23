@@ -238,7 +238,7 @@ const en = {
   'catalog.template.synology.disk1_temp': 'Disk 1 temperature',
   'catalog.template.synology.uptime': 'Uptime',
   'catalog.template.unifi.name': 'Ubiquiti UniFi',
-  'catalog.template.unifi.description': 'Uptime and reachability. The UniFi MIB has no CPU, memory or temperature objects.',
+  'catalog.template.unifi.description': 'Uptime from the standard MIB and reachability. UniFi\'s own MIB has no CPU, memory or temperature objects.',
   'catalog.template.unifi.uptime': 'Uptime',
   'catalog.template.unifi.reachable': 'Reachable (ICMP)',
   'catalog.template.apc.name': 'APC UPS',
@@ -1136,6 +1136,9 @@ const en = {
 
   'common.save': 'Save',
   'common.cancel': 'Cancel',
+  'common.generate': 'Generate',
+  'common.generatedCopied': 'Generated and copied — store it on the device.',
+  'common.generatedManual': 'Generated — copy it from the field and store it on the device.',
   'common.close': 'Close',
   'common.delete': 'Delete',
   'common.retry': 'Retry',

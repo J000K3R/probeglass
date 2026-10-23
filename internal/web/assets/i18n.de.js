@@ -240,7 +240,7 @@ export const de = {
   'catalog.template.synology.disk1_temp': 'Festplatte 1 Temperatur',
   'catalog.template.synology.uptime': 'Laufzeit',
   'catalog.template.unifi.name': 'Ubiquiti UniFi',
-  'catalog.template.unifi.description': 'Laufzeit und Erreichbarkeit. Die UniFi-MIB hat keine CPU-, Speicher- oder Temperatur-Objekte.',
+  'catalog.template.unifi.description': 'Laufzeit aus der Standard-MIB und Erreichbarkeit. Die UniFi-MIB hat keine CPU-, Speicher- oder Temperatur-Objekte.',
   'catalog.template.unifi.uptime': 'Laufzeit',
   'catalog.template.unifi.reachable': 'Erreichbar (ICMP)',
   'catalog.template.apc.name': 'APC-USV',
@@ -1136,6 +1136,9 @@ export const de = {
 
   'common.save': 'Speichern',
   'common.cancel': 'Abbrechen',
+  'common.generate': 'Erzeugen',
+  'common.generatedCopied': 'Erzeugt und kopiert — hinterlege es auf dem Gerät.',
+  'common.generatedManual': 'Erzeugt — kopiere es aus dem Feld und hinterlege es auf dem Gerät.',
   'common.close': 'Schließen',
   'common.delete': 'Löschen',
   'common.retry': 'Erneut versuchen',

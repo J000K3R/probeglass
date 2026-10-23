@@ -204,7 +204,7 @@ var typeInfos = map[string]TypeInfo{
 				Placeholder: "POST",
 				Help:        "POST unless the receiving endpoint expects something else.",
 				Example:     "PUT"},
-			{Key: "hmac_secret", Label: "HMAC secret", Secret: true,
+			{Key: "hmac_secret", Label: "HMAC secret", Secret: true, Generate: true,
 				Help:    "When set, the body is signed with HMAC-SHA256 and the signature is sent in X-ProbeGlass-Signature.",
 				Example: "a long random string, e.g. from `openssl rand -hex 32`"},
 			fTitleTemplate,

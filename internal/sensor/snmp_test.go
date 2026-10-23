@@ -521,6 +521,19 @@ func TestSNMPProtocolSpellings(t *testing.T) {
 	}
 }
 
+func TestSNMPResolveHonoursTheContext(t *testing.T) {
+	ip, err := resolveSNMPHost(context.Background(), "127.0.0.1")
+	if err != nil || !ip.IP.Equal(net.IPv4(127, 0, 0, 1)) {
+		t.Fatalf("resolveSNMPHost(127.0.0.1) = %v, %v", ip, err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := resolveSNMPHost(ctx, "probeglass.invalid"); err == nil {
+		t.Error("a cancelled context resolved a name; a lookup has to stop when the probe does")
+	}
+}
+
 func TestSNMPTargetDefaultsThePort(t *testing.T) {
 	host, port, err := snmpTarget("switch.lan")
 	if err != nil || host != "switch.lan" || port != 161 {

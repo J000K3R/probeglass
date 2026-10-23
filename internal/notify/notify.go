@@ -67,10 +67,15 @@ var constructors = map[string]Constructor{
 
 // FieldSpec describes one configuration field of a channel type.
 type FieldSpec struct {
-	Key         string `json:"key"`
-	Label       string `json:"label"`
-	Required    bool   `json:"required"`
-	Secret      bool   `json:"secret"`
+	Key      string `json:"key"`
+	Label    string `json:"label"`
+	Required bool   `json:"required"`
+	Secret   bool   `json:"secret"`
+	// Generate marks a secret the user invents and then stores on both sides,
+	// such as a webhook's HMAC secret. The dashboard offers to make one; a
+	// provider-issued token does not get the button, because only the provider
+	// can create it.
+	Generate    bool   `json:"generate,omitempty"`
 	Placeholder string `json:"placeholder,omitempty"`
 	Help        string `json:"help,omitempty"`
 	// Example is one concrete value for the field, shown in the "?" popover

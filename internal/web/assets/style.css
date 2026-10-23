@@ -1618,6 +1618,12 @@ label.field > span { font-size: var(--text-3); color: var(--text-dim); font-weig
 .field-row-input { display: flex; align-items: center; gap: var(--sp-2); }
 .field-row-input > input { flex: 1 1 auto; min-width: 0; }
 
+/* A secret with a Generate button beside it. The button is the width of its word,
+   and the input keeps the rest. */
+.secret-field { display: flex; align-items: center; gap: var(--sp-2); }
+.secret-field > input { flex: 1 1 auto; min-width: 0; }
+.secret-field > .btn { flex: none; }
+
 input[type='text'], input[type='password'], input[type='number'], input[type='search'], select, textarea {
   width: 100%;
   min-height: var(--ctl-h);

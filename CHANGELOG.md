@@ -27,6 +27,10 @@ here and what the release says are the same document.
   the chosen level uses; the two v3 passphrases are masked in the API like a
   community string. v3 with `authPriv` is the answer to v2c's clear-text community,
   and the security notes now say so.
+- **Generated credentials.** The community, the two v3 passphrases, an HTTP basic
+  auth password and a generic webhook's HMAC secret can be made from the field:
+  128 random bits as hex, revealed and copied, so the same value can be stored on
+  the device before the sensor or channel is saved.
 - **A sensor catalogue with device templates.** The type field opens a searchable
   catalogue of every sensor, and beside the individual ones there are templates:
   QNAP, Synology, UniFi, APC UPS and a generic HOST-RESOURCES set. Choosing one
@@ -52,6 +56,12 @@ here and what the release says are the same document.
 - **The OpenStreetMap attribution link checks the tile server's hostname**, not
   whether `openstreetmap.org` appears anywhere in the address, so a look-alike
   domain no longer gets the credit link.
+- **The Test button stops a DNS lookup it has given up on.** SNMP hosts are now
+  resolved through the probe's context, and a test is capped at ten seconds, so a
+  `.local` name with no mDNS answer no longer keeps asking the network after the
+  form has moved on.
+- **The UniFi template asks for the standard uptime OID**, because not every
+  firmware answers UniFi's private one. Reachability is the second check.
 
 ## [0.2.3] - 2026-10-20
 

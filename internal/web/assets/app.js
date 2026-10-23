@@ -2769,7 +2769,7 @@ const SENSOR_TYPES = [
       { key: 'cert_warn_days', type: 'number', placeholder: '14' },
       { key: 'bearer_token', type: 'password' },
       { key: 'basic_auth_user', type: 'text' },
-      { key: 'basic_auth_pass', type: 'password' },
+      { key: 'basic_auth_pass', type: 'password', generate: true },
       { key: 'insecure_skip_verify', type: 'bool' },
     ],
   },
@@ -2899,20 +2899,21 @@ const SENSOR_TYPES = [
       // The v1/v2c community and the v3 user are alternatives; the form shows the
       // one belonging to the chosen version. An empty version chip means 2c, an
       // empty security level means authPriv — the same defaults the prober uses.
-      { key: 'community', type: 'password', showWhen: [{ key: 'version', in: ['2c', '1'], default: '2c' }] },
+      { key: 'community', type: 'password', generate: true,
+        showWhen: [{ key: 'version', in: ['2c', '1'], default: '2c' }] },
       { key: 'username', type: 'text', showWhen: [{ key: 'version', in: ['3'] }] },
       { key: 'security_level', type: 'select', options: ['noAuthNoPriv', 'authNoPriv', 'authPriv'],
         emptyLabel: 'opt.securityLevelDefault', showWhen: [{ key: 'version', in: ['3'] }] },
       { key: 'auth_protocol', type: 'select', options: ['SHA-256', 'SHA', 'SHA-224', 'SHA-384', 'SHA-512', 'MD5'],
         showWhen: [{ key: 'version', in: ['3'] },
           { key: 'security_level', in: ['authNoPriv', 'authPriv'], default: 'authPriv' }] },
-      { key: 'auth_pass', type: 'password',
+      { key: 'auth_pass', type: 'password', generate: true,
         showWhen: [{ key: 'version', in: ['3'] },
           { key: 'security_level', in: ['authNoPriv', 'authPriv'], default: 'authPriv' }] },
       { key: 'priv_protocol', type: 'select', options: ['AES', 'AES-256', 'AES-192', 'DES'],
         showWhen: [{ key: 'version', in: ['3'] },
           { key: 'security_level', in: ['authPriv'], default: 'authPriv' }] },
-      { key: 'priv_pass', type: 'password',
+      { key: 'priv_pass', type: 'password', generate: true,
         showWhen: [{ key: 'version', in: ['3'] },
           { key: 'security_level', in: ['authPriv'], default: 'authPriv' }] },
       { key: 'context_name', type: 'text', showWhen: [{ key: 'version', in: ['3'] }] },
@@ -3096,8 +3097,14 @@ function optionField(field, options) {
     }
     case 'number':
       return `<label class="field"><span>${label}</span><input name="${name}" type="number" min="0" value="${value === undefined || value === null ? '' : esc(value)}" placeholder="${esc(field.placeholder || '')}"></label>`;
-    case 'password':
-      return `<label class="field"><span>${label}</span><input name="${name}" type="password" autocomplete="new-password" value="${value === undefined ? '' : esc(value)}"></label>`;
+    case 'password': {
+      const input = `<input name="${name}" type="password" autocomplete="new-password" value="${value === undefined ? '' : esc(value)}">`;
+      const generated = field.generate
+        ? `<span class="secret-field">${input}<button type="button" class="btn btn-small"
+             data-generate-secret="${esc(name)}">${esc(t('common.generate'))}</button></span>`
+        : input;
+      return `<label class="field"><span>${label}</span>${generated}</label>`;
+    }
     case 'list': {
       const text = Array.isArray(value) ? value.join(', ') : (value || '');
       return `<label class="field"><span>${label}</span><input name="${name}" type="text" value="${esc(text)}" placeholder="${esc(field.placeholder || '')}"></label>`;
@@ -4736,10 +4743,16 @@ function channelField(spec, def, config) {
   const value = config?.[spec.key];
   const required = spec.required ? ' required' : '';
   const type = spec.secret ? 'password' : 'text';
-  return `<label class="field"><span>${esc(label)}${spec.required ? ' *' : ''} ${help}</span>
-    <input name="cfg_${esc(spec.key)}" type="${type}"${required}
+  const name = `cfg_${spec.key}`;
+  const input = `<input name="${esc(name)}" type="${type}"${required}
            value="${value === undefined ? '' : esc(value)}"
-           placeholder="${esc(spec.placeholder || '')}" autocomplete="off"></label>`;
+           placeholder="${esc(spec.placeholder || '')}" autocomplete="off">`;
+  const body = spec.generate
+    ? `<span class="secret-field">${input}<button type="button" class="btn btn-small"
+         data-generate-secret="${esc(name)}">${esc(t('common.generate'))}</button></span>`
+    : input;
+  return `<label class="field"><span>${esc(label)}${spec.required ? ' *' : ''} ${help}</span>
+    ${body}</label>`;
 }
 
 /**
@@ -6729,7 +6742,7 @@ async function onSettingsClick(event) {
 async function copyText(text) {
   try {
     await navigator.clipboard.writeText(text);
-    return;
+    return true;
   } catch {
     // Fall through to the selection below.
   }
@@ -6740,7 +6753,40 @@ async function copyText(text) {
   document.body.appendChild(node);
   node.select();
   toast(t('settings.copyManual'));
+  return false;
 }
+
+/**
+ * generateSecret returns 128 random bits as hex. Hex on purpose: a community or
+ * a passphrase is typed into a device's own form, and a value with punctuation
+ * in it is a value some of those forms refuse.
+ */
+function generateSecret() {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+// One listener for every Generate button. It fills the field, reveals it so the
+// value can be read while it is being stored on the device, and copies it. The
+// scope is the form or dialog the button lives in, so the named input cannot be
+// confused with one of the same name in another open dialog.
+document.addEventListener('click', (event) => {
+  const button = event.target.closest('[data-generate-secret]');
+  if (!button) return;
+  const scope = button.closest('form, dialog') || document;
+  const input = scope.querySelector(`input[name="${button.dataset.generateSecret}"]`);
+  if (!input) return;
+  const value = generateSecret();
+  input.value = value;
+  input.type = 'text';
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  input.dispatchEvent(new Event('change', { bubbles: true }));
+  input.focus();
+  input.select();
+  copyText(value).then((copied) =>
+    toast(t(copied ? 'common.generatedCopied' : 'common.generatedManual')));
+});
 
 async function setUserDisabled(account, disabled) {
   await api(`/api/users/${account.id}`, { method: 'PUT', body: { disabled } });

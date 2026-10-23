@@ -767,7 +767,15 @@ func (s *Server) handleValidateSensor(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if in.Probe {
-		ctx, cancel := context.WithTimeout(r.Context(), time.Duration(c.Timeout+5)*time.Second)
+		// A test is a quick question, not a scheduled probe. A sensor may have a
+		// timeout chosen for a slow device, but letting the form's Test button sit
+		// on it for half a minute is how the page feels stuck; ten seconds is
+		// enough to tell a working configuration from a broken one.
+		testTimeout := c.Timeout
+		if testTimeout > 10 {
+			testTimeout = 10
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), time.Duration(testTimeout+2)*time.Second)
 		defer cancel()
 		out := sensor.Test(ctx, c)
 		resp["result"] = map[string]any{

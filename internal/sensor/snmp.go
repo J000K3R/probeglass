@@ -147,8 +147,16 @@ func (SNMPProber) Run(ctx context.Context, c model.Sensor) Outcome {
 		}
 	}
 
+	// gosnmp resolves the target inside Connect, which cannot be cancelled.
+	// Resolve it here, through the context, so a .local name that never answers
+	// does not outlive the probe that asked for it.
+	resolved, err := resolveSNMPHost(ctx, host)
+	if err != nil {
+		return Errf(0, "resolve %s: %s", host, describeRequestError(err))
+	}
+
 	client := &gosnmp.GoSNMP{
-		Target:    host,
+		Target:    resolved.IP.String(),
 		Port:      port,
 		Version:   version,
 		Transport: "udp",
@@ -290,6 +298,34 @@ func snmpPrivProtocol(name string) (gosnmp.SnmpV3PrivProtocol, error) {
 	default:
 		return 0, fmt.Errorf("priv_protocol must be DES, AES, AES-192 or AES-256, got %q", name)
 	}
+}
+
+// resolveSNMPHost resolves through the context-aware resolver.
+//
+// net.ResolveIPAddr and the dial inside gosnmp cannot be cancelled, and a .local
+// name with no mDNS answer can keep a lookup running after the probe's deadline
+// has passed. Resolving here makes the test button's timeout mean something: a
+// probe that has been given up on stops asking the network.
+func resolveSNMPHost(ctx context.Context, host string) (*net.IPAddr, error) {
+	if ip := net.ParseIP(host); ip != nil {
+		return &net.IPAddr{IP: ip}, nil
+	}
+	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	if err != nil {
+		return nil, err
+	}
+	if len(addrs) == 0 {
+		return nil, fmt.Errorf("no address for %s", host)
+	}
+	// Prefer IPv4: a homelab agent that answers both families is usually the
+	// IPv4 one, and a dual-stack name whose first answer is IPv6 would otherwise
+	// fail on a device that never listened there.
+	for i := range addrs {
+		if addrs[i].IP.To4() != nil {
+			return &addrs[i], nil
+		}
+	}
+	return &addrs[0], nil
 }
 
 // snmpTarget splits a target into host and port, defaulting to the standard
