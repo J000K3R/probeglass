@@ -31,6 +31,7 @@ func TestSNMPSecretsCanBeGenerated(t *testing.T) {
 			chromedp.Click(`#new-sensor`),
 			chromedp.WaitVisible(`#modal[open] [data-type-open]`),
 			chromedp.Click(`#modal [data-type-open]`),
+			chromedp.Click(`#modal-catalog [data-catalog-tab="sensors"]`),
 			chromedp.Poll[chromedp.Void](
 				`!!document.querySelector('#modal-catalog [data-sensor-type="snmp"]')`,
 				chromedp.WithPollingTimeout(15*time.Second)),

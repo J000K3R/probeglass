@@ -2764,6 +2764,14 @@ const SENSOR_TYPES = [
       { key: 'body_contains', type: 'text' },
       { key: 'body_not_contains', type: 'text' },
       { key: 'body_regex', type: 'text' },
+      // JSON values turn an API into a numeric sensor: a path into the body,
+      // optional selection from a list, and an assertion.
+      { key: 'json_path', type: 'text' },
+      { key: 'json_match_key', type: 'text' },
+      { key: 'json_match_value', type: 'text' },
+      { key: 'json_expect', type: 'text' },
+      { key: 'json_min', type: 'number' },
+      { key: 'json_max', type: 'number' },
       { key: 'expected_headers', type: 'map' },
       { key: 'headers', type: 'map' },
       { key: 'cert_warn_days', type: 'number', placeholder: '14' },
@@ -3762,6 +3770,7 @@ function mountSensorTypePicker() {
 let catalogForm = null;
 let catalogTemplates = null;
 let catalogDetail = null;
+let catalogChecks = [];
 let catalogCredentialFields = [];
 
 // The SNMP fields a template needs, in the order the sensor form draws them.
@@ -3789,7 +3798,7 @@ async function openSensorCatalog(form) {
     }
   }
   applyTranslations(dialog);
-  setCatalogTab('sensors');
+  setCatalogTab('templates');
   if (!dialog.open) dialog.showModal();
   setTimeout(() => dialog.querySelector('[data-type-query]')?.focus(), 0);
 }
@@ -3805,6 +3814,7 @@ function closeCatalog() {
 /** setCatalogTab switches between the individual sensors and the templates. */
 function setCatalogTab(tab) {
   catalogDetail = null;
+  catalogChecks = [];
   const dialog = $('#modal-catalog');
   for (const button of dialog.querySelectorAll('[data-catalog-tab]')) {
     button.setAttribute('aria-selected', String(button.dataset.catalogTab === tab));
@@ -3945,6 +3955,25 @@ function hostOfAddress(address) {
   return String(address).replace(/^https?:\/\//, '').split('/')[0].replace(/:\d+$/, '');
 }
 
+/** catalogCheckMarkup is one selectable sensor in the template's list. */
+function catalogCheckMarkup(check) {
+  const label = check.label || t(check.label_key);
+  return `<label class="catalog-check">
+    <input type="checkbox" data-catalog-check="${esc(check.key)}"${check.default_off ? '' : ' checked'}>
+    <span>${esc(label)}</span>
+    <small class="muted">${esc(t(`type.${check.type}`))}</small>
+  </label>`;
+}
+
+/** renderCatalogChecks redraws the static checks plus anything discovered. */
+function renderCatalogChecks() {
+  const box = $('#catalog-checks');
+  if (!box) return;
+  box.innerHTML = `<legend id="catalog-checks-legend">${esc(t('catalog.checks', { count: catalogChecks.length }))}</legend>` +
+    catalogChecks.map(catalogCheckMarkup).join('');
+  updateCatalogAdd();
+}
+
 /** openTemplateDetail shows the checks a template would add. */
 function openTemplateDetail(template) {
   catalogDetail = template;
@@ -3959,12 +3988,7 @@ function openTemplateDetail(template) {
          target="_blank" rel="noopener noreferrer">${esc(template.source)}</a></p>`
     : '';
   const hasSNMP = template.checks.some((check) => check.type === 'snmp');
-  const checks = template.checks.map((check) => `
-    <label class="catalog-check">
-      <input type="checkbox" data-catalog-check="${esc(check.key)}"${check.default_off ? '' : ' checked'}>
-      <span>${esc(t(check.label_key))}</span>
-      <small class="muted">${esc(t(`type.${check.type}`))}</small>
-    </label>`).join('');
+  catalogChecks = template.checks.slice();
   const fields = catalogCredentialFields.map((f) => `
     <div class="option-slot" data-option-key="${esc(f.key)}">${optionField(f, { version: '2c' })}</div>`).join('');
   const credential = template.credential ? `
@@ -4001,10 +4025,10 @@ function openTemplateDetail(template) {
     <label class="field"><span>${esc(t('catalog.group'))}</span>
       <input id="catalog-group" type="text" value="${esc(name)}" autocomplete="off"></label>
     <p class="muted small">${esc(t('catalog.groupHint'))}</p>
-    <fieldset class="field catalog-checks">
-      <legend>${esc(t('catalog.checks', { count: template.checks.length }))}</legend>
-      ${checks}
+    <fieldset class="field catalog-checks" id="catalog-checks">
+      <legend id="catalog-checks-legend">${esc(t('catalog.checks', { count: catalogChecks.length }))}</legend>
     </fieldset>
+    <p class="muted small" id="catalog-discovery-notes"></p>
     ${credential}
     ${snmp}
     <section class="catalog-device-check">
@@ -4012,6 +4036,7 @@ function openTemplateDetail(template) {
       <p class="muted small" id="catalog-device-status">${esc(t('catalog.deviceHint'))}</p>
     </section>`;
   if (hasSNMP) syncConditionalOptions(catalogCredentialFields, $('#catalog-options'));
+  renderCatalogChecks();
   updateCatalogAdd();
   $('#catalog-add').hidden = false;
   $('#catalog-error').textContent = '';
@@ -4044,6 +4069,25 @@ async function checkTemplateDevice() {
       { method: 'POST', body: { target, options } });
     const device = data.device?.sys_descr || data.device?.sys_object_id || target;
     status.textContent = t('catalog.deviceOk', { device });
+    if (catalogDetail.discover) {
+      try {
+        const found = await api(
+          `/api/sensor-templates/${encodeURIComponent(catalogDetail.id)}/discover`,
+          { method: 'POST', body: { target, options } });
+        const discovered = found.checks || [];
+        if (discovered.length) {
+          catalogChecks = [...catalogDetail.checks, ...discovered];
+          renderCatalogChecks();
+          status.textContent += ' · ' + t('catalog.discovered', { count: discovered.length });
+        }
+        if (found.notes?.length) {
+          $('#catalog-discovery-notes').textContent =
+            t('catalog.discoveryNotes', { notes: found.notes.join('; ') });
+        }
+      } catch (err) {
+        $('#catalog-discovery-notes').textContent = err.message;
+      }
+    }
   } catch (err) {
     status.textContent = t('catalog.deviceHint');
     $('#catalog-error').textContent = err.message;
@@ -4073,7 +4117,7 @@ async function applyCatalogTemplate() {
     error.textContent = t('catalog.missing', { field: !name ? t('catalog.deviceName') : t('catalog.address') });
     return;
   }
-  const checks = catalogDetail.checks.filter((check) =>
+  const checks = catalogChecks.filter((check) =>
     $(`#catalog-body [data-catalog-check="${check.key}"]`)?.checked);
   if (!checks.length) {
     error.textContent = t('catalog.noneSelected');
@@ -4097,7 +4141,7 @@ async function applyCatalogTemplate() {
       options[catalogDetail.credential.key] = credentialValue;
     }
     return {
-      name: `${name} · ${t(check.label_key)}`,
+      name: `${name} · ${check.label || t(check.label_key)}`,
       type: check.type,
       target: templateTarget(check.target, target),
       interval: check.interval || 60,
@@ -4204,6 +4248,7 @@ $('#modal-catalog').addEventListener('close', () => {
   if ($('#modal-catalog').open) return;
   catalogForm = null;
   catalogDetail = null;
+  catalogChecks = [];
 });
 
 // --- the site and dependency choosers ---------------------------------------

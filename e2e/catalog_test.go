@@ -9,6 +9,8 @@ package e2e
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -222,8 +224,7 @@ func TestAnApplicationTemplateCreatesHTTPChecks(t *testing.T) {
 	state := read[map[string]any](t, ctx, `(() => ({
 		snmpCredentialFields: document.querySelectorAll('#catalog-options').length,
 		tokenField: document.querySelector('#catalog-credential')?.type || '',
-		upsChecked: document.querySelector('[data-catalog-check="ups"]')?.checked ?? null,
-		loadChecked: document.querySelector('[data-catalog-check="system_load"]')?.checked ?? null,
+		loadChecked: document.querySelector('[data-catalog-check="cpu_load"]')?.checked ?? null,
 		checks: document.querySelectorAll('#catalog-body [data-catalog-check]').length,
 	}))()`, "the MOS template form")
 	if state["snmpCredentialFields"].(float64) != 0 {
@@ -232,12 +233,11 @@ func TestAnApplicationTemplateCreatesHTTPChecks(t *testing.T) {
 	if state["tokenField"] != "password" {
 		t.Errorf("the API token field is %v, want a password field", state["tokenField"])
 	}
-	if state["upsChecked"] != false || state["loadChecked"] != true {
-		t.Errorf("the optional UPS check is checked=%v and system load is checked=%v; want false and true",
-			state["upsChecked"], state["loadChecked"])
+	if state["loadChecked"] != true {
+		t.Errorf("the CPU load check is checked=%v, want true", state["loadChecked"])
 	}
-	if state["checks"].(float64) != 5 {
-		t.Errorf("the MOS template offers %v checks, want 5", state["checks"])
+	if state["checks"].(float64) != 4 {
+		t.Errorf("the MOS template offers %v checks, want 4", state["checks"])
 	}
 
 	target := strings.TrimPrefix(base, "http://")
@@ -289,6 +289,106 @@ func TestAnApplicationTemplateCreatesHTTPChecks(t *testing.T) {
 			}
 		default:
 			t.Errorf("%s has unexpected type %q", sensor.Name, sensor.Type)
+		}
+	}
+}
+
+// TestMOSDiscoveryOffersThePartsOfTheNAS is the discovery path end to end: the
+// fake MOS answers the same endpoints, Check device runs the CPU check, and the
+// dialog then offers the disks, pools, containers and hardware sensors it found.
+func TestMOSDiscoveryOffersThePartsOfTheNAS(t *testing.T) {
+	mux := http.NewServeMux()
+	write := func(path, body string) {
+		mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(body))
+		})
+	}
+	write("/api/v1/system/load", `{"cpu":{"load":42},"temperature":{"main":50}}`)
+	write("/api/v1/system/memory", `{"memory":{"percentage":{"used":40}}}`)
+	write("/api/v1/disks", `[{"name":"sda","temperature":35}]`)
+	write("/api/v1/pools", `[{"id":"p1","name":"data"}]`)
+	write("/api/v1/docker/mos/containers", `[{"name":"nginx"}]`)
+	write("/api/v1/lxc/containers", `[{"name":"adguard","state":"running"}]`)
+	write("/api/v1/vm/machines", `[{"name":"ubuntu","state":"running"}]`)
+	write("/api/v1/mos/sensors", `{"temperature":[{"name":"CPU","value":45,"unit":"C"}]}`)
+	fakeMOS := httptest.NewServer(mux)
+	defer fakeMOS.Close()
+
+	browser := findBrowser(t)
+	base := startServer(t, buildBinary(t))
+	ctx, done := openBrowser(t, browser)
+	defer done()
+	dir := artifactsDir(t)
+
+	firstRun(t, ctx, base, dir)
+
+	if err := withTimeout(ctx, func(tctx context.Context) error {
+		return chromedp.Do(tctx,
+			chromedp.Click(`#new-sensor`),
+			chromedp.WaitVisible(`#modal[open] [data-type-open]`),
+			chromedp.Click(`#modal [data-type-open]`),
+			chromedp.Poll[chromedp.Void](
+				`!!document.querySelector('#modal-catalog [data-template-id="mos"]')`,
+				chromedp.WithPollingTimeout(15*time.Second)),
+			chromedp.Click(`#modal-catalog [data-template-id="mos"]`),
+			chromedp.WaitVisible(`#catalog-credential`),
+			chromedp.SetValue(`#catalog-name`, "MOS discovery"),
+			chromedp.SetValue(`#catalog-target`, strings.TrimPrefix(fakeMOS.URL, "http://")),
+			chromedp.SetValue(`#catalog-group`, "MOS discovery"),
+			chromedp.SetValue(`#catalog-credential`, "test-token"),
+			chromedp.Click(`#catalog-check-device`),
+			chromedp.Poll[chromedp.Void](
+				`!!document.querySelector('#catalog-body [data-catalog-check="disk.sda.temperature"]')`,
+				chromedp.WithPollingTimeout(15*time.Second)),
+		)
+	}); err != nil {
+		capture(t, ctx, dir, "mos-discovery")
+		t.Fatalf("the MOS discovery did not offer the disk: %v", err)
+	}
+
+	want := []string{
+		"cpu_load", "cpu_temp", "memory", "reachable",
+		"disk.sda.temperature", "disk.sda.smart",
+		"pool.p1.mounted", "docker.nginx.cpu", "lxc.adguard.state",
+		"vm.ubuntu.state", "sensor.temperature.CPU",
+	}
+	for _, key := range want {
+		if !read[bool](t, ctx,
+			`!!document.querySelector('#catalog-body [data-catalog-check="`+key+`"]')`,
+			"the discovered check "+key) {
+			t.Errorf("discovery did not offer %q", key)
+		}
+	}
+	if got := read[int](t, ctx,
+		`document.querySelectorAll('#catalog-body [data-catalog-check]').length`,
+		"the discovered checks"); got != 11 {
+		t.Errorf("the MOS dialog offers %d checks, want 11", got)
+	}
+
+	// Applying the discovery creates every ticked check, named after what the
+	// device called it rather than an empty translation key.
+	if err := withTimeout(ctx, func(tctx context.Context) error {
+		return chromedp.Do(tctx,
+			chromedp.Click(`#catalog-add`),
+			chromedp.WaitNotPresent(`#modal-catalog[open]`),
+			chromedp.WaitNotPresent(`#modal[open]`),
+		)
+	}); err != nil {
+		capture(t, ctx, dir, "mos-discovery-not-applied")
+		t.Fatalf("could not apply the discovered MOS checks: %v", err)
+	}
+	eventually(t, ctx, `fetch('/api/sensors').then(r => r.json())
+		.then(list => list.filter((s) => s.name.startsWith('MOS discovery · ')).length === 11)`,
+		"the discovered MOS checks were not all created", dir, "mos-discovery-sensors", 15*time.Second)
+	names := readAsync[[]string](t, ctx,
+		`fetch('/api/sensors').then(r => r.json())
+			.then(list => list.filter((s) => s.name.startsWith('MOS discovery · ')).map((s) => s.name))`,
+		"the discovered sensor names")
+	joined := strings.Join(names, "\n")
+	for _, want := range []string{"Disk sda temperature", "Disk sda SMART status", "LXC adguard running", "CPU"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("the created sensors have no %q:\n%s", want, joined)
 		}
 	}
 }

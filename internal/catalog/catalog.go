@@ -74,7 +74,10 @@ type Template struct {
 	// Credential is optional: an API token, for example. The apply dialog asks
 	// for it and copies it into every check of a type that uses the key.
 	Credential *Credential `json:"credential,omitempty"`
-	Checks     []Check     `json:"checks"`
+	// Discover asks the device what it has after Check device: MOS lists its
+	// disks, pools, containers and hardware sensors this way.
+	Discover bool    `json:"discover,omitempty"`
+	Checks   []Check `json:"checks"`
 }
 
 // HasSNMP says whether the template's device check should speak SNMP.
@@ -306,19 +309,17 @@ func Templates() []Template {
 				Key: "bearer_token", LabelKey: "catalog.credential.token",
 				HelpKey: "catalog.credential.tokenHelp", Secret: true,
 			},
+			Discover: true,
 			Checks: []Check{
-				{Key: "system_load", LabelKey: "catalog.template.mos.system_load", Type: model.SensorHTTP,
+				{Key: "cpu_load", LabelKey: "catalog.template.mos.cpu_load", Type: model.SensorHTTP,
 					Target: "http://{address}/api/v1/system/load", Interval: 60,
-					Options: model.Options{"expected_status": "200"}},
-				{Key: "disks", LabelKey: "catalog.template.mos.disks", Type: model.SensorHTTP,
-					Target: "http://{address}/api/v1/disks", Interval: 300,
-					Options: model.Options{"expected_status": "200"}},
-				{Key: "pools", LabelKey: "catalog.template.mos.pools", Type: model.SensorHTTP,
-					Target: "http://{address}/api/v1/pools", Interval: 300,
-					Options: model.Options{"expected_status": "200"}},
-				{Key: "ups", LabelKey: "catalog.template.mos.ups", Type: model.SensorHTTP,
-					Target: "http://{address}/api/v1/nut/status", Interval: 60,
-					Options: model.Options{"expected_status": "200"}, DefaultOff: true},
+					Options: model.Options{"expected_status": "200", "json_path": "cpu.load", "json_max": 95}},
+				{Key: "cpu_temp", LabelKey: "catalog.template.mos.cpu_temp", Type: model.SensorHTTP,
+					Target: "http://{address}/api/v1/system/load", Interval: 60,
+					Options: model.Options{"expected_status": "200", "json_path": "temperature.main", "json_max": 85}},
+				{Key: "memory", LabelKey: "catalog.template.mos.memory", Type: model.SensorHTTP,
+					Target: "http://{address}/api/v1/system/memory", Interval: 60,
+					Options: model.Options{"expected_status": "200", "json_path": "memory.percentage.used", "json_max": 90}},
 				{Key: "reachable", LabelKey: "catalog.template.mos.reachable", Type: model.SensorPing,
 					Target: "{host}", Interval: 60},
 			},

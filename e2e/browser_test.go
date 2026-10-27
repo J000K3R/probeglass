@@ -305,6 +305,7 @@ func TestDashboardIsActuallyUsable(t *testing.T) {
 	if err := withTimeout(ctx, func(tctx context.Context) error {
 		return chromedp.Do(tctx,
 			chromedp.Click(`#modal [data-type-open]`),
+			chromedp.Click(`#modal-catalog [data-catalog-tab="sensors"]`),
 			chromedp.Poll[chromedp.Void](
 				`document.querySelectorAll('#modal-catalog [data-sensor-type]').length > 0`,
 				chromedp.WithPollingTimeout(15*time.Second)),
@@ -372,6 +373,7 @@ func TestDashboardIsActuallyUsable(t *testing.T) {
 	if err := withTimeout(ctx, func(tctx context.Context) error {
 		return chromedp.Do(tctx,
 			chromedp.Click(`#modal [data-type-open]`),
+			chromedp.Click(`#modal-catalog [data-catalog-tab="sensors"]`),
 			chromedp.Poll[chromedp.Void](
 				`!!document.querySelector('#modal-catalog [data-sensor-type="http"]')`,
 				chromedp.WithPollingTimeout(15*time.Second)),
@@ -799,6 +801,7 @@ func TestTheSensorFormPicksTypesAndOptionsWithoutSelects(t *testing.T) {
 	if err := withTimeout(ctx, func(tctx context.Context) error {
 		return chromedp.Do(tctx,
 			chromedp.Click(`#modal [data-type-open]`),
+			chromedp.Click(`#modal-catalog [data-catalog-tab="sensors"]`),
 			chromedp.Poll[chromedp.Void](
 				`document.querySelectorAll('#modal-catalog [data-sensor-type]').length > 0`,
 				chromedp.WithPollingTimeout(15*time.Second)),
@@ -848,6 +851,7 @@ func TestTheSensorFormPicksTypesAndOptionsWithoutSelects(t *testing.T) {
 	if err := withTimeout(ctx, func(tctx context.Context) error {
 		return chromedp.Do(tctx,
 			chromedp.Click(`#modal [data-type-open]`),
+			chromedp.Click(`#modal-catalog [data-catalog-tab="sensors"]`),
 			chromedp.Poll[chromedp.Void](
 				`document.querySelectorAll('#modal-catalog [data-sensor-type]').length > 0`,
 				chromedp.WithPollingTimeout(15*time.Second)),
@@ -965,6 +969,7 @@ func TestTheSensorFormPicksTypesAndOptionsWithoutSelects(t *testing.T) {
 		if err := withTimeout(ctx, func(tctx context.Context) error {
 			return chromedp.Do(tctx,
 				chromedp.Click(`#modal [data-type-open]`),
+				chromedp.Click(`#modal-catalog [data-catalog-tab="sensors"]`),
 				chromedp.Poll[chromedp.Void](
 					fmt.Sprintf(`!!document.querySelector('#modal-catalog [data-sensor-type="%s"]')`, value),
 					chromedp.WithPollingTimeout(15*time.Second)),

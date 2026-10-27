@@ -219,6 +219,10 @@ up.
 | `body_contains` | — | substring the response must contain |
 | `body_not_contains` | — | substring the response must not contain |
 | `body_regex` | — | regular expression the response must match |
+| `json_path` | — | dotted path into a JSON body, e.g. `cpu.load`; give it a `json_*` assertion |
+| `json_match_key`, `json_match_value` | — | pick one item from a list before reading `json_path` |
+| `json_expect` | — | substring the extracted JSON value must contain |
+| `json_min`, `json_max` | — | numeric bounds on the extracted JSON value |
 | `expected_headers` | — | map of response headers that must contain a substring |
 | `max_body_bytes` | `262144` | how much of the body to read |
 | `follow_redirects` | `true` | |

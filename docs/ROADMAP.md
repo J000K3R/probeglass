@@ -196,6 +196,11 @@ promises; the ordering is what the design already supports cheaply.
   searchable list of every sensor, with QNAP, Synology, UniFi, APC UPS and generic
   HOST-RESOURCES templates that create a sensible set of checks for one device in
   one step.
+- [x] **Application templates and MOS discovery.** Templates can carry HTTP/TCP/
+  ping checks with target patterns and an API token, and HTTP checks can read a
+  JSON value. The MOS NAS OS template goes further: Check device asks the API for
+  disks, pools, Docker/LXC containers, VMs and hardware sensors and offers each as
+  a tickable sensor.
 
 ## Next — 0.3.x and beyond
 

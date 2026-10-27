@@ -3,6 +3,7 @@ package sensor
 import (
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -130,6 +131,18 @@ func (HTTPProber) Validate(c model.Sensor) error {
 	if re := c.Options.Str("body_regex", ""); re != "" {
 		if _, err := regexp.Compile(re); err != nil {
 			return fmt.Errorf("body_regex is not a valid regular expression: %w", err)
+		}
+	}
+	if path := strings.TrimSpace(c.Options.Str("json_path", "")); path != "" {
+		if c.Options.Str("json_expect", "") == "" &&
+			c.Options["json_min"] == nil && c.Options["json_max"] == nil {
+			return errors.New("json_path needs json_expect, json_min or json_max: the extracted value has to be judged against something")
+		}
+		if _, _, err := optionFloat(c.Options, "json_min"); err != nil {
+			return fmt.Errorf("json_min: %w", err)
+		}
+		if _, _, err := optionFloat(c.Options, "json_max"); err != nil {
+			return fmt.Errorf("json_max: %w", err)
 		}
 	}
 	switch m := strings.ToUpper(c.Options.Str("method", http.MethodGet)); m {
@@ -324,6 +337,64 @@ func (HTTPProber) Run(ctx context.Context, c model.Sensor) Outcome {
 			}
 		}
 	}
+	jsonNote := ""
+	if path := strings.TrimSpace(o.Str("json_path", "")); path != "" {
+		value, err := jsonValue(data, o.Str("json_match_key", ""), o.Str("json_match_value", ""), path)
+		if err != nil {
+			return Outcome{
+				Success:    false,
+				Latency:    latency,
+				StatusCode: code,
+				Message:    fmt.Sprintf("HTTP %d but the JSON value could not be read: %v", code, err),
+				Err:        err,
+			}
+		}
+		shown := jsonText(value)
+		if want := o.Str("json_expect", ""); want != "" && !strings.Contains(shown, want) {
+			return Outcome{
+				Success:    false,
+				Latency:    latency,
+				StatusCode: code,
+				Message:    fmt.Sprintf("HTTP %d but %s is %q, expected to contain %q", code, path, shown, want),
+				Err:        errors.New("JSON value mismatch"),
+			}
+		}
+		if min, has, _ := optionFloat(o, "json_min"); has {
+			n, ok := jsonNumber(value)
+			if !ok {
+				return Outcome{
+					Success: false, Latency: latency, StatusCode: code,
+					Message: fmt.Sprintf("HTTP %d but %s is %q, not a number to compare with json_min", code, path, shown),
+					Err:     errors.New("JSON value is not numeric"),
+				}
+			}
+			if n < min {
+				return Outcome{
+					Success: false, Latency: latency, StatusCode: code,
+					Message: fmt.Sprintf("HTTP %d but %s is %s, below the minimum %g", code, path, shown, min),
+					Err:     errors.New("JSON value below minimum"),
+				}
+			}
+		}
+		if max, has, _ := optionFloat(o, "json_max"); has {
+			n, ok := jsonNumber(value)
+			if !ok {
+				return Outcome{
+					Success: false, Latency: latency, StatusCode: code,
+					Message: fmt.Sprintf("HTTP %d but %s is %q, not a number to compare with json_max", code, path, shown),
+					Err:     errors.New("JSON value is not numeric"),
+				}
+			}
+			if n > max {
+				return Outcome{
+					Success: false, Latency: latency, StatusCode: code,
+					Message: fmt.Sprintf("HTTP %d but %s is %s, above the maximum %g", code, path, shown, max),
+					Err:     errors.New("JSON value above maximum"),
+				}
+			}
+		}
+		jsonNote = " · " + path + "=" + shown
+	}
 	for header, want := range o.StrMap("expected_headers") {
 		got := resp.Header.Get(header)
 		if got == "" {
@@ -354,7 +425,95 @@ func (HTTPProber) Run(ctx context.Context, c model.Sensor) Outcome {
 		Success:    true,
 		Latency:    latency,
 		StatusCode: code,
-		Message:    fmt.Sprintf("HTTP %d%s · %.0fms%s", code, note, ms, certNote),
+		Message:    fmt.Sprintf("HTTP %d%s · %.0fms%s%s", code, note, ms, certNote, jsonNote),
+	}
+}
+
+// jsonValue selects a value from the response body. A match key and value turn
+// the root array into one object first, which is how a MOS or Docker list is
+// reduced to the item a sensor is about.
+func jsonValue(data []byte, matchKey, matchValue, path string) (any, error) {
+	var root any
+	decoder := json.NewDecoder(strings.NewReader(string(data)))
+	decoder.UseNumber()
+	if err := decoder.Decode(&root); err != nil {
+		return nil, fmt.Errorf("not JSON: %w", err)
+	}
+	if matchKey != "" {
+		list, ok := root.([]any)
+		if !ok {
+			return nil, fmt.Errorf("the response is not a list to match %s=%s", matchKey, matchValue)
+		}
+		var found any
+		for _, item := range list {
+			object, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			if fmt.Sprint(object[matchKey]) == matchValue {
+				found = object
+				break
+			}
+		}
+		if found == nil {
+			return nil, fmt.Errorf("no item with %s=%s", matchKey, matchValue)
+		}
+		root = found
+	}
+	return jsonAt(root, path)
+}
+
+func jsonAt(value any, path string) (any, error) {
+	for _, part := range strings.Split(path, ".") {
+		switch node := value.(type) {
+		case map[string]any:
+			next, ok := node[part]
+			if !ok {
+				return nil, fmt.Errorf("no %q", part)
+			}
+			value = next
+		case []any:
+			index, err := strconv.Atoi(part)
+			if err != nil || index < 0 || index >= len(node) {
+				return nil, fmt.Errorf("no index %q", part)
+			}
+			value = node[index]
+		default:
+			return nil, fmt.Errorf("no %q under a %T", part, value)
+		}
+	}
+	return value, nil
+}
+
+func jsonText(value any) string {
+	switch v := value.(type) {
+	case nil:
+		return "null"
+	case string:
+		return v
+	case json.Number:
+		return v.String()
+	case float64:
+		return strconv.FormatFloat(v, 'f', -1, 64)
+	case bool:
+		return strconv.FormatBool(v)
+	default:
+		return fmt.Sprint(v)
+	}
+}
+
+func jsonNumber(value any) (float64, bool) {
+	switch v := value.(type) {
+	case json.Number:
+		n, err := v.Float64()
+		return n, err == nil
+	case float64:
+		return v, true
+	case string:
+		n, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
+		return n, err == nil
+	default:
+		return 0, false
 	}
 }
 
