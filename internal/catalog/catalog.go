@@ -148,7 +148,7 @@ func Templates() []Template {
 			ID: "qnap", Vendor: "QNAP", Product: "QTS",
 			System: "nas", Tags: []string{"storage", "temperature", "availability"},
 			Source: "https://gitlab.com/PRTG/Device-Templates/qnap", Version: "0.1",
-			Icon:    "builtin:nas",
+			Icon:    "brand:qnap",
 			NameKey: "catalog.template.qnap.name", DescriptionKey: "catalog.template.qnap.description",
 			Checks: []Check{
 				// The Ex scalars are integers in °C; the older .1.2 branch returns
@@ -173,7 +173,7 @@ func Templates() []Template {
 			ID: "synology", Vendor: "Synology", Product: "DiskStation",
 			System: "nas", Tags: []string{"storage", "temperature", "availability"},
 			Source: "https://kb.synology.com/en-global/DG/Synology_DiskStation_MIB_Guide/3", Version: "0.1",
-			Icon:    "builtin:nas",
+			Icon:    "brand:synology",
 			NameKey: "catalog.template.synology.name", DescriptionKey: "catalog.template.synology.description",
 			Checks: []Check{
 				{Key: "system_temp", LabelKey: "catalog.template.synology.system_temp", Type: model.SensorSNMP,
@@ -196,7 +196,7 @@ func Templates() []Template {
 			ID: "unifi", Vendor: "Ubiquiti", Product: "UniFi AP",
 			System: "wireless", Tags: []string{"availability"},
 			Source:  "https://help.ui.com/hc/en-us/articles/33502980942615-SNMP-Monitoring-in-UniFi-Network",
-			Icon:    "builtin:wifi",
+			Icon:    "brand:unifi",
 			NameKey: "catalog.template.unifi.name", DescriptionKey: "catalog.template.unifi.description",
 			Checks: []Check{
 				// The UniFi MIB has no CPU, memory or temperature scalars, and not every
@@ -214,7 +214,7 @@ func Templates() []Template {
 			ID: "apc-ups", Vendor: "APC", Product: "UPS",
 			System: "ups", Tags: []string{"power", "availability"},
 			Source: "https://www.apc.com/us/en/faqs/FA156435/", Version: "0.1",
-			Icon:    "builtin:battery",
+			Icon:    "brand:apc",
 			NameKey: "catalog.template.apc.name", DescriptionKey: "catalog.template.apc.description",
 			Checks: []Check{
 				{Key: "battery_charge", LabelKey: "catalog.template.apc.battery_charge", Type: model.SensorSNMP,
@@ -231,7 +231,7 @@ func Templates() []Template {
 			ID: "mikrotik", Vendor: "MikroTik", Product: "RouterOS",
 			System: "router", Tags: []string{"cpu", "temperature", "availability"},
 			Source: "https://gitlab.com/PRTG/Device-Templates/MicroTik", Version: "0.1",
-			Icon:    "builtin:router",
+			Icon:    "brand:mikrotik",
 			NameKey: "catalog.template.mikrotik.name", DescriptionKey: "catalog.template.mikrotik.description",
 			Checks: []Check{
 				{Key: "cpu_load", LabelKey: "catalog.template.mikrotik.cpu_load", Type: model.SensorSNMP,
@@ -247,7 +247,7 @@ func Templates() []Template {
 		{
 			ID: "pfsense", Vendor: "pfSense", Product: "CE / Plus",
 			System: "firewall", Tags: []string{"cpu", "availability"},
-			Icon:    "builtin:lock",
+			Icon:    "brand:pfsense",
 			NameKey: "catalog.template.pfsense.name", DescriptionKey: "catalog.template.pfsense.description",
 			Checks: []Check{
 				{Key: "cpu_load", LabelKey: "catalog.template.pfsense.cpu_load", Type: model.SensorSNMP,
@@ -261,7 +261,7 @@ func Templates() []Template {
 		{
 			ID: "proxmox", Vendor: "Proxmox", Product: "VE",
 			System: "server", Tags: []string{"cpu", "availability"},
-			Icon:    "builtin:server",
+			Icon:    "brand:proxmox",
 			NameKey: "catalog.template.proxmox.name", DescriptionKey: "catalog.template.proxmox.description",
 			Checks: []Check{
 				{Key: "cpu_load", LabelKey: "catalog.template.proxmox.cpu_load", Type: model.SensorSNMP,
@@ -275,7 +275,7 @@ func Templates() []Template {
 		{
 			ID: "truenas", Vendor: "TrueNAS", Product: "CORE / SCALE",
 			System: "nas", Tags: []string{"cpu", "availability"},
-			Icon:    "builtin:nas",
+			Icon:    "brand:truenas",
 			NameKey: "catalog.template.truenas.name", DescriptionKey: "catalog.template.truenas.description",
 			Checks: []Check{
 				{Key: "cpu_load", LabelKey: "catalog.template.truenas.cpu_load", Type: model.SensorSNMP,
@@ -304,7 +304,7 @@ func Templates() []Template {
 			ID: "mos", Vendor: "MOS", Product: "NAS OS",
 			System: "nas", Tags: []string{"storage", "availability", "power"},
 			Source: "https://docs.mos-official.net/docs/API/MOS-API-Overview", Version: "0.1",
-			Icon:    "builtin:nas",
+			Icon:    "brand:mos",
 			NameKey: "catalog.template.mos.name", DescriptionKey: "catalog.template.mos.description",
 			Credential: &Credential{
 				Key: "bearer_token", LabelKey: "catalog.credential.token",
@@ -328,7 +328,7 @@ func Templates() []Template {
 		{
 			ID: "home-assistant", Vendor: "Home Assistant", Product: "Core / OS",
 			System: "home", Tags: []string{"home", "web", "availability"},
-			Icon:    "builtin:bulb",
+			Icon:    "brand:home-assistant",
 			NameKey: "catalog.template.homeassistant.name", DescriptionKey: "catalog.template.homeassistant.description",
 			Checks: []Check{
 				{Key: "web", LabelKey: "catalog.check.web", Type: model.SensorHTTP,
@@ -341,7 +341,7 @@ func Templates() []Template {
 		{
 			ID: "pi-hole", Vendor: "Pi-hole", Product: "DNS",
 			System: "dns", Tags: []string{"dns", "web", "availability"},
-			Icon:    "builtin:lock",
+			Icon:    "brand:pi-hole",
 			NameKey: "catalog.template.pihole.name", DescriptionKey: "catalog.template.pihole.description",
 			Checks: []Check{
 				{Key: "web", LabelKey: "catalog.check.web", Type: model.SensorHTTP,
@@ -354,7 +354,7 @@ func Templates() []Template {
 		{
 			ID: "adguard", Vendor: "AdGuard", Product: "Home",
 			System: "dns", Tags: []string{"dns", "web", "availability"},
-			Icon:    "builtin:lock",
+			Icon:    "brand:adguard",
 			NameKey: "catalog.template.adguard.name", DescriptionKey: "catalog.template.adguard.description",
 			Checks: []Check{
 				{Key: "web", LabelKey: "catalog.check.web", Type: model.SensorHTTP,
@@ -367,7 +367,7 @@ func Templates() []Template {
 		{
 			ID: "grafana", Vendor: "Grafana", Product: "Labs",
 			System: "application", Tags: []string{"web", "availability"},
-			Icon:    "builtin:monitor",
+			Icon:    "brand:grafana",
 			NameKey: "catalog.template.grafana.name", DescriptionKey: "catalog.template.grafana.description",
 			Checks: []Check{
 				{Key: "health", LabelKey: "catalog.check.health", Type: model.SensorHTTP,
@@ -380,7 +380,7 @@ func Templates() []Template {
 		{
 			ID: "portainer", Vendor: "Portainer", Product: "CE",
 			System: "application", Tags: []string{"web", "availability"},
-			Icon:    "builtin:container",
+			Icon:    "brand:portainer",
 			NameKey: "catalog.template.portainer.name", DescriptionKey: "catalog.template.portainer.description",
 			Checks: []Check{
 				{Key: "web", LabelKey: "catalog.check.web", Type: model.SensorHTTP,
@@ -393,7 +393,7 @@ func Templates() []Template {
 		{
 			ID: "jellyfin", Vendor: "Jellyfin", Product: "Media Server",
 			System: "media", Tags: []string{"media", "web", "availability"},
-			Icon:    "builtin:monitor",
+			Icon:    "brand:jellyfin",
 			NameKey: "catalog.template.jellyfin.name", DescriptionKey: "catalog.template.jellyfin.description",
 			Checks: []Check{
 				{Key: "health", LabelKey: "catalog.check.health", Type: model.SensorHTTP,
@@ -406,7 +406,7 @@ func Templates() []Template {
 		{
 			ID: "uptime-kuma", Vendor: "Uptime Kuma", Product: "Monitor",
 			System: "application", Tags: []string{"web", "availability"},
-			Icon:    "builtin:monitor",
+			Icon:    "brand:uptime-kuma",
 			NameKey: "catalog.template.uptimekuma.name", DescriptionKey: "catalog.template.uptimekuma.description",
 			Checks: []Check{
 				{Key: "web", LabelKey: "catalog.check.web", Type: model.SensorHTTP,
@@ -419,7 +419,7 @@ func Templates() []Template {
 		{
 			ID: "node-red", Vendor: "Node-RED", Product: "Flow editor",
 			System: "home", Tags: []string{"home", "web", "availability"},
-			Icon:    "builtin:bulb",
+			Icon:    "brand:node-red",
 			NameKey: "catalog.template.nodered.name", DescriptionKey: "catalog.template.nodered.description",
 			Checks: []Check{
 				{Key: "web", LabelKey: "catalog.check.web", Type: model.SensorHTTP,
@@ -432,7 +432,7 @@ func Templates() []Template {
 		{
 			ID: "mosquitto", Vendor: "Eclipse", Product: "Mosquitto", //nolint:misspell // the MQTT broker spells it with two t
 			System: "application", Tags: []string{"network", "availability"},
-			Icon:    "builtin:plug",
+			Icon:    "brand:mosquitto", //nolint:misspell // the MQTT broker spells it with two t
 			NameKey: "catalog.template.mosquitto.name", DescriptionKey: "catalog.template.mosquitto.description",
 			Checks: []Check{
 				{Key: "port", LabelKey: "catalog.check.port", Type: model.SensorTCP,
@@ -444,7 +444,7 @@ func Templates() []Template {
 		{
 			ID: "shelly", Vendor: "Shelly", Product: "Relay",
 			System: "home", Tags: []string{"home", "web", "availability"},
-			Icon:    "builtin:plug",
+			Icon:    "brand:shelly",
 			NameKey: "catalog.template.shelly.name", DescriptionKey: "catalog.template.shelly.description",
 			Checks: []Check{
 				{Key: "web", LabelKey: "catalog.check.web", Type: model.SensorHTTP,

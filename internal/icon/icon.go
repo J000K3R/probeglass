@@ -24,7 +24,19 @@ import (
 const (
 	PrefixBuiltin = "builtin:"
 	PrefixUpload  = "upload:"
+	PrefixBrand   = "brand:"
 )
+
+// Brand icons are the vendor and application marks bundled with the templates.
+// They are images with their own colours, not the theme-following line art of the
+// built-ins, so they are a kind of their own.
+var brandNames = map[string]bool{
+	"qnap": true, "synology": true, "unifi": true, "apc": true,
+	"mikrotik": true, "pfsense": true, "proxmox": true, "truenas": true,
+	"mos": true, "home-assistant": true, "pi-hole": true, "adguard": true,
+	"grafana": true, "portainer": true, "jellyfin": true, "uptime-kuma": true,
+	"node-red": true, "mosquitto": true, "shelly": true, //nolint:misspell // the MQTT broker
+}
 
 // Kind is where a reference points.
 type Kind uint8
@@ -37,6 +49,8 @@ const (
 	KindBuiltin
 	// KindUpload is an image in this installation's own database.
 	KindUpload
+	// KindBrand is one of the vendor marks bundled with the templates.
+	KindBrand
 	// KindUnknown is a string that is neither of the above. It is never stored —
 	// both the API and the configuration file refuse it — but a database that
 	// acquired one by hand resolves to it rather than to a crash, and the
@@ -63,6 +77,12 @@ func Parse(ref string) (Kind, string) {
 			return KindUnknown, ""
 		}
 		return KindUpload, id
+	case strings.HasPrefix(ref, PrefixBrand):
+		name := strings.TrimPrefix(ref, PrefixBrand)
+		if brandNames[name] {
+			return KindBrand, name
+		}
+		return KindUnknown, ""
 	}
 	return KindUnknown, ""
 }
@@ -84,15 +104,21 @@ func Check(ref string) error {
 		return nil
 	}
 	kind, _ := Parse(ref)
-	if kind == KindBuiltin || kind == KindUpload {
+	if kind == KindBuiltin || kind == KindUpload || kind == KindBrand {
 		return nil
 	}
 	if name, ok := strings.CutPrefix(strings.TrimSpace(ref), PrefixBuiltin); ok {
 		return fmt.Errorf("there is no built-in icon %q", name)
 	}
-	return fmt.Errorf("%q is not an icon: use \"\", a built-in name like %q, or an uploaded one like %q",
-		ref, BuiltinRef("router"), UploadRef(1))
+	if name, ok := strings.CutPrefix(strings.TrimSpace(ref), PrefixBrand); ok {
+		return fmt.Errorf("there is no bundled brand icon %q", name)
+	}
+	return fmt.Errorf("%q is not an icon: use \"\", a built-in name like %q, a bundled brand like %q, or an uploaded one like %q",
+		ref, BuiltinRef("router"), BrandRef("qnap"), UploadRef(1))
 }
+
+// BrandRef is the reference to a bundled brand icon.
+func BrandRef(name string) string { return PrefixBrand + name }
 
 // UploadID returns the id an `upload:` reference names, or 0.
 func UploadID(ref string) int64 {

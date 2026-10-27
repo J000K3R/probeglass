@@ -25,6 +25,7 @@ import { esc } from './charts.js';
 
 const BUILTIN = 'builtin:';
 const UPLOAD = 'upload:';
+const BRAND = 'brand:';
 
 // A placeholder where a symbol would be, so that "none" is a visible choice rather
 // than a gap: a dashed square in the slot, and the words "No icon" beside it.
@@ -56,6 +57,9 @@ let confirmDialog = (message) => window.confirm(message);
 // the domain root for a file that was never there, and every built-in symbol
 // came out blank. Resolving against the module keeps both working.
 const ICON_BASE = new URL('icons/', import.meta.url);
+const BRAND_BASE = new URL('brands/', import.meta.url);
+// MOS is the one brand Dashboard Icons publishes only as a PNG.
+const BRAND_EXT = { mos: 'png' };
 
 /** The URL a symbol is drawn from, or "" when there is nothing to draw. */
 export function iconURL(ref) {
@@ -70,6 +74,11 @@ export function iconURL(ref) {
     const id = ref.slice(UPLOAD.length);
     return /^[0-9]+$/.test(id) ? `/api/icons/${id}` : '';
   }
+  if (ref.startsWith(BRAND)) {
+    const name = ref.slice(BRAND.length);
+    if (!/^[a-z0-9-]+$/.test(name)) return '';
+    return new URL(`${name}.${BRAND_EXT[name] || 'svg'}`, BRAND_BASE).href;
+  }
   return '';
 }
 
@@ -80,6 +89,7 @@ export function isBuiltin(ref) { return typeof ref === 'string' && ref.startsWit
 export function iconLabel(ref) {
   if (!ref) return '';
   if (isBuiltin(ref)) return t(`icons.name.${ref.slice(BUILTIN.length)}`);
+  if (ref.startsWith(BRAND)) return ref.slice(BRAND.length);
   if (ref.startsWith(UPLOAD)) {
     const id = Number(ref.slice(UPLOAD.length));
     const found = catalogue.icons.find((i) => i.id === id);

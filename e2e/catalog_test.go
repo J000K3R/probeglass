@@ -57,6 +57,7 @@ func TestASensorTemplateCreatesItsTickedChecks(t *testing.T) {
 			chromedp.Click(`#catalog-body [data-catalog-check="disk3_temp"]`),
 			chromedp.Click(`#catalog-body [data-catalog-check="disk4_temp"]`),
 			chromedp.Click(`#catalog-add`),
+			chromedp.WaitNotPresent(`#modal-catalog[open]`),
 		)
 	}); err != nil {
 		capture(t, ctx, dir, "template-not-applied")
@@ -126,6 +127,11 @@ func TestTheTemplateCatalogueCanBeFiltered(t *testing.T) {
 	}); err != nil {
 		capture(t, ctx, dir, "template-grid")
 		t.Fatalf("could not open the template grid: %v", err)
+	}
+
+	icon := read[string](t, ctx, `document.querySelector('#modal-catalog [data-template-id="qnap"] img.icon-image')?.getAttribute('src') || ''`, "the QNAP brand icon")
+	if !strings.Contains(icon, "/brands/qnap.svg") {
+		t.Errorf("the QNAP template icon is %q, want the bundled qnap.svg", icon)
 	}
 
 	setQuery := func(term string) {

@@ -94,6 +94,14 @@ here and what the release says are the same document.
 - **Sensors created from a template wear its icon**, and MOS's discovered checks
   carry their own: disk, CPU, thermometer, container, monitor, database. Templates
   created from the dashboard icon set look like what they monitor.
+- **The template catalogue carries the vendor marks.** QNAP, Synology, UniFi,
+  APC, MikroTik, pfSense, Proxmox, TrueNAS, MOS, Home Assistant, Pi-hole,
+  AdGuard, Grafana, Portainer, Jellyfin, Uptime Kuma, Node-RED, Mosquitto and
+  Shelly are drawn with their bundled brand icon (Dashboard Icons, Apache-2.0).
+  Sensors created from a template keep that icon unless the check brings its own.
+- **The template dialog closes after creating its sensors.** A new sensor goes
+  back to the dashboard with the new cards on it, rather than leaving the
+  catalogue open over a form that is no longer being filled.
 
 ## [0.2.3] - 2026-10-20
 

@@ -4187,19 +4187,6 @@ async function applyCatalogTemplate() {
   });
   try {
     await api('/api/sensors/bulk', { method: 'POST', body: { sensors } });
-    if (catalogForm === null) {
-      // Standalone: the first template is where the device was entered. Keep it
-      // for the next template and stay in the catalogue, so a device can receive
-      // several sets of sensors without typing its address again.
-      catalogDevice = { name, target, group };
-      catalogSNMP = credentials;
-      catalogToken = credentialValue;
-      toast(t('catalog.added', { count: sensors.length }));
-      await refresh({ background: true });
-      setCatalogTab('templates');
-      return;
-    }
-    // Opened from a sensor form: close the half-filled new sensor behind it too.
     closeCatalog();
     $('#modal').close();
     toast(t('catalog.added', { count: sensors.length }));
