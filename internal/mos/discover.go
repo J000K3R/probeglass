@@ -202,6 +202,10 @@ func get(ctx context.Context, client *http.Client, url, token string, out any) e
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Accept", "application/json")
+	// The address is the NAS an administrator typed into the template; making
+	// that request is the discovery. Refusing private addresses would make it
+	// unable to find the homelab it is for.
+	// codeql[go/request-forgery]
 	resp, err := client.Do(req)
 	if err != nil {
 		return err
