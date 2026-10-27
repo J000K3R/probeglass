@@ -43,6 +43,12 @@ here and what the release says are the same document.
   created as ordinary sensors in one group, all of them or none, in one
   transaction; they stay editable, because vendor OIDs move between firmware
   versions.
+- **Application templates and the MOS NAS OS.** Templates are no longer
+  SNMP-only: a check can carry its own HTTP/TCP/ping target pattern and the
+  template can ask for an API token. The catalogue grows again with **MOS NAS
+  OS** — system load, disks, pools and an optional UPS check, authenticated by an
+  admin token — and with Home Assistant, Pi-hole, AdGuard Home, Grafana,
+  Portainer, Jellyfin, Uptime Kuma, Node-RED, Mosquitto and Shelly.
 - **A `/metrics` endpoint for Prometheus.** Sensor status, the 24-hour, 7-day and
   30-day uptime ratios, the last latency and the open incidents, in the Prometheus
   text format, so a homelab that already runs a monitoring stack can scrape

@@ -186,3 +186,109 @@ func TestTheTemplateCatalogueCanBeFiltered(t *testing.T) {
 		"a vendor and a system with no template in common did not empty the grid",
 		dir, "template-empty", 10*time.Second)
 }
+
+// TestAnApplicationTemplateCreatesHTTPChecks applies the MOS template: it has an
+// API token instead of SNMP credentials, target patterns that add the /api/v1
+// path, and one optional UPS check that must start unticked.
+func TestAnApplicationTemplateCreatesHTTPChecks(t *testing.T) {
+	browser := findBrowser(t)
+	base := startServer(t, buildBinary(t))
+	ctx, done := openBrowser(t, browser)
+	defer done()
+	dir := artifactsDir(t)
+
+	firstRun(t, ctx, base, dir)
+
+	if err := withTimeout(ctx, func(tctx context.Context) error {
+		return chromedp.Do(tctx,
+			chromedp.Click(`#new-sensor`),
+			chromedp.WaitVisible(`#modal[open] [data-type-open]`),
+			chromedp.Click(`#modal [data-type-open]`),
+			chromedp.Poll[chromedp.Void](
+				`!!document.querySelector('#modal-catalog [data-catalog-tab="templates"]')`,
+				chromedp.WithPollingTimeout(15*time.Second)),
+			chromedp.Click(`#modal-catalog [data-catalog-tab="templates"]`),
+			chromedp.Poll[chromedp.Void](
+				`!!document.querySelector('#modal-catalog [data-template-id="mos"]')`,
+				chromedp.WithPollingTimeout(15*time.Second)),
+			chromedp.Click(`#modal-catalog [data-template-id="mos"]`),
+			chromedp.WaitVisible(`#catalog-credential`),
+		)
+	}); err != nil {
+		capture(t, ctx, dir, "mos-template")
+		t.Fatalf("could not open the MOS template: %v", err)
+	}
+
+	state := read[map[string]any](t, ctx, `(() => ({
+		snmpCredentialFields: document.querySelectorAll('#catalog-options').length,
+		tokenField: document.querySelector('#catalog-credential')?.type || '',
+		upsChecked: document.querySelector('[data-catalog-check="ups"]')?.checked ?? null,
+		loadChecked: document.querySelector('[data-catalog-check="system_load"]')?.checked ?? null,
+		checks: document.querySelectorAll('#catalog-body [data-catalog-check]').length,
+	}))()`, "the MOS template form")
+	if state["snmpCredentialFields"].(float64) != 0 {
+		t.Errorf("the MOS template still asks for SNMP credentials: %v", state)
+	}
+	if state["tokenField"] != "password" {
+		t.Errorf("the API token field is %v, want a password field", state["tokenField"])
+	}
+	if state["upsChecked"] != false || state["loadChecked"] != true {
+		t.Errorf("the optional UPS check is checked=%v and system load is checked=%v; want false and true",
+			state["upsChecked"], state["loadChecked"])
+	}
+	if state["checks"].(float64) != 5 {
+		t.Errorf("the MOS template offers %v checks, want 5", state["checks"])
+	}
+
+	target := strings.TrimPrefix(base, "http://")
+	if err := withTimeout(ctx, func(tctx context.Context) error {
+		return chromedp.Do(tctx,
+			chromedp.SetValue(`#catalog-name`, "MOS Test"),
+			chromedp.SetValue(`#catalog-target`, target),
+			chromedp.SetValue(`#catalog-group`, "MOS Test"),
+			chromedp.SetValue(`#catalog-credential`, "test-token"),
+			chromedp.Click(`#catalog-add`),
+			chromedp.WaitNotPresent(`#modal-catalog[open]`),
+			chromedp.WaitNotPresent(`#modal[open]`),
+		)
+	}); err != nil {
+		capture(t, ctx, dir, "mos-not-applied")
+		t.Fatalf("could not apply the MOS template: %v", err)
+	}
+
+	eventually(t, ctx, `fetch('/api/sensors').then(r => r.json())
+		.then(list => list.filter((s) => s.name.startsWith('MOS Test · ')).length === 4)`,
+		"the MOS template did not create four sensors", dir, "mos-sensors", 15*time.Second)
+
+	type created struct {
+		Name    string         `json:"name"`
+		Type    string         `json:"type"`
+		Target  string         `json:"target"`
+		Options map[string]any `json:"options"`
+	}
+	list := readAsync[[]created](t, ctx,
+		`fetch('/api/sensors').then(r => r.json())
+			.then(list => list.filter((s) => s.name.startsWith('MOS Test · ')))`,
+		"the sensors the MOS template created")
+	if len(list) != 4 {
+		t.Fatalf("the MOS template created %d sensor(s), want 4: %+v", len(list), list)
+	}
+	for _, sensor := range list {
+		switch sensor.Type {
+		case "http":
+			if !strings.HasPrefix(sensor.Target, "http://"+target+"/api/v1/") {
+				t.Errorf("%s has target %q, want the /api/v1 path on the entered address",
+					sensor.Name, sensor.Target)
+			}
+			if sensor.Options["bearer_token"] != "__stored__" {
+				t.Errorf("%s does not carry the API token (masked): %v", sensor.Name, sensor.Options)
+			}
+		case "ping":
+			if sensor.Target != strings.Split(target, ":")[0] {
+				t.Errorf("%s has target %q, want the bare host", sensor.Name, sensor.Target)
+			}
+		default:
+			t.Errorf("%s has unexpected type %q", sensor.Name, sensor.Type)
+		}
+	}
+}

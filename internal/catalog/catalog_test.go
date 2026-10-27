@@ -29,7 +29,7 @@ func TestTemplatesAreUsable(t *testing.T) {
 				t.Errorf("%s: check key %q is empty or repeated", template.ID, check.Key)
 			}
 			checkKeys[check.Key] = true
-			if !strings.HasPrefix(check.LabelKey, "catalog.template.") {
+			if !strings.HasPrefix(check.LabelKey, "catalog.template.") && !strings.HasPrefix(check.LabelKey, "catalog.check.") {
 				t.Errorf("%s/%s: label key %q is not a catalogue key", template.ID, check.Key, check.LabelKey)
 			}
 			if check.Interval < 30 {
@@ -43,6 +43,19 @@ func TestTemplatesAreUsable(t *testing.T) {
 				}
 				if check.Options["expect"] == nil && check.Options["min"] == nil && check.Options["max"] == nil {
 					t.Errorf("%s/%s: SNMP check has no expect, min or max", template.ID, check.Key)
+				}
+			case model.SensorHTTP:
+				if check.Target == "" || !strings.Contains(check.Target, "{address}") {
+					t.Errorf("%s/%s: an HTTP check needs a target pattern with {address}: %q",
+						template.ID, check.Key, check.Target)
+				}
+				if check.Options["expected_status"] == nil {
+					t.Errorf("%s/%s: an HTTP check needs an expected_status", template.ID, check.Key)
+				}
+			case model.SensorTCP:
+				if check.Target == "" || !strings.Contains(check.Target, "{host}") {
+					t.Errorf("%s/%s: a TCP check needs a target pattern with {host}: %q",
+						template.ID, check.Key, check.Target)
 				}
 			case model.SensorPing:
 				if len(check.Options) != 0 {

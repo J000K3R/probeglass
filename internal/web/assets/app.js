@@ -3920,6 +3920,31 @@ function renderTemplateGrid() {
   if (allTags) allTags.classList.toggle('active', catalogFilter.tags.size === 0);
 }
 
+/**
+ * templateTarget expands a check's target pattern. {address} is what the person
+ * typed; {host} is its host without a scheme or port, which is what ping and
+ * TCP want when the address is a URL.
+ */
+function templateTarget(pattern, address) {
+  if (!pattern) return address;
+  const clean = String(address).trim()
+    .replace(/^https?:\/\//, '')
+    .replace(/\/.*$/, '');
+  return pattern
+    .replaceAll('{address}', clean)
+    .replaceAll('{host}', hostOfAddress(address));
+}
+
+function hostOfAddress(address) {
+  try {
+    const parsed = new URL(address.includes('://') ? address : `//${address}`);
+    if (parsed.hostname) return parsed.hostname;
+  } catch {
+    // Fall through to the string trim below.
+  }
+  return String(address).replace(/^https?:\/\//, '').split('/')[0].replace(/:\d+$/, '');
+}
+
 /** openTemplateDetail shows the checks a template would add. */
 function openTemplateDetail(template) {
   catalogDetail = template;
@@ -3933,14 +3958,28 @@ function openTemplateDetail(template) {
     ? `<p class="muted small">${esc(t('catalog.source'))}: <a href="${esc(template.source)}"
          target="_blank" rel="noopener noreferrer">${esc(template.source)}</a></p>`
     : '';
+  const hasSNMP = template.checks.some((check) => check.type === 'snmp');
   const checks = template.checks.map((check) => `
     <label class="catalog-check">
-      <input type="checkbox" data-catalog-check="${esc(check.key)}" checked>
+      <input type="checkbox" data-catalog-check="${esc(check.key)}"${check.default_off ? '' : ' checked'}>
       <span>${esc(t(check.label_key))}</span>
-      <small class="muted">${esc(check.type === 'ping' ? t('type.ping') : t('type.snmp'))}</small>
+      <small class="muted">${esc(t(`type.${check.type}`))}</small>
     </label>`).join('');
   const fields = catalogCredentialFields.map((f) => `
     <div class="option-slot" data-option-key="${esc(f.key)}">${optionField(f, { version: '2c' })}</div>`).join('');
+  const credential = template.credential ? `
+    <section class="catalog-credentials">
+      <h3>${esc(t('catalog.credentials'))}</h3>
+      <label class="field"><span>${esc(t(template.credential.label_key))}
+        ${template.credential.help_key ? helpButton(template.credential.help_key) : ''}</span>
+        <input id="catalog-credential" type="${template.credential.secret ? 'password' : 'text'}"
+               autocomplete="off" spellcheck="false"></label>
+    </section>` : '';
+  const snmp = hasSNMP ? `
+    <section class="catalog-credentials">
+      <h3>${esc(t('catalog.credentials'))}</h3>
+      <div id="catalog-options">${fields}</div>
+    </section>` : '';
   $('#catalog-body').innerHTML = `
     <button type="button" class="btn btn-small catalog-back" data-catalog-back>← ${esc(t('catalog.back'))}</button>
     <div class="template-detail-head">
@@ -3966,15 +4005,13 @@ function openTemplateDetail(template) {
       <legend>${esc(t('catalog.checks', { count: template.checks.length }))}</legend>
       ${checks}
     </fieldset>
-    <section class="catalog-credentials">
-      <h3>${esc(t('catalog.credentials'))}</h3>
-      <div id="catalog-options">${fields}</div>
-      <div class="catalog-device-check">
-        <button type="button" class="btn" id="catalog-check-device">${esc(t('catalog.checkDevice'))}</button>
-        <p class="muted small" id="catalog-device-status">${esc(t('catalog.deviceHint'))}</p>
-      </div>
+    ${credential}
+    ${snmp}
+    <section class="catalog-device-check">
+      <button type="button" class="btn" id="catalog-check-device">${esc(t('catalog.checkDevice'))}</button>
+      <p class="muted small" id="catalog-device-status">${esc(t('catalog.deviceHint'))}</p>
     </section>`;
-  syncConditionalOptions(catalogCredentialFields, $('#catalog-options'));
+  if (hasSNMP) syncConditionalOptions(catalogCredentialFields, $('#catalog-options'));
   updateCatalogAdd();
   $('#catalog-add').hidden = false;
   $('#catalog-error').textContent = '';
@@ -3994,7 +4031,13 @@ async function checkTemplateDevice() {
   button.disabled = true;
   button.textContent = t('catalog.checking');
   $('#catalog-error').textContent = '';
-  const options = readOptionValues($('#catalog-options'), catalogCredentialFields);
+  const hasSNMP = catalogDetail.checks.some((check) => check.type === 'snmp');
+  let options = {};
+  if (hasSNMP) {
+    options = readOptionValues($('#catalog-options'), catalogCredentialFields);
+  } else if (catalogDetail.credential) {
+    options[catalogDetail.credential.key] = $('#catalog-credential').value.trim();
+  }
   try {
     const data = await api(
       `/api/sensor-templates/${encodeURIComponent(catalogDetail.id)}/check`,
@@ -4036,20 +4079,35 @@ async function applyCatalogTemplate() {
     error.textContent = t('catalog.noneSelected');
     return;
   }
-  const credentials = readOptionValues($('#catalog-options'), catalogCredentialFields);
-  const sensors = checks.map((check) => ({
-    name: `${name} · ${t(check.label_key)}`,
-    type: check.type,
-    target,
-    interval: check.interval || 60,
-    timeout: 10,
-    retries: 1,
-    enabled: true,
-    group,
-    options: check.type === 'snmp'
-      ? { ...(check.options || {}), ...credentials }
-      : { ...(check.options || {}) },
-  }));
+  const hasSNMP = catalogDetail.checks.some((check) => check.type === 'snmp');
+  const credentials = hasSNMP
+    ? readOptionValues($('#catalog-options'), catalogCredentialFields)
+    : {};
+  const credentialValue = catalogDetail.credential
+    ? $('#catalog-credential').value.trim()
+    : '';
+  if (catalogDetail.credential && !credentialValue) {
+    error.textContent = t('catalog.missing', { field: t(catalogDetail.credential.label_key) });
+    return;
+  }
+  const sensors = checks.map((check) => {
+    const options = { ...(check.options || {}) };
+    if (check.type === 'snmp') Object.assign(options, credentials);
+    if (catalogDetail.credential && check.type === 'http' && credentialValue) {
+      options[catalogDetail.credential.key] = credentialValue;
+    }
+    return {
+      name: `${name} · ${t(check.label_key)}`,
+      type: check.type,
+      target: templateTarget(check.target, target),
+      interval: check.interval || 60,
+      timeout: 10,
+      retries: 1,
+      enabled: true,
+      group,
+      options,
+    };
+  });
   try {
     await api('/api/sensors/bulk', { method: 'POST', body: { sensors } });
     // The catalogue is only opened from a sensor form, and a template is not

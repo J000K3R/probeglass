@@ -12,7 +12,12 @@
 // PRTG code or template file is part of this package.
 package catalog
 
-import "github.com/j000k3r/probeglass/internal/model"
+import (
+	"net/url"
+	"strings"
+
+	"github.com/j000k3r/probeglass/internal/model"
+)
 
 // Uptime is the one object every SNMP agent has.
 const uptimeOID = "1.3.6.1.2.1.1.3.0"
@@ -26,10 +31,26 @@ type Check struct {
 	Key      string           `json:"key"`
 	LabelKey string           `json:"label_key"`
 	Type     model.SensorType `json:"type"`
+	// Target is a pattern for the sensor's target. {address} is what the person
+	// typed and {host} is its host without a scheme or port. Empty means
+	// {address}, which is what every single-address SNMP check wants.
+	Target string `json:"target,omitempty"`
 	// Interval is the suggested probe interval in seconds. Temps and status are
 	// cheap and useful at a minute; uptime does not need asking that often.
 	Interval int           `json:"interval"`
 	Options  model.Options `json:"options,omitempty"`
+	// DefaultOff is for a check that only makes sense on some installations,
+	// such as a UPS behind a NAS. It is offered unticked rather than left out.
+	DefaultOff bool `json:"default_off,omitempty"`
+}
+
+// Credential is a value the template needs beyond the address, such as an API
+// token. It is merged into the options of the checks that use it.
+type Credential struct {
+	Key      string `json:"key"`
+	LabelKey string `json:"label_key"`
+	HelpKey  string `json:"help_key,omitempty"`
+	Secret   bool   `json:"secret"`
 }
 
 // Template is a vendor (or a family of devices) and the checks it needs.
@@ -48,9 +69,59 @@ type Template struct {
 	Version string `json:"version,omitempty"`
 	Icon    string `json:"icon"`
 	// NameKey and DescriptionKey are translated; vendor and product are names.
-	NameKey        string  `json:"name_key"`
-	DescriptionKey string  `json:"description_key"`
-	Checks         []Check `json:"checks"`
+	NameKey        string `json:"name_key"`
+	DescriptionKey string `json:"description_key"`
+	// Credential is optional: an API token, for example. The apply dialog asks
+	// for it and copies it into every check of a type that uses the key.
+	Credential *Credential `json:"credential,omitempty"`
+	Checks     []Check     `json:"checks"`
+}
+
+// HasSNMP says whether the template's device check should speak SNMP.
+func (t Template) HasSNMP() bool {
+	for _, check := range t.Checks {
+		if check.Type == model.SensorSNMP {
+			return true
+		}
+	}
+	return false
+}
+
+// ResolveTarget expands a check's target pattern for one address.
+func ResolveTarget(pattern, address string) string {
+	if pattern == "" {
+		return address
+	}
+	out := strings.ReplaceAll(pattern, "{address}", CleanAddress(address))
+	if strings.Contains(out, "{host}") {
+		out = strings.ReplaceAll(out, "{host}", HostOf(address))
+	}
+	return out
+}
+
+// CleanAddress drops a scheme and a path, keeping host and port. A template
+// supplies its own scheme and path, so an address typed as a URL must not turn
+// "http://{address}/x" into "http://http://host/x".
+func CleanAddress(address string) string {
+	a := strings.TrimSpace(address)
+	a = strings.TrimPrefix(a, "http://")
+	a = strings.TrimPrefix(a, "https://")
+	if i := strings.IndexByte(a, '/'); i >= 0 {
+		a = a[:i]
+	}
+	return a
+}
+
+// HostOf strips a scheme, path and port from an address.
+func HostOf(address string) string {
+	raw := strings.TrimSpace(address)
+	if !strings.Contains(raw, "://") {
+		raw = "//" + raw
+	}
+	if u, err := url.Parse(raw); err == nil && u.Hostname() != "" {
+		return u.Hostname()
+	}
+	return strings.TrimSpace(address)
 }
 
 // Templates returns the catalogue. It is a function rather than a package-level
@@ -223,6 +294,162 @@ func Templates() []Template {
 					Interval: 300, Options: model.Options{"oid": uptimeOID, "min": 1}},
 				{Key: "reachable", LabelKey: "catalog.template.printer.reachable", Type: model.SensorPing,
 					Interval: 60},
+			},
+		},
+		{
+			ID: "mos", Vendor: "MOS", Product: "NAS OS",
+			System: "nas", Tags: []string{"storage", "availability", "power"},
+			Source: "https://docs.mos-official.net/docs/API/MOS-API-Overview", Version: "0.1",
+			Icon:    "builtin:nas",
+			NameKey: "catalog.template.mos.name", DescriptionKey: "catalog.template.mos.description",
+			Credential: &Credential{
+				Key: "bearer_token", LabelKey: "catalog.credential.token",
+				HelpKey: "catalog.credential.tokenHelp", Secret: true,
+			},
+			Checks: []Check{
+				{Key: "system_load", LabelKey: "catalog.template.mos.system_load", Type: model.SensorHTTP,
+					Target: "http://{address}/api/v1/system/load", Interval: 60,
+					Options: model.Options{"expected_status": "200"}},
+				{Key: "disks", LabelKey: "catalog.template.mos.disks", Type: model.SensorHTTP,
+					Target: "http://{address}/api/v1/disks", Interval: 300,
+					Options: model.Options{"expected_status": "200"}},
+				{Key: "pools", LabelKey: "catalog.template.mos.pools", Type: model.SensorHTTP,
+					Target: "http://{address}/api/v1/pools", Interval: 300,
+					Options: model.Options{"expected_status": "200"}},
+				{Key: "ups", LabelKey: "catalog.template.mos.ups", Type: model.SensorHTTP,
+					Target: "http://{address}/api/v1/nut/status", Interval: 60,
+					Options: model.Options{"expected_status": "200"}, DefaultOff: true},
+				{Key: "reachable", LabelKey: "catalog.template.mos.reachable", Type: model.SensorPing,
+					Target: "{host}", Interval: 60},
+			},
+		},
+		{
+			ID: "home-assistant", Vendor: "Home Assistant", Product: "Core / OS",
+			System: "home", Tags: []string{"home", "web", "availability"},
+			Icon:    "builtin:bulb",
+			NameKey: "catalog.template.homeassistant.name", DescriptionKey: "catalog.template.homeassistant.description",
+			Checks: []Check{
+				{Key: "web", LabelKey: "catalog.check.web", Type: model.SensorHTTP,
+					Target: "http://{address}:8123/", Interval: 60,
+					Options: model.Options{"expected_status": "200-399"}},
+				{Key: "reachable", LabelKey: "catalog.check.reachable", Type: model.SensorPing,
+					Target: "{host}", Interval: 60},
+			},
+		},
+		{
+			ID: "pi-hole", Vendor: "Pi-hole", Product: "DNS",
+			System: "dns", Tags: []string{"dns", "web", "availability"},
+			Icon:    "builtin:lock",
+			NameKey: "catalog.template.pihole.name", DescriptionKey: "catalog.template.pihole.description",
+			Checks: []Check{
+				{Key: "web", LabelKey: "catalog.check.web", Type: model.SensorHTTP,
+					Target: "http://{address}/admin/", Interval: 60,
+					Options: model.Options{"expected_status": "200-399"}},
+				{Key: "reachable", LabelKey: "catalog.check.reachable", Type: model.SensorPing,
+					Target: "{host}", Interval: 60},
+			},
+		},
+		{
+			ID: "adguard", Vendor: "AdGuard", Product: "Home",
+			System: "dns", Tags: []string{"dns", "web", "availability"},
+			Icon:    "builtin:lock",
+			NameKey: "catalog.template.adguard.name", DescriptionKey: "catalog.template.adguard.description",
+			Checks: []Check{
+				{Key: "web", LabelKey: "catalog.check.web", Type: model.SensorHTTP,
+					Target: "http://{address}/", Interval: 60,
+					Options: model.Options{"expected_status": "200-399"}},
+				{Key: "reachable", LabelKey: "catalog.check.reachable", Type: model.SensorPing,
+					Target: "{host}", Interval: 60},
+			},
+		},
+		{
+			ID: "grafana", Vendor: "Grafana", Product: "Labs",
+			System: "application", Tags: []string{"web", "availability"},
+			Icon:    "builtin:monitor",
+			NameKey: "catalog.template.grafana.name", DescriptionKey: "catalog.template.grafana.description",
+			Checks: []Check{
+				{Key: "health", LabelKey: "catalog.check.health", Type: model.SensorHTTP,
+					Target: "http://{address}:3000/api/health", Interval: 60,
+					Options: model.Options{"expected_status": "200"}},
+				{Key: "reachable", LabelKey: "catalog.check.reachable", Type: model.SensorPing,
+					Target: "{host}", Interval: 60},
+			},
+		},
+		{
+			ID: "portainer", Vendor: "Portainer", Product: "CE",
+			System: "application", Tags: []string{"web", "availability"},
+			Icon:    "builtin:container",
+			NameKey: "catalog.template.portainer.name", DescriptionKey: "catalog.template.portainer.description",
+			Checks: []Check{
+				{Key: "web", LabelKey: "catalog.check.web", Type: model.SensorHTTP,
+					Target: "http://{address}:9000/", Interval: 60,
+					Options: model.Options{"expected_status": "200-399"}},
+				{Key: "reachable", LabelKey: "catalog.check.reachable", Type: model.SensorPing,
+					Target: "{host}", Interval: 60},
+			},
+		},
+		{
+			ID: "jellyfin", Vendor: "Jellyfin", Product: "Media Server",
+			System: "media", Tags: []string{"media", "web", "availability"},
+			Icon:    "builtin:monitor",
+			NameKey: "catalog.template.jellyfin.name", DescriptionKey: "catalog.template.jellyfin.description",
+			Checks: []Check{
+				{Key: "health", LabelKey: "catalog.check.health", Type: model.SensorHTTP,
+					Target: "http://{address}:8096/health", Interval: 60,
+					Options: model.Options{"expected_status": "200"}},
+				{Key: "reachable", LabelKey: "catalog.check.reachable", Type: model.SensorPing,
+					Target: "{host}", Interval: 60},
+			},
+		},
+		{
+			ID: "uptime-kuma", Vendor: "Uptime Kuma", Product: "Monitor",
+			System: "application", Tags: []string{"web", "availability"},
+			Icon:    "builtin:monitor",
+			NameKey: "catalog.template.uptimekuma.name", DescriptionKey: "catalog.template.uptimekuma.description",
+			Checks: []Check{
+				{Key: "web", LabelKey: "catalog.check.web", Type: model.SensorHTTP,
+					Target: "http://{address}:3001/", Interval: 60,
+					Options: model.Options{"expected_status": "200-399"}},
+				{Key: "reachable", LabelKey: "catalog.check.reachable", Type: model.SensorPing,
+					Target: "{host}", Interval: 60},
+			},
+		},
+		{
+			ID: "node-red", Vendor: "Node-RED", Product: "Flow editor",
+			System: "home", Tags: []string{"home", "web", "availability"},
+			Icon:    "builtin:bulb",
+			NameKey: "catalog.template.nodered.name", DescriptionKey: "catalog.template.nodered.description",
+			Checks: []Check{
+				{Key: "web", LabelKey: "catalog.check.web", Type: model.SensorHTTP,
+					Target: "http://{address}:1880/", Interval: 60,
+					Options: model.Options{"expected_status": "200-399"}},
+				{Key: "reachable", LabelKey: "catalog.check.reachable", Type: model.SensorPing,
+					Target: "{host}", Interval: 60},
+			},
+		},
+		{
+			ID: "mosquitto", Vendor: "Eclipse", Product: "Mosquitto", //nolint:misspell // the MQTT broker spells it with two t
+			System: "application", Tags: []string{"network", "availability"},
+			Icon:    "builtin:plug",
+			NameKey: "catalog.template.mosquitto.name", DescriptionKey: "catalog.template.mosquitto.description",
+			Checks: []Check{
+				{Key: "port", LabelKey: "catalog.check.port", Type: model.SensorTCP,
+					Target: "{host}:1883", Interval: 60},
+				{Key: "reachable", LabelKey: "catalog.check.reachable", Type: model.SensorPing,
+					Target: "{host}", Interval: 60},
+			},
+		},
+		{
+			ID: "shelly", Vendor: "Shelly", Product: "Relay",
+			System: "home", Tags: []string{"home", "web", "availability"},
+			Icon:    "builtin:plug",
+			NameKey: "catalog.template.shelly.name", DescriptionKey: "catalog.template.shelly.description",
+			Checks: []Check{
+				{Key: "web", LabelKey: "catalog.check.web", Type: model.SensorHTTP,
+					Target: "http://{address}/status", Interval: 60,
+					Options: model.Options{"expected_status": "200"}},
+				{Key: "reachable", LabelKey: "catalog.check.reachable", Type: model.SensorPing,
+					Target: "{host}", Interval: 60},
 			},
 		},
 	}

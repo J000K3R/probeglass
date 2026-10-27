@@ -21,6 +21,12 @@ func TestEveryTemplateHasWords(t *testing.T) {
 		for _, tag := range template.Tags {
 			keys = append(keys, "catalog.tag."+tag)
 		}
+		if template.Credential != nil {
+			keys = append(keys, template.Credential.LabelKey)
+			if template.Credential.HelpKey != "" {
+				keys = append(keys, template.Credential.HelpKey)
+			}
+		}
 		for _, check := range template.Checks {
 			keys = append(keys, check.LabelKey)
 		}
