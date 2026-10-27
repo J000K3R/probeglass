@@ -3801,6 +3801,7 @@ async function openSensorCatalog(form) {
   catalogFilter.vendor = '';
   catalogFilter.system = '';
   catalogFilter.tags.clear();
+  catalogFilterOpen = false;
   if (form === null) {
     catalogDevice = { name: '', target: '', group: '' };
     catalogSNMP = {};
@@ -3853,6 +3854,7 @@ function catalogSensorsMarkup() {
 
 /** catalogTemplatesMarkup draws one card per device template. */
 const catalogFilter = { query: '', vendor: '', system: '', tags: new Set() };
+let catalogFilterOpen = false;
 
 function catalogTemplatesMarkup() {
   if (!catalogTemplates?.length) return `<p class="muted">${esc(t('catalog.templateHint'))}</p>`;
@@ -3873,7 +3875,7 @@ function catalogDeviceSummary() {
   </p>`;
 }
 
-/** catalogFiltersMarkup is the strip above the templates: search and chips. */
+/** catalogFiltersMarkup is a search box, one filter button and the active chips. */
 function catalogFiltersMarkup() {
   const vendors = [...new Set(catalogTemplates.map((t) => t.vendor).filter(Boolean))].sort();
   const systems = [...new Set(catalogTemplates.map((t) => t.system).filter(Boolean))].sort();
@@ -3884,21 +3886,60 @@ function catalogFiltersMarkup() {
   const row = (label, chips) => `<div class="catalog-filter-row">
     <span>${esc(label)}</span>${chips}</div>`;
   return `<div class="catalog-filters">
-    <input type="search" data-template-query value="${esc(catalogFilter.query)}"
-           placeholder="${esc(t('catalog.searchPlaceholder'))}" autocomplete="off">
-    ${row(t('catalog.filterVendor'), [
-      chip('vendor', '', catalogFilter.vendor === '', t('catalog.all')),
-      ...vendors.map((v) => chip('vendor', v, catalogFilter.vendor === v, v)),
-    ].join(''))}
-    ${row(t('catalog.filterSystem'), [
-      chip('system', '', catalogFilter.system === '', t('catalog.all')),
-      ...systems.map((v) => chip('system', v, catalogFilter.system === v, t(`catalog.system.${v}`))),
-    ].join(''))}
-    ${row(t('catalog.filterTag'), [
-      chip('tag-all', '', catalogFilter.tags.size === 0, t('catalog.all')),
-      ...tags.map((v) => chip('tag', v, catalogFilter.tags.has(v), t(`catalog.tag.${v}`))),
-    ].join(''))}
+    <div class="catalog-filter-bar">
+      <input type="search" data-template-query value="${esc(catalogFilter.query)}"
+             placeholder="${esc(t('catalog.searchPlaceholder'))}" autocomplete="off">
+      <button type="button" class="btn" data-filter-toggle aria-expanded="false">
+        ${esc(t('catalog.filters'))} <span class="filter-count" data-filter-count></span>
+      </button>
+    </div>
+    <div class="catalog-filter-active" id="catalog-filter-active"></div>
+    <div class="catalog-filter-panel" id="catalog-filter-panel" hidden>
+      ${row(t('catalog.filterVendor'), vendors.map((v) =>
+        chip('vendor', v, catalogFilter.vendor === v, v)).join(''))}
+      ${row(t('catalog.filterSystem'), systems.map((v) =>
+        chip('system', v, catalogFilter.system === v, t(`catalog.system.${v}`))).join(''))}
+      ${row(t('catalog.filterTag'), tags.map((v) =>
+        chip('tag', v, catalogFilter.tags.has(v), t(`catalog.tag.${v}`))).join(''))}
+    </div>
   </div>`;
+}
+
+/** syncCatalogFilterUI draws the count and the active chips, and the panel state. */
+function syncCatalogFilterUI() {
+  const count = (catalogFilter.vendor ? 1 : 0) + (catalogFilter.system ? 1 : 0) + catalogFilter.tags.size;
+  const badge = $('[data-filter-count]');
+  if (badge) badge.textContent = count ? String(count) : '';
+  const active = $('#catalog-filter-active');
+  if (active) {
+    const chips = [];
+    if (catalogFilter.vendor) {
+      chips.push(`<button type="button" class="chip active" data-clear-vendor>${esc(catalogFilter.vendor)} ×</button>`);
+    }
+    if (catalogFilter.system) {
+      chips.push(`<button type="button" class="chip active" data-clear-system>${esc(t(`catalog.system.${catalogFilter.system}`))} ×</button>`);
+    }
+    for (const tag of catalogFilter.tags) {
+      chips.push(`<button type="button" class="chip active" data-clear-tag="${esc(tag)}">${esc(t(`catalog.tag.${tag}`))} ×</button>`);
+    }
+    if (chips.length) {
+      chips.push(`<button type="button" class="btn btn-small" data-clear-all>${esc(t('catalog.clearFilters'))}</button>`);
+    }
+    active.innerHTML = chips.join('');
+  }
+  const panel = $('#catalog-filter-panel');
+  if (panel) panel.hidden = !catalogFilterOpen;
+  const toggle = $('[data-filter-toggle]');
+  if (toggle) toggle.setAttribute('aria-expanded', String(catalogFilterOpen));
+  for (const chip of $$('#modal-catalog [data-filter-vendor]')) {
+    chip.classList.toggle('active', chip.dataset.filterVendor === catalogFilter.vendor);
+  }
+  for (const chip of $$('#modal-catalog [data-filter-system]')) {
+    chip.classList.toggle('active', chip.dataset.filterSystem === catalogFilter.system);
+  }
+  for (const chip of $$('#modal-catalog [data-filter-tag]')) {
+    chip.classList.toggle('active', catalogFilter.tags.has(chip.dataset.filterTag));
+  }
 }
 
 /** filteredTemplates applies the search box and the three chips. */
@@ -3921,18 +3962,17 @@ function filteredTemplates() {
 
 /** templateCardMarkup is one device template in the grid. */
 function templateCardMarkup(template) {
-  const meta = [
-    template.system ? `<span class="pill">${esc(t(`catalog.system.${template.system}`))}</span>` : '',
-    ...(template.tags || []).map((tag) => `<span class="pill">${esc(t(`catalog.tag.${tag}`))}</span>`),
-  ].join('');
+  const sub = [
+    template.vendor, template.product,
+    template.system ? t(`catalog.system.${template.system}`) : '',
+  ].filter(Boolean).join(' · ');
   return `
     <button type="button" class="template-card" data-template-id="${esc(template.id)}">
-      <span class="template-icon">${iconUI.iconMarkup(template.icon, { size: 22 })}</span>
+      <span class="template-icon">${iconUI.iconMarkup(template.icon, { size: 24 })}</span>
       <span class="template-text">
         <strong>${esc(t(template.name_key))}</strong>
-        <small>${esc([template.vendor, template.product].filter(Boolean).join(' · '))}</small>
+        <small>${esc(sub)}</small>
         <span class="template-description">${esc(t(template.description_key))}</span>
-        <span class="template-meta">${meta}</span>
       </span>
       <span class="pill">${esc(t('catalog.checks', { count: template.checks.length }))}</span>
     </button>`;
@@ -3946,17 +3986,7 @@ function renderTemplateGrid() {
   grid.innerHTML = list.length
     ? list.map(templateCardMarkup).join('')
     : `<p class="muted">${esc(t('catalog.noTemplates'))}</p>`;
-  for (const chip of $$('#modal-catalog [data-filter-vendor]')) {
-    chip.classList.toggle('active', chip.dataset.filterVendor === catalogFilter.vendor);
-  }
-  for (const chip of $$('#modal-catalog [data-filter-system]')) {
-    chip.classList.toggle('active', chip.dataset.filterSystem === catalogFilter.system);
-  }
-  for (const chip of $$('#modal-catalog [data-filter-tag]')) {
-    chip.classList.toggle('active', catalogFilter.tags.has(chip.dataset.filterTag));
-  }
-  const allTags = $('#modal-catalog [data-filter-tag-all]');
-  if (allTags) allTags.classList.toggle('active', catalogFilter.tags.size === 0);
+  syncCatalogFilterUI();
 }
 
 /**
@@ -4209,20 +4239,45 @@ document.addEventListener('click', (event) => {
     setCatalogTab('templates');
     return;
   }
+  if (event.target.closest('[data-filter-toggle]')) {
+    catalogFilterOpen = !catalogFilterOpen;
+    syncCatalogFilterUI();
+    return;
+  }
+  if (event.target.closest('[data-clear-vendor]')) {
+    catalogFilter.vendor = '';
+    renderTemplateGrid();
+    return;
+  }
+  if (event.target.closest('[data-clear-system]')) {
+    catalogFilter.system = '';
+    renderTemplateGrid();
+    return;
+  }
+  const clearTag = event.target.closest('[data-clear-tag]');
+  if (clearTag) {
+    catalogFilter.tags.delete(clearTag.dataset.clearTag);
+    renderTemplateGrid();
+    return;
+  }
+  if (event.target.closest('[data-clear-all]')) {
+    catalogFilter.vendor = '';
+    catalogFilter.system = '';
+    catalogFilter.tags.clear();
+    renderTemplateGrid();
+    return;
+  }
   const vendor = event.target.closest('[data-filter-vendor]');
   if (vendor) {
-    catalogFilter.vendor = vendor.dataset.filterVendor;
+    const value = vendor.dataset.filterVendor;
+    catalogFilter.vendor = catalogFilter.vendor === value ? '' : value;
     renderTemplateGrid();
     return;
   }
   const system = event.target.closest('[data-filter-system]');
   if (system) {
-    catalogFilter.system = system.dataset.filterSystem;
-    renderTemplateGrid();
-    return;
-  }
-  if (event.target.closest('[data-filter-tag-all]')) {
-    catalogFilter.tags.clear();
+    const value = system.dataset.filterSystem;
+    catalogFilter.system = catalogFilter.system === value ? '' : value;
     renderTemplateGrid();
     return;
   }

@@ -102,6 +102,11 @@ here and what the release says are the same document.
 - **The template dialog closes after creating its sensors.** A new sensor goes
   back to the dashboard with the new cards on it, rather than leaving the
   catalogue open over a form that is no longer being filled.
+- **The template filters are one button again.** The search box and a single
+  **Filter** button; vendor, system and "watches" open in a small panel, and what
+  is chosen is shown as removable chips under the bar. The cards themselves say
+  the vendor, product and system on one line instead of scattering tag pills under
+  every description; the full tag list stays in the template's detail view.
 
 ## [0.2.3] - 2026-10-20
 

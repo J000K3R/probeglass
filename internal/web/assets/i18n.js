@@ -236,6 +236,8 @@ const en = {
   'catalog.filterVendor': 'Vendor',
   'catalog.filterSystem': 'System',
   'catalog.filterTag': 'Watches',
+  'catalog.filters': 'Filters',
+  'catalog.clearFilters': 'Clear filters',
   'catalog.all': 'All',
   'catalog.checkDevice': 'Check device',
   'catalog.checking': 'Checking…',

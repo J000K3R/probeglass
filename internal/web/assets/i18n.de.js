@@ -238,6 +238,8 @@ export const de = {
   'catalog.filterVendor': 'Hersteller',
   'catalog.filterSystem': 'System',
   'catalog.filterTag': 'Überwacht',
+  'catalog.filters': 'Filter',
+  'catalog.clearFilters': 'Filter löschen',
   'catalog.all': 'Alle',
   'catalog.checkDevice': 'Gerät prüfen',
   'catalog.checking': 'Prüfe…',
