@@ -313,6 +313,54 @@ func TestHTTPRunAgainstLocalServer(t *testing.T) {
 	}
 }
 
+func TestHTTPJSONPresenceIsAStatusCheck(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[
+			{"name":"running","performance":{"cpu":{"usage":1}}},
+			{"name":"stopped","performance":null}
+		]`))
+	}))
+	defer srv.Close()
+
+	cases := []struct {
+		name    string
+		options model.Options
+		wantOK  bool
+	}{
+		{
+			name: "an object is present",
+			options: model.Options{
+				"json_match_key": "name", "json_match_value": "running",
+				"json_path": "performance", "json_present": true,
+			},
+			wantOK: true,
+		},
+		{
+			name: "null means the container is not running",
+			options: model.Options{
+				"json_match_key": "name", "json_match_value": "stopped",
+				"json_path": "performance", "json_present": true,
+			},
+			wantOK: false,
+		},
+	}
+	for _, tc := range cases {
+		c := validSensor(model.Sensor{Name: "docker", Type: model.SensorHTTP,
+			Target: srv.URL, Options: tc.options})
+		if err := (HTTPProber{}).Validate(c); err != nil {
+			t.Errorf("%s: validate: %v", tc.name, err)
+			continue
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		out := HTTPProber{}.Run(ctx, c)
+		cancel()
+		if out.Success != tc.wantOK {
+			t.Errorf("%s: success = %v, want %v (%s)", tc.name, out.Success, tc.wantOK, out.Message)
+		}
+	}
+}
+
 func TestHTTPFailureIsInformative(t *testing.T) {
 	// Nothing listens on this port: a closed port on loopback fails immediately
 	// instead of waiting for a timeout.
