@@ -277,6 +277,7 @@ func (s *Server) Handler() http.Handler {
 	adm("DELETE /api/icons/{id}", s.handleDeleteIcon)
 	adm("PUT /api/groups/{name}", s.handleSetGroup)
 	adm("DELETE /api/groups/{name}", s.handleForgetGroup)
+	adm("POST /api/groups/{name}/delete", s.handleDeleteGroup)
 	adm("PUT /api/tags/{name}", s.handleSetTag)
 	adm("DELETE /api/tags/{name}", s.handleForgetTag)
 	// Maintenance windows are configuration, not an action taken during an outage:

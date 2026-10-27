@@ -92,6 +92,29 @@ func openBrowser(t *testing.T, browser string) (context.Context, func()) {
 //
 // Advanced mode is chosen rather than left to the default because the settings
 // panes these tests use — the sites and the tile source — are part of it.
+// openNewSensor goes through the catalogue that New sensor now opens first:
+// choose the Sensors tab, pick a type, and wait for the editor.
+func openNewSensor(t *testing.T, ctx context.Context, dir, sensorType string) {
+	t.Helper()
+	if err := withTimeout(ctx, func(tctx context.Context) error {
+		return chromedp.Do(tctx,
+			chromedp.Click(`#new-sensor`),
+			chromedp.Poll[chromedp.Void](
+				`!!document.querySelector('#modal-catalog [data-catalog-tab="sensors"]')`,
+				chromedp.WithPollingTimeout(15*time.Second)),
+			chromedp.Click(`#modal-catalog [data-catalog-tab="sensors"]`),
+			chromedp.Poll[chromedp.Void](
+				fmt.Sprintf(`!!document.querySelector('#modal-catalog [data-sensor-type="%s"]')`, sensorType),
+				chromedp.WithPollingTimeout(15*time.Second)),
+			chromedp.Click(fmt.Sprintf(`#modal-catalog [data-sensor-type="%s"]`, sensorType)),
+			chromedp.WaitVisible(`#modal[open] [data-type-open]`),
+		)
+	}); err != nil {
+		capture(t, ctx, dir, "new-sensor-"+sensorType)
+		t.Fatalf("could not open a new %s sensor: %v", sensorType, err)
+	}
+}
+
 func firstRun(t *testing.T, ctx context.Context, base, dir string) {
 	t.Helper()
 	err := withTimeout(ctx, func(tctx context.Context) error {
@@ -2304,10 +2327,9 @@ func readWhereTheSensorStands(name string) string {
 // for the form it opens.
 func openNewSensorForm(t *testing.T, ctx context.Context, dir string) {
 	t.Helper()
+	openNewSensor(t, ctx, dir, "http")
 	if err := withTimeout(ctx, func(tctx context.Context) error {
 		return chromedp.Do(tctx,
-			chromedp.WaitVisible(`#new-sensor`),
-			chromedp.Click(`#new-sensor`),
 			chromedp.WaitVisible(`#modal [data-pick-field="site"] [data-pick-open]`),
 		)
 	}); err != nil {

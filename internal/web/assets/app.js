@@ -3718,9 +3718,18 @@ function mountSensorTypePicker() {
     const field = query.closest('[data-type-field]');
     const first = field?.querySelector('[data-sensor-type]:not([hidden])');
     if (!first) return;
-    if (field.closest('#modal-catalog') && catalogForm) {
+    if (field.closest('#modal-catalog')) {
+      const type = first.dataset.sensorType;
+      if (!catalogForm) {
+        closeCatalog();
+        const options = type === 'snmp'
+          ? { ...catalogSNMP }
+          : (type === 'http' && catalogToken ? { bearer_token: catalogToken } : {});
+        openSensorEditor(null, type, { ...catalogDevice, options });
+        return;
+      }
       const form = catalogForm;
-      applySensorType(form, first.dataset.sensorType);
+      applySensorType(form, type);
       // Closing a modal dialog hands focus back to the button that opened it.
       // If that happens while Enter is still being resolved, the same key
       // activates the button and opens the catalogue again. Wait for the keyup,
@@ -3772,6 +3781,9 @@ let catalogTemplates = null;
 let catalogDetail = null;
 let catalogChecks = [];
 let catalogCredentialFields = [];
+let catalogDevice = { name: '', target: '', group: '' };
+let catalogSNMP = {};
+let catalogToken = '';
 
 // The SNMP fields a template needs, in the order the sensor form draws them.
 const CATALOG_CREDENTIAL_KEYS = new Set([
@@ -3788,6 +3800,11 @@ async function openSensorCatalog(form) {
   catalogFilter.vendor = '';
   catalogFilter.system = '';
   catalogFilter.tags.clear();
+  if (form === null) {
+    catalogDevice = { name: '', target: '', group: '' };
+    catalogSNMP = {};
+    catalogToken = '';
+  }
   if (!catalogTemplates) {
     try {
       const data = await api('/api/sensor-templates');
@@ -3840,8 +3857,19 @@ function catalogTemplatesMarkup() {
   if (!catalogTemplates?.length) return `<p class="muted">${esc(t('catalog.templateHint'))}</p>`;
   return `
     <p class="panel-hint">${esc(t('catalog.templateHint'))}</p>
+    ${catalogDeviceSummary()}
     ${catalogFiltersMarkup()}
     <div class="template-grid" id="template-grid"></div>`;
+}
+
+/** catalogDeviceSummary shows the device the next template will use. */
+function catalogDeviceSummary() {
+  if (catalogForm !== null || !catalogDevice.target) return '';
+  return `<p class="catalog-device-summary">
+    ${esc(t('catalog.device'))}: <b>${esc(catalogDevice.name || catalogDevice.target)}</b>
+    · ${esc(catalogDevice.target)}
+    <button type="button" class="btn btn-small" data-device-reset>${esc(t('catalog.changeDevice'))}</button>
+  </p>`;
 }
 
 /** catalogFiltersMarkup is the strip above the templates: search and chips. */
@@ -3978,7 +4006,10 @@ function renderCatalogChecks() {
 function openTemplateDetail(template) {
   catalogDetail = template;
   catalogCredentialFields = typeDef('snmp').fields.filter((f) => CATALOG_CREDENTIAL_KEYS.has(f.key));
-  const name = t(template.name_key);
+  const standalone = catalogForm === null;
+  const name = (standalone && catalogDevice.name) || t(template.name_key);
+  const deviceTarget = standalone ? catalogDevice.target : '';
+  const deviceGroup = standalone ? (catalogDevice.group || catalogDevice.name || name) : name;
   const meta = [
     template.system ? t(`catalog.system.${template.system}`) : '',
     ...(template.tags || []).map((tag) => t(`catalog.tag.${tag}`)),
@@ -3990,14 +4021,14 @@ function openTemplateDetail(template) {
   const hasSNMP = template.checks.some((check) => check.type === 'snmp');
   catalogChecks = template.checks.slice();
   const fields = catalogCredentialFields.map((f) => `
-    <div class="option-slot" data-option-key="${esc(f.key)}">${optionField(f, { version: '2c' })}</div>`).join('');
+    <div class="option-slot" data-option-key="${esc(f.key)}">${optionField(f, { version: '2c', ...catalogSNMP })}</div>`).join('');
   const credential = template.credential ? `
     <section class="catalog-credentials">
       <h3>${esc(t('catalog.credentials'))}</h3>
       <label class="field"><span>${esc(t(template.credential.label_key))}
         ${template.credential.help_key ? helpButton(template.credential.help_key) : ''}</span>
         <input id="catalog-credential" type="${template.credential.secret ? 'password' : 'text'}"
-               autocomplete="off" spellcheck="false"></label>
+               value="${esc(catalogToken)}" autocomplete="off" spellcheck="false"></label>
     </section>` : '';
   const snmp = hasSNMP ? `
     <section class="catalog-credentials">
@@ -4020,10 +4051,10 @@ function openTemplateDetail(template) {
       <label class="field"><span>${esc(t('catalog.deviceName'))}</span>
         <input id="catalog-name" type="text" value="${esc(name)}" autocomplete="off"></label>
       <label class="field"><span>${esc(t('catalog.address'))}</span>
-        <input id="catalog-target" type="text" placeholder="192.168.1.2" autocomplete="off" spellcheck="false"></label>
+        <input id="catalog-target" type="text" value="${esc(deviceTarget)}" placeholder="192.168.1.2" autocomplete="off" spellcheck="false"></label>
     </div>
     <label class="field"><span>${esc(t('catalog.group'))}</span>
-      <input id="catalog-group" type="text" value="${esc(name)}" autocomplete="off"></label>
+      <input id="catalog-group" type="text" value="${esc(deviceGroup)}" autocomplete="off"></label>
     <p class="muted small">${esc(t('catalog.groupHint'))}</p>
     <fieldset class="field catalog-checks" id="catalog-checks">
       <legend id="catalog-checks-legend">${esc(t('catalog.checks', { count: catalogChecks.length }))}</legend>
@@ -4154,8 +4185,19 @@ async function applyCatalogTemplate() {
   });
   try {
     await api('/api/sensors/bulk', { method: 'POST', body: { sensors } });
-    // The catalogue is only opened from a sensor form, and a template is not
-    // that form: close the half-filled new sensor behind it as well.
+    if (catalogForm === null) {
+      // Standalone: the first template is where the device was entered. Keep it
+      // for the next template and stay in the catalogue, so a device can receive
+      // several sets of sensors without typing its address again.
+      catalogDevice = { name, target, group };
+      catalogSNMP = credentials;
+      catalogToken = credentialValue;
+      toast(t('catalog.added', { count: sensors.length }));
+      await refresh({ background: true });
+      setCatalogTab('templates');
+      return;
+    }
+    // Opened from a sensor form: close the half-filled new sensor behind it too.
     closeCatalog();
     $('#modal').close();
     toast(t('catalog.added', { count: sensors.length }));
@@ -4171,6 +4213,13 @@ async function applyCatalogTemplate() {
 document.addEventListener('click', (event) => {
   if (!event.target.closest('#modal-catalog')) return;
 
+  if (event.target.closest('[data-device-reset]')) {
+    catalogDevice = { name: '', target: '', group: '' };
+    catalogSNMP = {};
+    catalogToken = '';
+    setCatalogTab('templates');
+    return;
+  }
   const vendor = event.target.closest('[data-filter-vendor]');
   if (vendor) {
     catalogFilter.vendor = vendor.dataset.filterVendor;
@@ -4217,11 +4266,20 @@ document.addEventListener('click', (event) => {
     return;
   }
   const tile = event.target.closest('#modal-catalog [data-sensor-type]');
-  if (tile && catalogForm) {
-    const form = catalogForm;
-    applySensorType(form, tile.dataset.sensorType);
+  if (tile) {
+    const type = tile.dataset.sensorType;
+    if (catalogForm) {
+      const form = catalogForm;
+      applySensorType(form, type);
+      closeCatalog();
+      setTimeout(() => form.querySelector('[data-type-open]')?.focus(), 0);
+      return;
+    }
+    const options = type === 'snmp'
+      ? { ...catalogSNMP }
+      : (type === 'http' && catalogToken ? { bearer_token: catalogToken } : {});
     closeCatalog();
-    setTimeout(() => form.querySelector('[data-type-open]')?.focus(), 0);
+    openSensorEditor(null, type, { ...catalogDevice, options });
     return;
   }
   if (event.target.closest('#catalog-add')) applyCatalogTemplate();
@@ -4645,23 +4703,29 @@ function sensorFormMarkup(sensor) {
       <span>${withHelp(t('sensor.enabled'), 'help.sensor.enabled')}</span></label>`;
 }
 
-async function openSensorEditor(existing = null) {
+async function openSensorEditor(existing = null, presetType = null, prefill = null) {
   await loadChannels(existing === null);
   // The tag field draws the symbols and colours from the tag settings, and the
   // picker offers "New tag…"; both need the list before the form is built.
   await loadTags();
   const isNew = existing === null;
   const form = $('#modal-form');
+  const draft = existing || (presetType ? { type: presetType, options: prefill?.options || {} } : null);
 
   modal.open({
     title: isNew ? t('sensor.new') : t('sensor.edit'),
-    body: sensorFormMarkup(existing),
+    body: sensorFormMarkup(draft),
     mode: 'sensor',
     id: existing ? existing.id : '',
     showTest: true,
   });
 
-  form.dataset.lastType = existing?.type || 'http';
+  form.dataset.lastType = presetType || existing?.type || 'http';
+  if (prefill) {
+    if (prefill.name) form.elements.name.value = prefill.name;
+    if (prefill.target && form.elements.target) form.elements.target.value = prefill.target;
+    if (prefill.group && form.elements.group) form.elements.group.value = prefill.group;
+  }
   syncConditionalOptions(typeDef(form.dataset.lastType).fields);
   // The tiles call applySensorType directly; the hidden input keeps a change
   // from a script — or from a test — working the way the old select did.
@@ -4737,9 +4801,9 @@ async function saveSensor(payload, id) {
   return saved;
 }
 
-$('#new-sensor').addEventListener('click', () => openSensorEditor(null));
+$('#new-sensor').addEventListener('click', () => openSensorCatalog(null));
 document.addEventListener('click', (event) => {
-  if (event.target.closest('[data-action="new-sensor"]')) openSensorEditor(null);
+  if (event.target.closest('[data-action="new-sensor"]')) openSensorCatalog(null);
 });
 
 // Modal plumbing: one form, several modes.
@@ -5953,6 +6017,74 @@ async function forgetLabel(kind, name, row) {
   toast(t(kind === 'tag' ? 'tags.forgotten' : 'groups.forgotten'));
 }
 
+let groupDeleteName = '';
+
+/** openGroupDelete asks what should happen to a group's sensors. */
+async function openGroupDelete(name) {
+  groupDeleteName = name;
+  let sensors = [];
+  try {
+    sensors = (await api('/api/sensors')).filter((sensor) => sensor.group === name);
+  } catch (err) {
+    toast(err.message, 'error');
+    return;
+  }
+  const managed = sensors.filter((sensor) => sensor.managed).length;
+  const rows = sensors.map((sensor) => `
+    <label class="group-delete-row">
+      <input type="checkbox" data-delete-sensor="${sensor.id}"
+             ${sensor.managed ? 'disabled' : 'checked'}>
+      <span>${esc(sensor.name)}</span>
+      ${sensor.managed ? `<span class="pill">${esc(t('groups.deleteManaged'))}</span>` : ''}
+    </label>`).join('');
+  $('#group-delete-title').textContent = t('groups.deleteTitle', { name });
+  $('#group-delete-body').innerHTML = `
+    <p class="muted small">${esc(t('groups.deleteHint'))}</p>
+    <fieldset class="field">
+      <legend>${esc(t('settings.sensors'))}</legend>
+      <div class="choice-group">
+        <label class="chip chip-choice"><input type="radio" name="group-delete-mode" value="keep" checked><span>${esc(t('groups.deleteKeep'))}</span></label>
+        <label class="chip chip-choice"><input type="radio" name="group-delete-mode" value="selected"${sensors.length ? '' : ' disabled'}><span>${esc(t('groups.deleteSelected'))}</span></label>
+        <label class="chip chip-choice"><input type="radio" name="group-delete-mode" value="all"${sensors.length ? '' : ' disabled'}><span>${esc(t('groups.deleteAll', { count: sensors.length }))}</span></label>
+      </div>
+    </fieldset>
+    ${sensors.length ? `<div class="group-delete-list" id="group-delete-list" hidden>${rows}</div>` : `<p class="muted small">${esc(t('groups.deleteNoSensors'))}</p>`}
+    ${managed ? `<p class="muted small">${esc(t('groups.deleteManaged'))}: ${managed}</p>` : ''}`;
+  $('#group-delete-error').textContent = '';
+  $('#group-delete-confirm').textContent = t('groups.deleteConfirm');
+  $('#modal-group-delete').showModal();
+}
+
+async function deleteGroupConfirmed() {
+  if (!groupDeleteName) return;
+  const mode = document.querySelector('input[name="group-delete-mode"]:checked')?.value || 'keep';
+  const ids = mode === 'selected'
+    ? $$('#group-delete-list [data-delete-sensor]:checked').map((el) => Number(el.dataset.deleteSensor))
+    : [];
+  if (mode === 'selected' && ids.length === 0) {
+    $('#group-delete-error').textContent = t('groups.deleteSelectedNone');
+    return;
+  }
+  try {
+    await api(`/api/groups/${encodeURIComponent(groupDeleteName)}/delete`, {
+      method: 'POST', body: { mode, sensor_ids: ids },
+    });
+    $('#modal-group-delete').close();
+    await afterLabelChange('group');
+    toast(t('groups.deleted'));
+  } catch (err) {
+    $('#group-delete-error').textContent = err.message;
+  }
+}
+
+document.addEventListener('change', (event) => {
+  const mode = event.target.closest('input[name="group-delete-mode"]');
+  if (!mode) return;
+  const list = $('#group-delete-list');
+  if (list) list.hidden = mode.value !== 'selected';
+});
+$('#group-delete-confirm').addEventListener('click', deleteGroupConfirmed);
+
 /**
  * afterLabelChange redraws every place a group or a tag appears.
  *
@@ -6972,8 +7104,7 @@ async function onSettingsClick(event) {
       const group = iconUI.groupOf(state.groups, button.dataset.name);
       openLabelEditor('group', button.dataset.name, group);
     } else if (action === 'group-forget') {
-      const group = iconUI.groupOf(state.groups, button.dataset.name);
-      await forgetLabel('group', button.dataset.name, group);
+      await openGroupDelete(button.dataset.name);
     } else if (action === 'tag-new') {
       openLabelEditor('tag', '', null, { creating: true });
     } else if (action === 'tag-edit') {

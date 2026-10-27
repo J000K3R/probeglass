@@ -8,7 +8,9 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/j000k3r/probeglass/internal/event"
 	"github.com/j000k3r/probeglass/internal/icon"
 	"github.com/j000k3r/probeglass/internal/model"
 	"github.com/j000k3r/probeglass/internal/store"
@@ -442,6 +444,91 @@ func (s *Server) handleForgetGroup(w http.ResponseWriter, r *http.Request) {
 	}
 	s.log.Info("group settings forgotten", "name", name, "sensors", count)
 	writeJSON(w, http.StatusOK, map[string]any{"forgotten": name, "sensors": count})
+}
+
+// handleDeleteGroup answers POST /api/groups/{name}/delete.
+//
+// A group is a word on its sensors, so "delete the group" is really a question
+// about those sensors. mode "keep" removes only the group's settings (the old
+// DELETE behaviour); "all" deletes every sensor carrying the word; "selected"
+// deletes the ids given, each of which must belong to the group. Sensors declared
+// in the configuration file are refused, because only the file may remove them.
+func (s *Server) handleDeleteGroup(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	var in struct {
+		Mode      string  `json:"mode"`
+		SensorIDs []int64 `json:"sensor_ids"`
+	}
+	if err := decodeJSON(r, &in); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body: %s", err.Error())
+		return
+	}
+	if in.Mode == "" {
+		in.Mode = "keep"
+	}
+	all, err := s.store.ListSensors(r.Context())
+	if err != nil {
+		s.fail(w, err, http.StatusInternalServerError, "could not load sensors")
+		return
+	}
+	inGroup := make(map[int64]model.Sensor)
+	for _, c := range all {
+		if c.Group == name {
+			inGroup[c.ID] = c
+		}
+	}
+
+	var deleting []model.Sensor
+	switch in.Mode {
+	case "keep":
+	case "all":
+		for _, c := range inGroup {
+			deleting = append(deleting, c)
+		}
+	case "selected":
+		if len(in.SensorIDs) == 0 {
+			writeError(w, http.StatusBadRequest, "no sensors were selected")
+			return
+		}
+		for _, id := range in.SensorIDs {
+			c, ok := inGroup[id]
+			if !ok {
+				writeError(w, http.StatusBadRequest, "sensor %d is not in the group %q", id, name)
+				return
+			}
+			deleting = append(deleting, c)
+		}
+	default:
+		writeError(w, http.StatusBadRequest, "mode must be keep, selected or all, got %q", in.Mode)
+		return
+	}
+	for _, c := range deleting {
+		if c.Managed {
+			writeError(w, http.StatusConflict,
+				"sensor %q is declared in the configuration file and can only be removed there", c.Name)
+			return
+		}
+	}
+	for _, c := range deleting {
+		if err := s.store.DeleteSensor(r.Context(), c.ID); err != nil {
+			s.fail(w, err, statusForStoreError(err), "%s", err.Error())
+			return
+		}
+		s.sched.Forget(c.ID)
+		s.broker.Publish(event.Event{Kind: event.KindSensor, SensorID: c.ID, TS: time.Now().UTC()})
+	}
+	remaining, err := s.store.ForgetGroup(r.Context(), name)
+	if err != nil {
+		s.fail(w, err, http.StatusInternalServerError, "could not forget the group")
+		return
+	}
+	if err := s.sched.Reconcile(r.Context()); err != nil {
+		s.log.Error("reconcile after group delete", "error", err)
+	}
+	s.log.Info("group deleted", "name", name, "mode", in.Mode, "deleted", len(deleting), "remaining", remaining)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"forgotten": name, "deleted": len(deleting), "sensors": remaining,
+	})
 }
 
 // ---------------------------------------------------------------------------

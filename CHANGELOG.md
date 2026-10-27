@@ -54,6 +54,15 @@ here and what the release says are the same document.
   disks, pools, Docker and LXC containers, VMs and hardware sensors it actually
   has, offering each as a tickable sensor. The template dialog now opens on the
   template catalogue; single sensor types are one tab away.
+- **New sensor starts at the catalogue, and a device carries across templates.**
+  The button opens the template catalogue instead of an empty sensor form; the
+  single sensor types are one tab away. The address, name, group and credentials
+  entered for one template are reused by the next, so a device can receive several
+  sets of sensors without typing its address again.
+- **A group can be deleted with its sensors.** The group dialog offers to keep the
+  sensors and remove only the label, delete selected sensors, or delete all of
+  them. Sensors declared in the configuration file are refused, because only the
+  file may remove those.
 - **A `/metrics` endpoint for Prometheus.** Sensor status, the 24-hour, 7-day and
   30-day uptime ratios, the last latency and the open incidents, in the Prometheus
   text format, so a homelab that already runs a monitoring stack can scrape

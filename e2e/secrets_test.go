@@ -10,7 +10,6 @@ import (
 	"context"
 	"regexp"
 	"testing"
-	"time"
 
 	"github.com/chromedp/chromedp"
 )
@@ -26,16 +25,9 @@ func TestSNMPSecretsCanBeGenerated(t *testing.T) {
 
 	firstRun(t, ctx, base, dir)
 
+	openNewSensor(t, ctx, dir, "snmp")
 	if err := withTimeout(ctx, func(tctx context.Context) error {
 		return chromedp.Do(tctx,
-			chromedp.Click(`#new-sensor`),
-			chromedp.WaitVisible(`#modal[open] [data-type-open]`),
-			chromedp.Click(`#modal [data-type-open]`),
-			chromedp.Click(`#modal-catalog [data-catalog-tab="sensors"]`),
-			chromedp.Poll[chromedp.Void](
-				`!!document.querySelector('#modal-catalog [data-sensor-type="snmp"]')`,
-				chromedp.WithPollingTimeout(15*time.Second)),
-			chromedp.Click(`#modal-catalog [data-sensor-type="snmp"]`),
 			chromedp.WaitVisible(`#modal [name="opt_oid"]`),
 		)
 	}); err != nil {

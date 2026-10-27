@@ -454,6 +454,19 @@
   </div>
 </dialog>
 
+<dialog id="modal-group-delete" class="sheet sheet-narrow" aria-labelledby="group-delete-title">
+  <div class="sheet-head">
+    <h2 id="group-delete-title"></h2>
+    <button class="icon-btn" type="button" data-close data-i18n-aria="common.close" aria-label="Close">&times;</button>
+  </div>
+  <div class="sheet-body" id="group-delete-body"></div>
+  <p id="group-delete-error" class="form-error" role="alert"></p>
+  <div class="sheet-foot">
+    <button class="btn" type="button" data-close data-i18n="common.cancel">Cancel</button>
+    <button class="btn btn-danger" type="button" id="group-delete-confirm"></button>
+  </div>
+</dialog>
+
 <!-- --------------------------------------------------------- widget picker -->
 <!-- What else there is to put in the header. It is a window of its own rather
      than dashed tiles inside the strip: the strip is what the dashboard looks

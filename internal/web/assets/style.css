@@ -1534,6 +1534,18 @@ button.widget-pick-label {
 .catalog-check small { margin-left: auto; }
 .catalog-credentials { display: grid; gap: var(--gap); }
 .catalog-credentials > h3 { margin: 0; }
+.group-delete-list {
+  display: grid;
+  gap: var(--sp-1);
+  max-height: 16rem;
+  overflow-y: auto;
+  padding: var(--sp-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.group-delete-row { display: flex; align-items: center; gap: var(--sp-2); }
+.group-delete-row .pill { margin-left: auto; }
+
 
 #detail-body { padding: var(--sp-4); display: grid; gap: var(--sp-3); }
 .detail-sub { font-family: var(--mono); font-size: var(--text-4); }

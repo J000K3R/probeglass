@@ -93,10 +93,9 @@ func TestThePickerPutsASymbolOnASensor(t *testing.T) {
 
 	firstRun(t, ctx, base, dir)
 
+	openNewSensor(t, ctx, dir, "http")
 	if err := withTimeout(ctx, func(tctx context.Context) error {
 		return chromedp.Do(tctx,
-			chromedp.WaitVisible(`#new-sensor`),
-			chromedp.Click(`#new-sensor`),
 			chromedp.WaitVisible(`#modal[open] [data-icon-open]`),
 			// The value before anything is chosen: the empty string, which is what
 			// every row had before this feature existed.
@@ -185,10 +184,9 @@ func TestAnUploadedIconIsDrawnAsAnImage(t *testing.T) {
 
 	firstRun(t, ctx, base, dir)
 
+	openNewSensor(t, ctx, dir, "http")
 	if err := withTimeout(ctx, func(tctx context.Context) error {
 		return chromedp.Do(tctx,
-			chromedp.WaitVisible(`#new-sensor`),
-			chromedp.Click(`#new-sensor`),
 			chromedp.WaitVisible(`#modal[open] [data-icon-open]`),
 			chromedp.Click(`[data-icon-open]`),
 			// The label and not the input: the input is hidden behind it, and WaitVisible

@@ -32,9 +32,9 @@ func TestTheOnlineIconSearchFindsAndImports(t *testing.T) {
 
 	firstRun(t, ctx, base, dir)
 
+	openNewSensor(t, ctx, dir, "http")
 	if err := withTimeout(ctx, func(tctx context.Context) error {
 		return chromedp.Do(tctx,
-			chromedp.Click(`#new-sensor`),
 			chromedp.WaitVisible(`#modal[open] [data-icon-open]`),
 			chromedp.Click(`[data-icon-open]`),
 			chromedp.WaitVisible(`.icon-panel [data-icon-query]`),

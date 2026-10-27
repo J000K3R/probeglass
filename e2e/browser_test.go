@@ -247,9 +247,9 @@ func TestDashboardIsActuallyUsable(t *testing.T) {
 	// so a panel left on the body is painted underneath the dialog's backdrop
 	// and never seen. The button then looks dead while the DOM says it worked,
 	// which is why this asks what is under the pointer and not what exists.
+	openNewSensor(t, ctx, screenshotDir, "http")
 	err = withTimeout(ctx, func(tctx context.Context) error {
 		return chromedp.Do(tctx,
-			chromedp.Click(`#new-sensor`),
 			chromedp.WaitVisible(`#modal .help-dot`),
 			chromedp.Click(`#modal .help-dot`),
 			chromedp.WaitVisible(`.help-pop`),
@@ -768,15 +768,7 @@ func TestTheSensorFormPicksTypesAndOptionsWithoutSelects(t *testing.T) {
 
 	firstRun(t, ctx, base, dir)
 
-	if err := withTimeout(ctx, func(tctx context.Context) error {
-		return chromedp.Do(tctx,
-			chromedp.Click(`#new-sensor`),
-			chromedp.WaitVisible(`#modal[open] [data-type-open]`),
-		)
-	}); err != nil {
-		capture(t, ctx, dir, "sensor-type-form")
-		t.Fatalf("could not open the sensor form: %v", err)
-	}
+	openNewSensor(t, ctx, dir, "http")
 
 	type initial struct {
 		Selects int    `json:"selects"`

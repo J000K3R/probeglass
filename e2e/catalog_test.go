@@ -30,12 +30,9 @@ func TestASensorTemplateCreatesItsTickedChecks(t *testing.T) {
 	if err := withTimeout(ctx, func(tctx context.Context) error {
 		return chromedp.Do(tctx,
 			chromedp.Click(`#new-sensor`),
-			chromedp.WaitVisible(`#modal[open] [data-type-open]`),
-			chromedp.Click(`#modal [data-type-open]`),
 			chromedp.Poll[chromedp.Void](
 				`!!document.querySelector('#modal-catalog [data-catalog-tab="templates"]')`,
 				chromedp.WithPollingTimeout(15*time.Second)),
-			chromedp.Click(`#modal-catalog [data-catalog-tab="templates"]`),
 			chromedp.Poll[chromedp.Void](
 				`!!document.querySelector('#modal-catalog [data-template-id="qnap"]')`,
 				chromedp.WithPollingTimeout(15*time.Second)),
@@ -60,8 +57,6 @@ func TestASensorTemplateCreatesItsTickedChecks(t *testing.T) {
 			chromedp.Click(`#catalog-body [data-catalog-check="disk3_temp"]`),
 			chromedp.Click(`#catalog-body [data-catalog-check="disk4_temp"]`),
 			chromedp.Click(`#catalog-add`),
-			chromedp.WaitNotPresent(`#modal-catalog[open]`),
-			chromedp.WaitNotPresent(`#modal[open]`),
 		)
 	}); err != nil {
 		capture(t, ctx, dir, "template-not-applied")
@@ -121,12 +116,9 @@ func TestTheTemplateCatalogueCanBeFiltered(t *testing.T) {
 	if err := withTimeout(ctx, func(tctx context.Context) error {
 		return chromedp.Do(tctx,
 			chromedp.Click(`#new-sensor`),
-			chromedp.WaitVisible(`#modal[open] [data-type-open]`),
-			chromedp.Click(`#modal [data-type-open]`),
 			chromedp.Poll[chromedp.Void](
 				`!!document.querySelector('#modal-catalog [data-catalog-tab="templates"]')`,
 				chromedp.WithPollingTimeout(15*time.Second)),
-			chromedp.Click(`#modal-catalog [data-catalog-tab="templates"]`),
 			chromedp.Poll[chromedp.Void](
 				`document.querySelectorAll('#template-grid .template-card').length >= 10`,
 				chromedp.WithPollingTimeout(15*time.Second)),
@@ -204,12 +196,9 @@ func TestAnApplicationTemplateCreatesHTTPChecks(t *testing.T) {
 	if err := withTimeout(ctx, func(tctx context.Context) error {
 		return chromedp.Do(tctx,
 			chromedp.Click(`#new-sensor`),
-			chromedp.WaitVisible(`#modal[open] [data-type-open]`),
-			chromedp.Click(`#modal [data-type-open]`),
 			chromedp.Poll[chromedp.Void](
 				`!!document.querySelector('#modal-catalog [data-catalog-tab="templates"]')`,
 				chromedp.WithPollingTimeout(15*time.Second)),
-			chromedp.Click(`#modal-catalog [data-catalog-tab="templates"]`),
 			chromedp.Poll[chromedp.Void](
 				`!!document.querySelector('#modal-catalog [data-template-id="mos"]')`,
 				chromedp.WithPollingTimeout(15*time.Second)),
@@ -248,8 +237,6 @@ func TestAnApplicationTemplateCreatesHTTPChecks(t *testing.T) {
 			chromedp.SetValue(`#catalog-group`, "MOS Test"),
 			chromedp.SetValue(`#catalog-credential`, "test-token"),
 			chromedp.Click(`#catalog-add`),
-			chromedp.WaitNotPresent(`#modal-catalog[open]`),
-			chromedp.WaitNotPresent(`#modal[open]`),
 		)
 	}); err != nil {
 		capture(t, ctx, dir, "mos-not-applied")
@@ -326,8 +313,6 @@ func TestMOSDiscoveryOffersThePartsOfTheNAS(t *testing.T) {
 	if err := withTimeout(ctx, func(tctx context.Context) error {
 		return chromedp.Do(tctx,
 			chromedp.Click(`#new-sensor`),
-			chromedp.WaitVisible(`#modal[open] [data-type-open]`),
-			chromedp.Click(`#modal [data-type-open]`),
 			chromedp.Poll[chromedp.Void](
 				`!!document.querySelector('#modal-catalog [data-template-id="mos"]')`,
 				chromedp.WithPollingTimeout(15*time.Second)),
@@ -371,8 +356,6 @@ func TestMOSDiscoveryOffersThePartsOfTheNAS(t *testing.T) {
 	if err := withTimeout(ctx, func(tctx context.Context) error {
 		return chromedp.Do(tctx,
 			chromedp.Click(`#catalog-add`),
-			chromedp.WaitNotPresent(`#modal-catalog[open]`),
-			chromedp.WaitNotPresent(`#modal[open]`),
 		)
 	}); err != nil {
 		capture(t, ctx, dir, "mos-discovery-not-applied")

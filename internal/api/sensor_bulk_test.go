@@ -133,3 +133,60 @@ func (h *harness) sensorCount(t *testing.T) int {
 	decode(t, resp, &sensors)
 	return len(sensors)
 }
+
+func TestAGroupCanBeDeletedWithItsSensors(t *testing.T) {
+	h := newHarness(t)
+	h.setup()
+
+	makeGroup := func(names ...string) []model.Sensor {
+		t.Helper()
+		specs := make([]map[string]any, 0, len(names))
+		for _, name := range names {
+			specs = append(specs, map[string]any{
+				"name": name, "type": "ping", "target": "192.0.2.10",
+				"interval": 60, "group": "Netz",
+			})
+		}
+		resp := h.do(http.MethodPost, "/api/sensors/bulk",
+			map[string]any{"sensors": specs}, nil)
+		if resp.StatusCode != http.StatusCreated {
+			t.Fatalf("create group: status = %d, body = %s", resp.StatusCode, readBody(t, resp))
+		}
+		var out struct {
+			Sensors []model.Sensor `json:"sensors"`
+		}
+		decode(t, resp, &out)
+		return out.Sensors
+	}
+
+	made := makeGroup("one", "two")
+	resp := h.do(http.MethodPost, "/api/groups/Netz/delete",
+		map[string]any{"mode": "selected", "sensor_ids": []int64{made[0].ID}}, nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("delete selected: status = %d, body = %s", resp.StatusCode, readBody(t, resp))
+	}
+	var first struct {
+		Deleted int `json:"deleted"`
+		Sensors int `json:"sensors"`
+	}
+	decode(t, resp, &first)
+	if first.Deleted != 1 || first.Sensors != 1 {
+		t.Errorf("deleted %d and left %d, want 1 and 1", first.Deleted, first.Sensors)
+	}
+
+	// The group's settings are gone, but the remaining sensor still carries the
+	// word: "keep" is what "selected" means for everything not selected.
+	resp = h.do(http.MethodPost, "/api/groups/Netz/delete",
+		map[string]any{"mode": "all"}, nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("delete all: status = %d, body = %s", resp.StatusCode, readBody(t, resp))
+	}
+	var second struct {
+		Deleted int `json:"deleted"`
+		Sensors int `json:"sensors"`
+	}
+	decode(t, resp, &second)
+	if second.Deleted != 1 || second.Sensors != 0 {
+		t.Errorf("deleted %d and left %d, want 1 and 0", second.Deleted, second.Sensors)
+	}
+}
