@@ -15,6 +15,12 @@ func TestEveryTemplateHasWords(t *testing.T) {
 	german := shippedCatalogue(t, "i18n.de.js")
 	for _, template := range catalog.Templates() {
 		keys := []string{template.NameKey, template.DescriptionKey}
+		if template.System != "" {
+			keys = append(keys, "catalog.system."+template.System)
+		}
+		for _, tag := range template.Tags {
+			keys = append(keys, "catalog.tag."+tag)
+		}
 		for _, check := range template.Checks {
 			keys = append(keys, check.LabelKey)
 		}

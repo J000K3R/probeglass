@@ -170,34 +170,7 @@ func (SNMPProber) Run(ctx context.Context, c model.Sensor) Outcome {
 		MaxOids: 1,
 		Context: ctx,
 	}
-	if version == gosnmp.Version3 {
-		// Validation has already refused a v3 user without the fields its level
-		// needs, so the mappings here cannot fail on a sensor that reached the
-		// scheduler.
-		auth, _ := snmpAuthProtocol(o.Str("auth_protocol", "SHA"))
-		priv, _ := snmpPrivProtocol(o.Str("priv_protocol", "AES"))
-		client.SecurityModel = gosnmp.UserSecurityModel
-		switch strings.ToLower(o.Str("security_level", "authPriv")) {
-		case "noauthnopriv":
-			client.MsgFlags = gosnmp.NoAuthNoPriv
-			auth, priv = gosnmp.NoAuth, gosnmp.NoPriv
-		case "authnopriv":
-			client.MsgFlags = gosnmp.AuthNoPriv
-			priv = gosnmp.NoPriv
-		default:
-			client.MsgFlags = gosnmp.AuthPriv
-		}
-		client.SecurityParameters = &gosnmp.UsmSecurityParameters{
-			UserName:                 o.Str("username", ""),
-			AuthenticationProtocol:   auth,
-			AuthenticationPassphrase: o.Str("auth_pass", ""),
-			PrivacyProtocol:          priv,
-			PrivacyPassphrase:        o.Str("priv_pass", ""),
-		}
-		client.ContextName = o.Str("context_name", "")
-	} else {
-		client.Community = o.Str("community", "public")
-	}
+	applySNMPSecurity(client, o, version)
 
 	start := time.Now()
 	if err := client.Connect(); err != nil {
@@ -260,6 +233,37 @@ func (SNMPProber) Run(ctx context.Context, c model.Sensor) Outcome {
 		Message: fmt.Sprintf("SNMP v%s · %s = %s · %.0fms",
 			versionText, oid, text, float64(latency.Microseconds())/1000),
 	}
+}
+
+// applySNMPSecurity puts the community or the v3 user on a client. It is shared
+// by the probe and the template discovery, so a credential cannot mean one thing
+// when a sensor is saved and another when its device is checked.
+func applySNMPSecurity(client *gosnmp.GoSNMP, o model.Options, version gosnmp.SnmpVersion) {
+	if version == gosnmp.Version3 {
+		auth, _ := snmpAuthProtocol(o.Str("auth_protocol", "SHA"))
+		priv, _ := snmpPrivProtocol(o.Str("priv_protocol", "AES"))
+		client.SecurityModel = gosnmp.UserSecurityModel
+		switch strings.ToLower(o.Str("security_level", "authPriv")) {
+		case "noauthnopriv":
+			client.MsgFlags = gosnmp.NoAuthNoPriv
+			auth, priv = gosnmp.NoAuth, gosnmp.NoPriv
+		case "authnopriv":
+			client.MsgFlags = gosnmp.AuthNoPriv
+			priv = gosnmp.NoPriv
+		default:
+			client.MsgFlags = gosnmp.AuthPriv
+		}
+		client.SecurityParameters = &gosnmp.UsmSecurityParameters{
+			UserName:                 o.Str("username", ""),
+			AuthenticationProtocol:   auth,
+			AuthenticationPassphrase: o.Str("auth_pass", ""),
+			PrivacyProtocol:          priv,
+			PrivacyPassphrase:        o.Str("priv_pass", ""),
+		}
+		client.ContextName = o.Str("context_name", "")
+		return
+	}
+	client.Community = o.Str("community", "public")
 }
 
 // snmpAuthProtocol maps the option's spelling to the library's constant. The

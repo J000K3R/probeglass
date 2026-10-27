@@ -3775,6 +3775,10 @@ async function openSensorCatalog(form) {
   catalogForm = form;
   const dialog = $('#modal-catalog');
   catalogDetail = null;
+  catalogFilter.query = '';
+  catalogFilter.vendor = '';
+  catalogFilter.system = '';
+  catalogFilter.tags.clear();
   if (!catalogTemplates) {
     try {
       const data = await api('/api/sensor-templates');
@@ -3806,6 +3810,7 @@ function setCatalogTab(tab) {
     button.setAttribute('aria-selected', String(button.dataset.catalogTab === tab));
   }
   $('#catalog-body').innerHTML = tab === 'templates' ? catalogTemplatesMarkup() : catalogSensorsMarkup();
+  if (tab === 'templates') renderTemplateGrid();
   const add = $('#catalog-add');
   add.hidden = true;
   add.disabled = true;
@@ -3819,21 +3824,100 @@ function catalogSensorsMarkup() {
 }
 
 /** catalogTemplatesMarkup draws one card per device template. */
+const catalogFilter = { query: '', vendor: '', system: '', tags: new Set() };
+
 function catalogTemplatesMarkup() {
   if (!catalogTemplates?.length) return `<p class="muted">${esc(t('catalog.templateHint'))}</p>`;
-  const cards = catalogTemplates.map((template) => `
+  return `
+    <p class="panel-hint">${esc(t('catalog.templateHint'))}</p>
+    ${catalogFiltersMarkup()}
+    <div class="template-grid" id="template-grid"></div>`;
+}
+
+/** catalogFiltersMarkup is the strip above the templates: search and chips. */
+function catalogFiltersMarkup() {
+  const vendors = [...new Set(catalogTemplates.map((t) => t.vendor).filter(Boolean))].sort();
+  const systems = [...new Set(catalogTemplates.map((t) => t.system).filter(Boolean))].sort();
+  const tags = [...new Set(catalogTemplates.flatMap((t) => t.tags || []))].sort();
+  const chip = (kind, value, active, label) => `
+    <button type="button" class="chip${active ? ' active' : ''}"
+            data-filter-${kind}="${esc(value)}">${esc(label)}</button>`;
+  const row = (label, chips) => `<div class="catalog-filter-row">
+    <span>${esc(label)}</span>${chips}</div>`;
+  return `<div class="catalog-filters">
+    <input type="search" data-template-query value="${esc(catalogFilter.query)}"
+           placeholder="${esc(t('catalog.searchPlaceholder'))}" autocomplete="off">
+    ${row(t('catalog.filterVendor'), [
+      chip('vendor', '', catalogFilter.vendor === '', t('catalog.all')),
+      ...vendors.map((v) => chip('vendor', v, catalogFilter.vendor === v, v)),
+    ].join(''))}
+    ${row(t('catalog.filterSystem'), [
+      chip('system', '', catalogFilter.system === '', t('catalog.all')),
+      ...systems.map((v) => chip('system', v, catalogFilter.system === v, t(`catalog.system.${v}`))),
+    ].join(''))}
+    ${row(t('catalog.filterTag'), [
+      chip('tag-all', '', catalogFilter.tags.size === 0, t('catalog.all')),
+      ...tags.map((v) => chip('tag', v, catalogFilter.tags.has(v), t(`catalog.tag.${v}`))),
+    ].join(''))}
+  </div>`;
+}
+
+/** filteredTemplates applies the search box and the three chips. */
+function filteredTemplates() {
+  const query = catalogFilter.query.trim().toLowerCase();
+  return (catalogTemplates || []).filter((template) => {
+    if (catalogFilter.vendor && template.vendor !== catalogFilter.vendor) return false;
+    if (catalogFilter.system && template.system !== catalogFilter.system) return false;
+    if (![...catalogFilter.tags].every((tag) => (template.tags || []).includes(tag))) return false;
+    if (!query) return true;
+    const haystack = [
+      t(template.name_key), t(template.description_key), template.vendor, template.product,
+      template.system ? t(`catalog.system.${template.system}`) : '',
+      ...(template.tags || []).map((tag) => t(`catalog.tag.${tag}`)),
+      ...template.checks.map((check) => t(check.label_key)),
+    ].join(' ').toLowerCase();
+    return haystack.includes(query);
+  });
+}
+
+/** templateCardMarkup is one device template in the grid. */
+function templateCardMarkup(template) {
+  const meta = [
+    template.system ? `<span class="pill">${esc(t(`catalog.system.${template.system}`))}</span>` : '',
+    ...(template.tags || []).map((tag) => `<span class="pill">${esc(t(`catalog.tag.${tag}`))}</span>`),
+  ].join('');
+  return `
     <button type="button" class="template-card" data-template-id="${esc(template.id)}">
       <span class="template-icon">${iconUI.iconMarkup(template.icon, { size: 22 })}</span>
       <span class="template-text">
         <strong>${esc(t(template.name_key))}</strong>
         <small>${esc([template.vendor, template.product].filter(Boolean).join(' · '))}</small>
         <span class="template-description">${esc(t(template.description_key))}</span>
+        <span class="template-meta">${meta}</span>
       </span>
       <span class="pill">${esc(t('catalog.checks', { count: template.checks.length }))}</span>
-    </button>`).join('');
-  return `
-    <p class="panel-hint">${esc(t('catalog.templateHint'))}</p>
-    <div class="template-grid">${cards}</div>`;
+    </button>`;
+}
+
+/** renderTemplateGrid redraws the cards after a filter changes. */
+function renderTemplateGrid() {
+  const grid = $('#template-grid');
+  if (!grid) return;
+  const list = filteredTemplates();
+  grid.innerHTML = list.length
+    ? list.map(templateCardMarkup).join('')
+    : `<p class="muted">${esc(t('catalog.noTemplates'))}</p>`;
+  for (const chip of $$('#modal-catalog [data-filter-vendor]')) {
+    chip.classList.toggle('active', chip.dataset.filterVendor === catalogFilter.vendor);
+  }
+  for (const chip of $$('#modal-catalog [data-filter-system]')) {
+    chip.classList.toggle('active', chip.dataset.filterSystem === catalogFilter.system);
+  }
+  for (const chip of $$('#modal-catalog [data-filter-tag]')) {
+    chip.classList.toggle('active', catalogFilter.tags.has(chip.dataset.filterTag));
+  }
+  const allTags = $('#modal-catalog [data-filter-tag-all]');
+  if (allTags) allTags.classList.toggle('active', catalogFilter.tags.size === 0);
 }
 
 /** openTemplateDetail shows the checks a template would add. */
@@ -3841,6 +3925,14 @@ function openTemplateDetail(template) {
   catalogDetail = template;
   catalogCredentialFields = typeDef('snmp').fields.filter((f) => CATALOG_CREDENTIAL_KEYS.has(f.key));
   const name = t(template.name_key);
+  const meta = [
+    template.system ? t(`catalog.system.${template.system}`) : '',
+    ...(template.tags || []).map((tag) => t(`catalog.tag.${tag}`)),
+  ].filter(Boolean).join(' · ');
+  const source = template.source
+    ? `<p class="muted small">${esc(t('catalog.source'))}: <a href="${esc(template.source)}"
+         target="_blank" rel="noopener noreferrer">${esc(template.source)}</a></p>`
+    : '';
   const checks = template.checks.map((check) => `
     <label class="catalog-check">
       <input type="checkbox" data-catalog-check="${esc(check.key)}" checked>
@@ -3856,6 +3948,8 @@ function openTemplateDetail(template) {
       <div>
         <h3>${esc(name)}</h3>
         <p class="muted">${esc(t(template.description_key))}</p>
+        <p class="muted small">${esc(meta)}</p>
+        ${source}
       </div>
     </div>
     <p class="muted small">${esc(t('catalog.templateNote'))}</p>
@@ -3875,12 +3969,45 @@ function openTemplateDetail(template) {
     <section class="catalog-credentials">
       <h3>${esc(t('catalog.credentials'))}</h3>
       <div id="catalog-options">${fields}</div>
+      <div class="catalog-device-check">
+        <button type="button" class="btn" id="catalog-check-device">${esc(t('catalog.checkDevice'))}</button>
+        <p class="muted small" id="catalog-device-status">${esc(t('catalog.deviceHint'))}</p>
+      </div>
     </section>`;
   syncConditionalOptions(catalogCredentialFields, $('#catalog-options'));
   updateCatalogAdd();
   $('#catalog-add').hidden = false;
   $('#catalog-error').textContent = '';
   $('#catalog-name')?.focus();
+}
+
+/** checkTemplateDevice makes one real SNMP request with the form's credentials. */
+async function checkTemplateDevice() {
+  if (!catalogDetail) return;
+  const target = $('#catalog-target').value.trim();
+  if (!target) {
+    $('#catalog-error').textContent = t('catalog.missing', { field: t('catalog.address') });
+    return;
+  }
+  const button = $('#catalog-check-device');
+  const status = $('#catalog-device-status');
+  button.disabled = true;
+  button.textContent = t('catalog.checking');
+  $('#catalog-error').textContent = '';
+  const options = readOptionValues($('#catalog-options'), catalogCredentialFields);
+  try {
+    const data = await api(
+      `/api/sensor-templates/${encodeURIComponent(catalogDetail.id)}/check`,
+      { method: 'POST', body: { target, options } });
+    const device = data.device?.sys_descr || data.device?.sys_object_id || target;
+    status.textContent = t('catalog.deviceOk', { device });
+  } catch (err) {
+    status.textContent = t('catalog.deviceHint');
+    $('#catalog-error').textContent = err.message;
+  } finally {
+    button.disabled = false;
+    button.textContent = t('catalog.checkDevice');
+  }
 }
 
 /** updateCatalogAdd says how many of the template's checks are ticked. */
@@ -3942,6 +4069,36 @@ async function applyCatalogTemplate() {
 document.addEventListener('click', (event) => {
   if (!event.target.closest('#modal-catalog')) return;
 
+  const vendor = event.target.closest('[data-filter-vendor]');
+  if (vendor) {
+    catalogFilter.vendor = vendor.dataset.filterVendor;
+    renderTemplateGrid();
+    return;
+  }
+  const system = event.target.closest('[data-filter-system]');
+  if (system) {
+    catalogFilter.system = system.dataset.filterSystem;
+    renderTemplateGrid();
+    return;
+  }
+  if (event.target.closest('[data-filter-tag-all]')) {
+    catalogFilter.tags.clear();
+    renderTemplateGrid();
+    return;
+  }
+  const tag = event.target.closest('[data-filter-tag]');
+  if (tag) {
+    const value = tag.dataset.filterTag;
+    if (catalogFilter.tags.has(value)) catalogFilter.tags.delete(value);
+    else catalogFilter.tags.add(value);
+    renderTemplateGrid();
+    return;
+  }
+  if (event.target.closest('#catalog-check-device')) {
+    checkTemplateDevice();
+    return;
+  }
+
   const tab = event.target.closest('[data-catalog-tab]');
   if (tab) {
     setCatalogTab(tab.dataset.catalogTab);
@@ -3973,6 +4130,13 @@ document.addEventListener('change', (event) => {
   if (event.target.closest('#catalog-options')) {
     syncConditionalOptions(catalogCredentialFields, $('#catalog-options'));
   }
+});
+
+document.addEventListener('input', (event) => {
+  const query = event.target.closest('[data-template-query]');
+  if (!query) return;
+  catalogFilter.query = query.value;
+  renderTemplateGrid();
 });
 
 $('#modal-catalog').addEventListener('close', () => {

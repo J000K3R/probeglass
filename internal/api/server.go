@@ -238,6 +238,7 @@ func (s *Server) Handler() http.Handler {
 	view("POST /api/me/totp/recovery", s.handleTOTPRecovery)
 
 	// Changing the configuration.
+	adm("POST /api/sensor-templates/{id}/check", s.handleCheckSensorTemplate)
 	adm("POST /api/sensors", s.handleCreateSensor)
 	adm("POST /api/sensors/bulk", s.handleCreateSensorsBulk)
 	adm("PUT /api/sensors/{id}", s.handleUpdateSensor)

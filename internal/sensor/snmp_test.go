@@ -634,3 +634,24 @@ func TestSNMPType(t *testing.T) {
 		t.Errorf("Type() = %q, want %q", got, model.SensorSNMP)
 	}
 }
+
+func TestDiscoverSNMPReadsTheDeviceIdentity(t *testing.T) {
+	agentVars := []gosnmp.SnmpPDU{
+		{Name: sysDescrOID, Type: gosnmp.OctetString, Value: []byte("QNAP QTS 5.1")},
+		{Name: sysObjectIDOID, Type: gosnmp.ObjectIdentifier, Value: "1.3.6.1.4.1.24681"},
+	}
+	_, addr := newSNMPAgent(t, agentVars...)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	got, err := DiscoverSNMP(ctx, addr, model.Options{"community": "public"})
+	if err != nil {
+		t.Fatalf("DiscoverSNMP: %v", err)
+	}
+	if got.SysDescr != "QNAP QTS 5.1" {
+		t.Errorf("sysDescr = %q", got.SysDescr)
+	}
+	if got.SysObjectID != "1.3.6.1.4.1.24681" {
+		t.Errorf("sysObjectID = %q", got.SysObjectID)
+	}
+}

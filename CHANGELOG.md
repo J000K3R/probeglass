@@ -32,12 +32,17 @@ here and what the release says are the same document.
   128 random bits as hex, revealed and copied, so the same value can be stored on
   the device before the sensor or channel is saved.
 - **A sensor catalogue with device templates.** The type field opens a searchable
-  catalogue of every sensor, and beside the individual ones there are templates:
-  QNAP, Synology, UniFi, APC UPS and a generic HOST-RESOURCES set. Choosing one
-  asks for the device's address and SNMP credentials, shows the checks it would
-  add, and creates the ticked ones as ordinary sensors in one group — all of them
-  or none, in one transaction. They stay editable afterwards, because vendor OIDs
-  move between firmware versions.
+  catalogue of every sensor, and beside the individual ones there is a template
+  library: QNAP, Synology, UniFi, APC UPS, MikroTik, pfSense/OPNsense, Proxmox,
+  TrueNAS, printers and a generic HOST-RESOURCES set. The templates are filtered
+  by vendor, system and what they watch, and each one names the MIB or community
+  template its OIDs were checked against. Choosing one asks for the device's
+  address and SNMP credentials, and **Check device** makes one real request before
+  anything is created — the box answers with its own description, so a wrong
+  address, community or vendor is visible first. Then the checks are ticked and
+  created as ordinary sensors in one group, all of them or none, in one
+  transaction; they stay editable, because vendor OIDs move between firmware
+  versions.
 - **A `/metrics` endpoint for Prometheus.** Sensor status, the 24-hour, 7-day and
   30-day uptime ratios, the last latency and the open incidents, in the Prometheus
   text format, so a homelab that already runs a monitoring stack can scrape
