@@ -39,6 +39,7 @@ type Check struct {
 	// cheap and useful at a minute; uptime does not need asking that often.
 	Interval int           `json:"interval"`
 	Options  model.Options `json:"options,omitempty"`
+	Icon     string        `json:"icon,omitempty"`
 	// DefaultOff is for a check that only makes sense on some installations,
 	// such as a UPS behind a NAS. It is offered unticked rather than left out.
 	DefaultOff bool `json:"default_off,omitempty"`
@@ -312,16 +313,16 @@ func Templates() []Template {
 			Discover: true,
 			Checks: []Check{
 				{Key: "cpu_load", LabelKey: "catalog.template.mos.cpu_load", Type: model.SensorHTTP,
-					Target: "http://{address}/api/v1/system/load", Interval: 60,
+					Target: "http://{address}/api/v1/system/load", Interval: 60, Icon: "builtin:cpu",
 					Options: model.Options{"expected_status": "200", "json_path": "cpu.load", "json_max": 95}},
 				{Key: "cpu_temp", LabelKey: "catalog.template.mos.cpu_temp", Type: model.SensorHTTP,
-					Target: "http://{address}/api/v1/system/load", Interval: 60,
+					Target: "http://{address}/api/v1/system/load", Interval: 60, Icon: "builtin:thermometer",
 					Options: model.Options{"expected_status": "200", "json_path": "temperature.main", "json_max": 85}},
 				{Key: "memory", LabelKey: "catalog.template.mos.memory", Type: model.SensorHTTP,
-					Target: "http://{address}/api/v1/system/memory", Interval: 60,
+					Target: "http://{address}/api/v1/system/memory", Interval: 60, Icon: "builtin:cpu",
 					Options: model.Options{"expected_status": "200", "json_path": "memory.percentage.used", "json_max": 90}},
 				{Key: "reachable", LabelKey: "catalog.template.mos.reachable", Type: model.SensorPing,
-					Target: "{host}", Interval: 60},
+					Target: "{host}", Interval: 60, Icon: "builtin:wifi"},
 			},
 		},
 		{

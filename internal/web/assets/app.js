@@ -2767,6 +2767,7 @@ const SENSOR_TYPES = [
       // JSON values turn an API into a numeric sensor: a path into the body,
       // optional selection from a list, and an assertion.
       { key: 'json_path', type: 'text' },
+      { key: 'json_present', type: 'bool' },
       { key: 'json_match_key', type: 'text' },
       { key: 'json_match_value', type: 'text' },
       { key: 'json_expect', type: 'text' },
@@ -4180,6 +4181,7 @@ async function applyCatalogTemplate() {
       retries: 1,
       enabled: true,
       group,
+      icon: check.icon || catalogDetail.icon,
       options,
     };
   });

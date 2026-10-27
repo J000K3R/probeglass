@@ -293,7 +293,7 @@ func TestMOSDiscoveryOffersThePartsOfTheNAS(t *testing.T) {
 	}
 	write("/api/v1/system/load", `{"cpu":{"load":42},"temperature":{"main":50}}`)
 	write("/api/v1/system/memory", `{"memory":{"percentage":{"used":40}}}`)
-	write("/api/v1/disks", `[{"name":"sda","temperature":35}]`)
+	write("/api/v1/disks", `[{"name":"sda","type":"hdd","temperature":35}]`)
 	write("/api/v1/pools", `[{"id":"p1","name":"data"}]`)
 	write("/api/v1/docker/mos/containers", `[{"name":"nginx"}]`)
 	write("/api/v1/lxc/containers", `[{"name":"adguard","state":"running"}]`)
@@ -335,7 +335,7 @@ func TestMOSDiscoveryOffersThePartsOfTheNAS(t *testing.T) {
 	want := []string{
 		"cpu_load", "cpu_temp", "memory", "reachable",
 		"disk.sda.temperature", "disk.sda.smart",
-		"pool.p1.mounted", "docker.nginx.cpu", "lxc.adguard.state",
+		"pool.p1.mounted", "docker.nginx.running", "lxc.adguard.state",
 		"vm.ubuntu.state", "sensor.temperature.CPU",
 	}
 	for _, key := range want {

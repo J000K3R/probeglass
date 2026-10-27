@@ -1474,7 +1474,7 @@ button.widget-pick-label {
 /* The sensor catalogue: the type field's window. The tabs are buttons rather
    than radios, so the selected one needs the accent the chip group gets from its
    checked input. */
-#modal-catalog { overflow-y: auto; }
+#modal-catalog { width: min(980px, calc(100vw - 32px)); overflow-y: auto; }
 .catalog-tabs {
   display: flex;
   gap: var(--sp-2);
@@ -1487,6 +1487,19 @@ button.widget-pick-label {
 }
 .catalog-filters { display: grid; gap: var(--sp-2); }
 .catalog-filters input[type='search'] { width: 100%; }
+.catalog-device-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  font-size: var(--text-4);
+  color: var(--text-dim);
+}
+.catalog-device-summary b { color: var(--text); }
 .catalog-filter-row { display: flex; flex-wrap: wrap; gap: var(--sp-1); align-items: center; }
 .catalog-filter-row > span {
   min-width: 5.5rem;
@@ -1504,29 +1517,45 @@ button.widget-pick-label {
 }
 .template-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: var(--gap);
 }
 .template-card {
   display: flex;
   gap: var(--sp-3);
   align-items: flex-start;
-  padding: var(--sp-3);
+  padding: var(--sp-4);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface-2);
+  border-radius: calc(var(--radius) + 2px);
+  background: linear-gradient(180deg, var(--surface-2), var(--surface));
   color: inherit;
   text-align: left;
   font: inherit;
   cursor: pointer;
+  transition: transform .12s ease, border-color .12s ease, box-shadow .12s ease;
 }
-.template-card:hover { border-color: var(--accent); }
+.template-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent);
+  box-shadow: var(--shadow);
+}
 .template-card .pill { margin-left: auto; white-space: nowrap; }
-.template-icon { flex: none; color: var(--text-dim); }
-.template-text { display: grid; gap: 2px; min-width: 0; }
-.template-text strong { overflow-wrap: anywhere; }
-.template-description { color: var(--text-dim); font-size: var(--text-4); }
+.template-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--accent);
+}
+.template-text { display: grid; gap: 3px; min-width: 0; }
+.template-text strong { font-size: var(--text-2); overflow-wrap: anywhere; }
+.template-description { color: var(--text-dim); font-size: var(--text-4); line-height: 1.35; }
 .template-detail-head { display: flex; gap: var(--sp-3); align-items: flex-start; }
+.template-detail-head .template-icon { width: 52px; height: 52px; border-radius: 14px; }
 .template-detail-head h3 { margin: 0 0 var(--sp-1); }
 .catalog-back { justify-self: start; }
 .catalog-checks { display: grid; gap: var(--sp-2); }

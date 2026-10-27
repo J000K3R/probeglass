@@ -21,7 +21,7 @@ func TestDiscoverListsThePartsOfANAS(t *testing.T) {
 			_, _ = w.Write([]byte(body))
 		})
 	}
-	write("/api/v1/disks", `[{"name":"sda","temperature":35},{"name":"sdb","temperature":null}]`)
+	write("/api/v1/disks", `[{"name":"sda","type":"hdd","temperature":35},{"name":"sdb","type":"hdd","temperature":null},{"name":"sdz","type":"usb","removable":true,"temperature":null}]`)
 	write("/api/v1/pools", `[{"id":"p1","name":"data","type":"btrfs"}]`)
 	write("/api/v1/docker/mos/containers", `[{"name":"nginx","performance":{"cpu":{"usage":2.5}}}]`)
 	write("/api/v1/lxc/containers", `[{"name":"adguard","state":"running"}]`)
@@ -46,8 +46,8 @@ func TestDiscoverListsThePartsOfANAS(t *testing.T) {
 	}
 	for _, key := range []string{
 		"disk.sda.temperature", "disk.sda.smart",
-		"disk.sdb.temperature", "disk.sdb.smart",
-		"pool.p1.mounted", "docker.nginx.cpu", "lxc.adguard.state",
+		"disk.sdb.smart",
+		"pool.p1.mounted", "docker.nginx.running", "lxc.adguard.state",
 		"vm.ubuntu.state", "sensor.temperature.CPU",
 	} {
 		if _, ok := byKey[key]; !ok {
@@ -61,7 +61,10 @@ func TestDiscoverListsThePartsOfANAS(t *testing.T) {
 	if got := byKey["lxc.adguard.state"]; got.Target != "http://{address}/api/v1/lxc/containers?performance=true" {
 		t.Errorf("the LXC check target is %q", got.Target)
 	}
-	if len(checks) != 9 {
-		t.Errorf("discovery returned %d checks, want 9", len(checks))
+	if _, ok := byKey["disk.sdz.smart"]; ok {
+		t.Error("a removable USB disk produced a disk sensor")
+	}
+	if len(checks) != 8 {
+		t.Errorf("discovery returned %d checks, want 8", len(checks))
 	}
 }

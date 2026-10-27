@@ -24,11 +24,14 @@ type Check struct {
 	Target   string           `json:"target"`
 	Interval int              `json:"interval"`
 	Options  model.Options    `json:"options"`
+	Icon     string           `json:"icon,omitempty"`
 }
 
 type disk struct {
 	Name        string   `json:"name"`
 	Model       string   `json:"model"`
+	Type        string   `json:"type"`
+	Removable   *bool    `json:"removable"`
 	Temperature *float64 `json:"temperature"`
 }
 
@@ -67,25 +70,30 @@ func Discover(ctx context.Context, address, token string) ([]Check, []string, er
 		if name == "" {
 			continue
 		}
-		checks = append(checks,
-			Check{
+		// The boot stick and other removable media answer neither a temperature nor
+		// SMART; a sensor for them can only ever be red.
+		if strings.EqualFold(d.Type, "usb") || (d.Removable != nil && *d.Removable) {
+			continue
+		}
+		if d.Temperature != nil {
+			checks = append(checks, Check{
 				Key:   "disk." + safe(name) + ".temperature",
 				Label: fmt.Sprintf("Disk %s temperature", name),
 				Type:  model.SensorHTTP, Target: "http://{address}/api/v1/disks?performance=true",
-				Interval: 60,
+				Interval: 60, Icon: "builtin:thermometer",
 				Options: model.Options{
 					"json_match_key": "name", "json_match_value": name,
 					"json_path": "temperature", "json_max": 55,
 				},
-			},
-			Check{
-				Key:   "disk." + safe(name) + ".smart",
-				Label: fmt.Sprintf("Disk %s SMART status", name),
-				Type:  model.SensorHTTP, Target: "http://{address}/api/v1/disks/" + url.PathEscape(name) + "/smart",
-				Interval: 300,
-				Options:  model.Options{"json_path": "smartStatus", "json_expect": "PASSED"},
-			},
-		)
+			})
+		}
+		checks = append(checks, Check{
+			Key:   "disk." + safe(name) + ".smart",
+			Label: fmt.Sprintf("Disk %s SMART status", name),
+			Type:  model.SensorHTTP, Target: "http://{address}/api/v1/disks/" + url.PathEscape(name) + "/smart",
+			Interval: 300, Icon: "builtin:disk",
+			Options: model.Options{"json_path": "smartStatus", "json_expect": "PASSED"},
+		})
 	}
 
 	var pools []pool
@@ -103,7 +111,7 @@ func Discover(ctx context.Context, address, token string) ([]Check, []string, er
 		checks = append(checks, Check{
 			Key: "pool." + safe(p.ID) + ".mounted", Label: fmt.Sprintf("Pool %s mounted", label),
 			Type: model.SensorHTTP, Target: "http://{address}/api/v1/pools/" + url.PathEscape(p.ID) + "/status",
-			Interval: 60, Options: model.Options{"json_path": "mounted", "json_expect": "true"},
+			Interval: 60, Icon: "builtin:database", Options: model.Options{"json_path": "mounted", "json_expect": "true"},
 		})
 	}
 
@@ -116,12 +124,12 @@ func Discover(ctx context.Context, address, token string) ([]Check, []string, er
 			continue
 		}
 		checks = append(checks, Check{
-			Key: "docker." + safe(c.Name) + ".cpu", Label: fmt.Sprintf("Docker %s CPU", c.Name),
+			Key: "docker." + safe(c.Name) + ".running", Label: fmt.Sprintf("Docker %s running", c.Name),
 			Type: model.SensorHTTP, Target: "http://{address}/api/v1/docker/mos/containers?performance=true",
-			Interval: 60,
+			Interval: 60, Icon: "builtin:container",
 			Options: model.Options{
 				"json_match_key": "name", "json_match_value": c.Name,
-				"json_path": "performance.cpu.usage", "json_min": 0,
+				"json_path": "performance", "json_present": true,
 			},
 		})
 	}
@@ -137,7 +145,7 @@ func Discover(ctx context.Context, address, token string) ([]Check, []string, er
 		checks = append(checks, Check{
 			Key: "lxc." + safe(c.Name) + ".state", Label: fmt.Sprintf("LXC %s running", c.Name),
 			Type: model.SensorHTTP, Target: "http://{address}/api/v1/lxc/containers?performance=true",
-			Interval: 60,
+			Interval: 60, Icon: "builtin:container",
 			Options: model.Options{
 				"json_match_key": "name", "json_match_value": c.Name,
 				"json_path": "state", "json_expect": "running",
@@ -156,7 +164,7 @@ func Discover(ctx context.Context, address, token string) ([]Check, []string, er
 		checks = append(checks, Check{
 			Key: "vm." + safe(v.Name) + ".state", Label: fmt.Sprintf("VM %s running", v.Name),
 			Type: model.SensorHTTP, Target: "http://{address}/api/v1/vm/machines?performance=true",
-			Interval: 60,
+			Interval: 60, Icon: "builtin:monitor",
 			Options: model.Options{
 				"json_match_key": "name", "json_match_value": v.Name,
 				"json_path": "state", "json_expect": "running",
@@ -187,7 +195,7 @@ func Discover(ctx context.Context, address, token string) ([]Check, []string, er
 			checks = append(checks, Check{
 				Key: "sensor." + safe(group) + "." + safe(sensor.Name), Label: label,
 				Type: model.SensorHTTP, Target: "http://{address}/api/v1/mos/sensors",
-				Interval: 60, Options: options,
+				Interval: 60, Icon: "builtin:thermometer", Options: options,
 			})
 		}
 	}

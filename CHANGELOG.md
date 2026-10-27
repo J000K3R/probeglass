@@ -87,6 +87,13 @@ here and what the release says are the same document.
   form has moved on.
 - **The UniFi template asks for the standard uptime OID**, because not every
   firmware answers UniFi's private one. Reachability is the second check.
+- **MOS Docker checks are status-only**, and discovery skips removable/USB disks
+  such as a boot stick: they answer neither temperature nor SMART, so a sensor for
+  them could only be red. A temperature check is created only when the disk reports
+  a temperature.
+- **Sensors created from a template wear its icon**, and MOS's discovered checks
+  carry their own: disk, CPU, thermometer, container, monitor, database. Templates
+  created from the dashboard icon set look like what they monitor.
 
 ## [0.2.3] - 2026-10-20
 

@@ -134,9 +134,10 @@ func (HTTPProber) Validate(c model.Sensor) error {
 		}
 	}
 	if path := strings.TrimSpace(c.Options.Str("json_path", "")); path != "" {
-		if c.Options.Str("json_expect", "") == "" &&
+		if !c.Options.Bool("json_present", false) &&
+			c.Options.Str("json_expect", "") == "" &&
 			c.Options["json_min"] == nil && c.Options["json_max"] == nil {
-			return errors.New("json_path needs json_expect, json_min or json_max: the extracted value has to be judged against something")
+			return errors.New("json_path needs json_present, json_expect, json_min or json_max: the extracted value has to be judged against something")
 		}
 		if _, _, err := optionFloat(c.Options, "json_min"); err != nil {
 			return fmt.Errorf("json_min: %w", err)
@@ -350,6 +351,13 @@ func (HTTPProber) Run(ctx context.Context, c model.Sensor) Outcome {
 			}
 		}
 		shown := jsonText(value)
+		if o.Bool("json_present", false) && value == nil {
+			return Outcome{
+				Success: false, Latency: latency, StatusCode: code,
+				Message: fmt.Sprintf("HTTP %d but %s is null", code, path),
+				Err:     errors.New("JSON value is missing"),
+			}
+		}
 		if want := o.Str("json_expect", ""); want != "" && !strings.Contains(shown, want) {
 			return Outcome{
 				Success:    false,
@@ -393,7 +401,11 @@ func (HTTPProber) Run(ctx context.Context, c model.Sensor) Outcome {
 				}
 			}
 		}
-		jsonNote = " · " + path + "=" + shown
+		if o.Bool("json_present", false) {
+			jsonNote = " · " + path + " present"
+		} else {
+			jsonNote = " · " + path + "=" + shown
+		}
 	}
 	for header, want := range o.StrMap("expected_headers") {
 		got := resp.Header.Get(header)
