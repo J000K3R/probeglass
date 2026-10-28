@@ -42,7 +42,7 @@ var settingsGroups = []struct {
 }{
 	{key: "look", panels: []string{"appearance", "map"}},
 	{key: "widgets", panels: []string{"widgets"}},
-	{key: "monitor", panels: []string{"dashboard", "sites", "groups", "tags", "metrics", "maintenance", "examples"}},
+	{key: "monitor", panels: []string{"dashboard", "sites", "groups", "tags", "metrics", "status", "maintenance", "examples"}},
 	{key: "access", panels: []string{"access", "users"}},
 	{key: "backup", panels: []string{"backup"}},
 	{key: "help", panels: []string{"help", "diagnostics", "about"}},

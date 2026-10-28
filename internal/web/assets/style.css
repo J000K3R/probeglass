@@ -1620,6 +1620,28 @@ button.widget-pick-label {
 }
 .group-delete-row { display: flex; align-items: center; gap: var(--sp-2); }
 .group-delete-row .pill { margin-left: auto; }
+
+/* The public status page's sensor picker. It is a list rather than a set of
+   chips because the decision is per sensor across every group, and a filter
+   line above it means the list can stay one control high however many sensors
+   an installation has. */
+.status-tools { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; margin-bottom: var(--sp-2); }
+.status-tools input[type="search"] { flex: 1 1 200px; min-width: 0; }
+.status-sensors {
+  max-height: 320px; overflow-y: auto;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface-2); padding: var(--sp-2) var(--sp-3);
+}
+.status-group { margin-bottom: var(--sp-2); }
+.status-group:last-child { margin-bottom: 0; }
+.status-group h4 {
+  margin: var(--sp-1) 0 var(--sp-1); font-size: var(--text-5);
+  text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-dim);
+}
+.status-pick { display: flex; align-items: center; gap: var(--sp-2); padding: 3px 0; cursor: pointer; }
+.status-pick .pill { margin-left: auto; }
+.status-pick > span:not(.icon):not(.pill) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.status-pick[hidden], .status-group[hidden] { display: none; }
 .scan-results { display: grid; gap: var(--gap); }
 .scan-host {
   display: grid;

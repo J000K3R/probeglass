@@ -207,13 +207,16 @@ promises; the ordering is what the design already supports cheaply.
 - [x] **Certificate inventory.** One page listing every TLS certificate seen by any
   HTTPS, TLS-enabled TCP or TLS sensor, sorted by expiry, with expired and
   within-30-days filters. The rows are fed by the probes and replaced on renewal.
+- [x] **Public status page.** A read-only, server-rendered page at `/status/<token>`
+  for the people who use the homelab rather than operate it: the published
+  sensors and their 24-hour, 7-day and 30-day uptime, plus the recent incidents.
+  The link is revocable, the selection is separate from it, and no target or probe
+  detail is ever drawn.
 
 ## Next — 0.3.x and beyond
 
 The rest of 0.3.0, ordered by value per unit of work.
 
-- [ ] **Public status page.** A read-only view on its own path and its own
-  token, safe to share outside the LAN, with the incidents you choose to publish.
 - [ ] **SLA reports.** Monthly uptime per sensor and per group as a printable
   summary, built from the daily rollups that are already kept forever.
 - [ ] **Remote probes.** A second instance reporting into the first, for

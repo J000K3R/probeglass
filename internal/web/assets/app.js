@@ -85,6 +85,9 @@ const state = {
   // metricsToken is the read-only credential a Prometheus scraper uses. Empty
   // means the endpoint is off; it is only ever loaded for an administrator.
   metricsToken: '',
+  // statusPage is the public page the operator shares: its link, the sensors it
+  // draws and whether it repeats a probe's words. Only an administrator's.
+  statusPage: null,
   settings: null,
   // The colours a group may be given, as the server lists them. Defaulted to the
   // same six names so that the editor is complete before the first answer arrives.
@@ -1709,7 +1712,7 @@ async function loadRouteData(route) {
       // Both of these decide whether a panel exists at all, so they have to be
       // there before the panel is drawn rather than filled in afterwards.
       const jobs = [loadUsers(), loadExampleData(), loadSites(), loadGroups(), loadTags(), loadWindows()];
-      if (can('admin')) jobs.push(loadMetricsToken());
+      if (can('admin')) jobs.push(loadMetricsToken(), loadStatusPage());
       await Promise.all(jobs);
       await renderSettings();
     }
@@ -6036,6 +6039,163 @@ async function disableMetricsToken() {
   toast(t('metrics.disabled'));
 }
 
+/**
+ * statusPanel is the public status page: the link, and what the link shows.
+ *
+ * The two decisions are kept apart on purpose. The link is a switch — generate,
+ * rotate, switch off — and the selection is a form that is saved. Rotating a link
+ * breaks every copy of it that was handed out, so it cannot happen because
+ * somebody ticked a sensor and pressed Save.
+ */
+function statusPanel() {
+  if (!can('admin')) return '';
+  const page = state.statusPage || { enabled: false, token: '', sensor_ids: [], show_causes: false };
+  const chosen = new Set((page.sensor_ids || []).map(Number));
+  const url = page.token ? `${location.origin}/status/${page.token}` : '';
+
+  const byGroup = new Map();
+  for (const sensor of state.sensors) {
+    const key = sensor.group || '';
+    if (!byGroup.has(key)) byGroup.set(key, []);
+    byGroup.get(key).push(sensor);
+  }
+  const groupNames = [...byGroup.keys()].sort((a, b) => {
+    if (!a || !b) return a ? -1 : 1;
+    return a.localeCompare(b);
+  });
+  const groups = groupNames.map((name) => {
+    const list = byGroup.get(name).slice().sort((a, b) => a.name.localeCompare(b.name));
+    return `<section class="status-group" data-status-group>
+      <h4>${esc(name || t('sensor.groupNone'))}</h4>
+      ${list.map((sensor) => `
+        <label class="status-pick">
+          <input type="checkbox" data-status-sensor="${sensor.id}"${chosen.has(Number(sensor.id)) ? ' checked' : ''}>
+          ${iconUI.iconMarkup(sensor.icon, { size: 16, cls: 'icon-lead' })}<span>${esc(sensor.name)}</span>
+          ${sensor.enabled === false ? `<span class="pill st-paused">${esc(t('status.paused'))}</span>` : ''}
+        </label>`).join('')}
+    </section>`;
+  }).join('');
+
+  return `
+    <section class="panel" id="status-panel" data-panel="status" data-group="monitor">
+      <div class="panel-head">
+        <h2>${esc(t('status.title'))}</h2>
+        <p class="panel-hint">${esc(t('status.hint'))}</p>
+      </div>
+      ${page.enabled ? `
+      <label class="field"><span>${esc(t('status.link'))}</span>
+        <input id="status-url" type="text" readonly value="${esc(url)}" spellcheck="false"></label>
+      <div class="form-actions">
+        <button class="btn" data-action="status-copy">${esc(t('status.copy'))}</button>
+        <a class="btn" href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(t('status.open'))}</a>
+        <button class="btn" data-action="status-rotate">${esc(t('status.rotate'))}</button>
+        <button class="btn btn-danger" data-action="status-disable">${esc(t('status.disable'))}</button>
+      </div>` : `
+      <p class="muted small">${esc(t('status.off'))}</p>
+      <div class="form-actions">
+        <button class="btn btn-primary" data-action="status-enable">${esc(t('status.enable'))}</button>
+      </div>`}
+
+      <h3 class="section-title">${esc(t('status.selection'))}</h3>
+      <p class="muted small">${esc(t('status.selectionHint'))}</p>
+      ${state.sensors.length ? `
+      <div class="status-tools">
+        <input type="search" id="status-filter" data-i18n-placeholder="status.filter"
+               placeholder="${esc(t('status.filter'))}" aria-label="${esc(t('status.filter'))}">
+        <button class="btn btn-ghost btn-small" data-action="status-all">${esc(t('status.all'))}</button>
+        <button class="btn btn-ghost btn-small" data-action="status-none">${esc(t('status.none'))}</button>
+        <span class="muted small" id="status-count"></span>
+      </div>
+      <div class="status-sensors" id="status-sensors">${groups}</div>` :
+      `<p class="muted small">${esc(t('status.noSensors'))}</p>`}
+
+      <label class="field check">
+        <input type="checkbox" id="status-causes"${page.show_causes ? ' checked' : ''}>
+        <span>${withHelp(t('status.causes'), 'help.status.causes')}</span>
+      </label>
+      <div class="form-actions">
+        <button class="btn btn-primary" data-action="status-save">${esc(t('status.save'))}</button>
+      </div>
+      <p class="form-error" id="status-error"></p>
+    </section>`;
+}
+
+/** loadStatusPage fetches the link and the published set for the panel. */
+async function loadStatusPage() {
+  if (!can('admin')) {
+    state.statusPage = null;
+    return;
+  }
+  const data = await api('/api/status-page');
+  state.statusPage = {
+    enabled: !!data.enabled,
+    token: data.token || '',
+    sensor_ids: (data.sensor_ids || []).map(Number),
+    show_causes: !!data.show_causes,
+  };
+}
+
+/** statusChecked is the selection as the panel currently shows it. */
+function statusChecked() {
+  return $$('#status-sensors [data-status-sensor]:checked').map((el) => Number(el.dataset.statusSensor));
+}
+
+function syncStatusCount() {
+  const count = statusChecked().length;
+  const label = $('#status-count');
+  if (label) label.textContent = t('status.selected', { count });
+}
+
+/** filterStatusSensors narrows the list without changing the selection. */
+function filterStatusSensors(query) {
+  const needle = String(query || '').trim().toLowerCase();
+  for (const group of $$('#status-sensors [data-status-group]')) {
+    let shown = 0;
+    for (const row of $$('.status-pick', group)) {
+      const hit = !needle || row.textContent.toLowerCase().includes(needle);
+      row.hidden = !hit;
+      if (hit) shown += 1;
+    }
+    group.hidden = shown === 0;
+  }
+}
+
+async function saveStatusPage() {
+  const error = $('#status-error');
+  if (error) error.textContent = '';
+  try {
+    const data = await api('/api/status-page', {
+      method: 'PUT',
+      body: {
+        sensor_ids: statusChecked(),
+        show_causes: !!$('#status-causes')?.checked,
+      },
+    });
+    state.statusPage = {
+      enabled: !!data.enabled,
+      token: data.token || '',
+      sensor_ids: (data.sensor_ids || []).map(Number),
+      show_causes: !!data.show_causes,
+    };
+    await renderSettings();
+    toast(t('status.saved'));
+  } catch (err) {
+    if (error) error.textContent = err.message;
+    else toast(err.message, 'error');
+  }
+}
+
+async function setStatusToken(method) {
+  const data = await api('/api/status-token', { method });
+  state.statusPage = {
+    enabled: !!data.enabled,
+    token: data.token || '',
+    sensor_ids: (data.sensor_ids || []).map(Number),
+    show_causes: !!data.show_causes,
+  };
+  await renderSettings();
+}
+
 // --- dragging the group order ----------------------------------------------
 
 let draggedGroup = '';
@@ -6883,7 +7043,7 @@ const SETTINGS_GROUPS = [
   // arrangement used to sit: what the top of the dashboard shows is not what is being
   // monitored, and Monitoring had grown to four panels.
   { key: 'widgets', panels: ['widgets'] },
-  { key: 'monitor', panels: ['dashboard', 'sites', 'groups', 'tags', 'metrics', 'maintenance', 'examples'] },
+  { key: 'monitor', panels: ['dashboard', 'sites', 'groups', 'tags', 'metrics', 'status', 'maintenance', 'examples'] },
   { key: 'access', panels: ['access', 'users'] },
   { key: 'backup', panels: ['backup'] },
   { key: 'help', panels: ['help', 'diagnostics', 'about'] },
@@ -7037,6 +7197,8 @@ async function renderSettings() {
 
     ${metricsPanel()}
 
+    ${statusPanel()}
+
     ${maintenancePanel()}
 
     ${examplePanel()}
@@ -7132,6 +7294,7 @@ async function renderSettings() {
   // and then showSettingsCategory falls back to the first one there is.
   showSettingsCategory(state.settingsTab);
   syncBackupScope();
+  syncStatusCount();
   // The panel is rebuilt on every visit, so this mounts onto the fresh input and
   // the listener on the old one goes away with it.
   const newPassword = $('#password-form input[name="new_password"]');
@@ -7167,6 +7330,15 @@ function doctorMarkup(out) {
 $('#settings-body').addEventListener('change', onSettingsChange);
 const settingsBody = $('#settings-body');
 settingsBody.addEventListener('click', onSettingsClick);
+// The status page's sensor filter is the one text field in Settings that filters
+// rather than saves; it is not a preference, so it does not go through the change
+// handler either.
+settingsBody.addEventListener('input', (event) => {
+  if (event.target.id === 'status-filter') filterStatusSensors(event.target.value);
+});
+settingsBody.addEventListener('change', (event) => {
+  if (event.target.matches('[data-status-sensor]')) syncStatusCount();
+});
 // Dragging is the mouse path; the number in the editor stays as the keyboard one.
 settingsBody.addEventListener('dragstart', onGroupDragStart);
 settingsBody.addEventListener('dragover', onGroupDragOver);
@@ -7470,6 +7642,35 @@ async function onSettingsClick(event) {
       await rotateMetricsToken();
     } else if (action === 'metrics-disable') {
       await disableMetricsToken();
+    } else if (action === 'status-enable') {
+      await setStatusToken('PUT');
+      toast(t('status.enabled'));
+    } else if (action === 'status-copy') {
+      await copyText($('#status-url').value);
+      toast(t('settings.copied'));
+    } else if (action === 'status-rotate') {
+      if (!confirmDialog(t('status.rotateConfirm'))) return;
+      await setStatusToken('PUT');
+      toast(t('status.rotated'));
+    } else if (action === 'status-disable') {
+      if (!confirmDialog(t('status.disableConfirm'))) return;
+      await setStatusToken('DELETE');
+      toast(t('status.disabled'));
+    } else if (action === 'status-save') {
+      await saveStatusPage();
+    } else if (action === 'status-all' || action === 'status-none') {
+      // Only what the filter is showing: "all" next to a search box means the
+      // sensors on screen, not the sixty behind them. A group the filter hid is
+      // hidden even though its rows still say they are visible.
+      for (const group of $$('#status-sensors [data-status-group]')) {
+        if (group.hidden) continue;
+        for (const row of $$('.status-pick', group)) {
+          if (row.hidden) continue;
+          const box = $('input[type="checkbox"]', row);
+          if (box) box.checked = action === 'status-all';
+        }
+      }
+      syncStatusCount();
     } else if (action === 'backup-file') {
       $('#restore-file').click();
     } else if (action === 'tour') {

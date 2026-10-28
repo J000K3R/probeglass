@@ -413,6 +413,11 @@ func (r *recorder) recordDashboard(ctx context.Context, st *store.Store) error {
 		// writes the two certificates its public TLS sensors would have met, so the
 		// page has something to show without a network.
 		"/api/certificates",
+		// The public status page's settings panel. The recording says the page is
+		// off and lists no published sensors, which is the truth about a demo made
+		// of files: the page itself is rendered by the server and has no recorded
+		// answer to draw.
+		"/api/status-page",
 	}
 	for _, raw := range fixed {
 		if err := r.get(ctx, raw); err != nil {

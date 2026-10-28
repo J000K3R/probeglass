@@ -770,6 +770,22 @@ CREATE TABLE IF NOT EXISTS certificates (
 CREATE INDEX IF NOT EXISTS certificates_not_after ON certificates(not_after);
 `,
 	},
+	{
+		version: 13,
+		name:    "public-status-page",
+		sql: `
+-- The sensors a public status page shows.
+--
+-- A separate table rather than a column on sensors, because publication is a
+-- fact about the page and not about the probe: the page can be switched off and
+-- on without touching the sensors, and a sensor deleted anywhere takes its
+-- publication with it. Only an id is stored — everything the page draws is read
+-- from the sensor at request time, so renaming a sensor renames it in public.
+CREATE TABLE IF NOT EXISTS status_sensors (
+    sensor_id INTEGER PRIMARY KEY REFERENCES sensors(id) ON DELETE CASCADE
+);
+`,
+	},
 }
 
 // rowExecer is the part of *sql.DB and *sql.Tx that the settings sweeps below use.

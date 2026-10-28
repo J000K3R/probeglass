@@ -1137,6 +1137,14 @@ const (
 	// need an administrator's key, and the key it is given should be able to read
 	// nothing else.
 	SettingMetricsToken = "metrics.token"
+	// SettingStatusToken is the share token of the public status page. The page
+	// is off while it is empty, and rotating it is what revokes every link that
+	// was handed out before.
+	SettingStatusToken = "status.token"
+	// SettingStatusCauses is whether the public page repeats the probe's words
+	// for a failure. Off by default: a cause is written for the operator, and a
+	// public page that quotes it can quote more than the operator meant to share.
+	SettingStatusCauses = "status.causes"
 	SettingRetentionRaw = "retention.raw"
 	// SettingTileURL and SettingTileAttribution configure the map. They are
 	// installation-wide rather than per user, so they live here and not in the

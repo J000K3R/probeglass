@@ -160,6 +160,9 @@ func (s *Server) Handler() http.Handler {
 	// Prometheus scrapes without a session; the handler checks the read-only
 	// metrics token itself.
 	mux.HandleFunc("GET /metrics", s.handleMetrics)
+	// The public status page, reachable with the token in its URL. The handler
+	// checks it and draws only what an administrator published.
+	mux.HandleFunc("GET /status/{token}", s.handlePublicStatus)
 	mux.HandleFunc("GET /api/version", s.handleVersion)
 	mux.HandleFunc("GET /api/session", s.handleSession)
 	mux.HandleFunc("POST /api/login", s.handleLogin)
@@ -259,6 +262,12 @@ func (s *Server) Handler() http.Handler {
 	adm("GET /api/metrics-token", s.handleGetMetricsToken)
 	adm("PUT /api/metrics-token", s.handleRotateMetricsToken)
 	adm("DELETE /api/metrics-token", s.handleDeleteMetricsToken)
+	// The public status page: which sensors it publishes, and the link that
+	// makes it reachable. Both are configuration, so both are administrator-only.
+	adm("GET /api/status-page", s.handleGetStatusPage)
+	adm("PUT /api/status-page", s.handleSaveStatusPage)
+	adm("PUT /api/status-token", s.handleRotateStatusToken)
+	adm("DELETE /api/status-token", s.handleDeleteStatusToken)
 
 	// Administering the installation and the people who may use it.
 	adm("GET /api/users", s.handleListUsers)
@@ -451,7 +460,7 @@ func (s *Server) withMiddleware(next http.Handler) http.Handler {
 		switch {
 		case rec.status >= 500:
 			attrs := []any{
-				"method", r.Method, "path", r.URL.Path,
+				"method", r.Method, "path", logPath(r.URL.Path),
 				"status", rec.status, "duration_ms", elapsed.Milliseconds(),
 			}
 			if rec.message != "" {
@@ -463,7 +472,7 @@ func (s *Server) withMiddleware(next http.Handler) http.Handler {
 			s.log.Error("http request failed", attrs...)
 		case !strings.HasPrefix(r.URL.Path, "/assets/") || rec.status >= 400:
 			s.log.Info("http request",
-				"method", r.Method, "path", r.URL.Path,
+				"method", r.Method, "path", logPath(r.URL.Path),
 				"status", rec.status, "duration_ms", elapsed.Milliseconds())
 		}
 
@@ -479,11 +488,25 @@ func (s *Server) withMiddleware(next http.Handler) http.Handler {
 					"a password change compares one hash and makes another, so it pays twice"
 			}
 			s.log.Warn("slow request",
-				"method", r.Method, "path", r.URL.Path,
+				"method", r.Method, "path", logPath(r.URL.Path),
 				"status", rec.status, "duration_ms", elapsed.Milliseconds(),
 				"hint", hint)
 		}
 	})
+}
+
+// logPath is what a request line writes instead of the raw path.
+//
+// The public status page carries its share token in the URL, and a log is a
+// file somebody else may read, a copy that may be pasted into a bug report, or a
+// terminal left open. The token is the whole of that page's access control, so
+// the log keeps the route and drops the secret — the same reasoning that keeps
+// the API key out of every line.
+func logPath(path string) string {
+	if strings.HasPrefix(path, "/status/") {
+		return "/status/…"
+	}
+	return path
 }
 
 func setSecurityHeaders(w http.ResponseWriter, tileOrigin string) {

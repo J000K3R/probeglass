@@ -98,6 +98,14 @@ here and what the release says are the same document.
   sensor that stops seeing a certificate loses it. The sensor's own
   `cert_warn_days` still decides when it fails, so the page can warn earlier than
   the alert.
+- **A public status page.** A server-rendered page at `/status/<token>` for the
+  people who use the homelab rather than operate it: the sensors you publish,
+  their current state, 24-hour, 7-day and 30-day uptime and the incidents of the
+  last thirty days. The link is the credential and can be rotated or switched
+  off; the selection is separate from it and kept while the page is off. Targets,
+  options and credentials are never drawn, incident causes are off by default,
+  and the page follows the reader's `Accept-Language`. The token is kept out of
+  the request log.
 - **A `/metrics` endpoint for Prometheus.** Sensor status, the 24-hour, 7-day and
   30-day uptime ratios, the last latency and the open incidents, in the Prometheus
   text format, so a homelab that already runs a monitoring stack can scrape
