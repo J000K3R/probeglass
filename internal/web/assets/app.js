@@ -124,6 +124,8 @@ const ui = {
   // browser talking to a build that has not been rebuilt yet still shows the
   // header it has always shown instead of an empty strip.
   widgets: widgetsUI.DEFAULT_IDS.join(','),
+  // The template card order, empty for alphabetical.
+  template_order: '',
 };
 
 // ---------------------------------------------------------------------------
@@ -3813,7 +3815,7 @@ async function openSensorCatalog(form) {
   if (!catalogTemplates) {
     try {
       const data = await api('/api/sensor-templates');
-      catalogTemplates = data.templates || [];
+      catalogTemplates = sortTemplates(data.templates || []);
     } catch (err) {
       catalogTemplates = [];
       toast(err.message, 'error');
@@ -3855,9 +3857,27 @@ function catalogSensorsMarkup() {
   return `<div data-type-field data-catalog-sensors>${sensorTypePanelMarkup(def)}</div>`;
 }
 
+/**
+ * sortTemplates puts the cards in the order somebody arranged, and alphabetical
+ * for everything not in that order. An empty preference is the default: the
+ * translation's own collation, so "Ä" sorts where a German reader expects it.
+ */
+function sortTemplates(list, preference = ui.template_order) {
+  const order = String(preference || '').split(',').filter(Boolean);
+  const rank = new Map(order.map((id, index) => [id, index]));
+  return list.slice().sort((a, b) => {
+    const ra = rank.has(a.id) ? rank.get(a.id) : Infinity;
+    const rb = rank.has(b.id) ? rank.get(b.id) : Infinity;
+    if (ra !== rb) return ra - rb;
+    return t(a.name_key).localeCompare(t(b.name_key));
+  });
+}
+
 /** catalogTemplatesMarkup draws one card per device template. */
 const catalogFilter = { query: '', vendor: '', system: '', tags: new Set() };
 let catalogFilterOpen = false;
+let draggedTemplate = '';
+let templateDragJustHappened = false;
 
 function catalogTemplatesMarkup() {
   if (!catalogTemplates?.length) return `<p class="muted">${esc(t('catalog.templateHint'))}</p>`;
@@ -3895,6 +3915,8 @@ function catalogFiltersMarkup() {
       <button type="button" class="btn" data-filter-toggle aria-expanded="false">
         ${esc(t('catalog.filters'))} <span class="filter-count" data-filter-count></span>
       </button>
+      <button type="button" class="btn btn-small" data-template-sort
+              title="${esc(t('catalog.sortAlphabetical'))}">A–Z</button>
     </div>
     <div class="catalog-filter-active" id="catalog-filter-active"></div>
     <div class="catalog-filter-panel" id="catalog-filter-panel" hidden>
@@ -3970,7 +3992,7 @@ function templateCardMarkup(template) {
     template.system ? t(`catalog.system.${template.system}`) : '',
   ].filter(Boolean).join(' · ');
   return `
-    <button type="button" class="template-card" data-template-id="${esc(template.id)}">
+    <button type="button" class="template-card" draggable="true" data-template-id="${esc(template.id)}">
       <span class="template-icon">${iconUI.iconMarkup(template.icon, { size: 24 })}</span>
       <span class="template-text">
         <strong>${esc(t(template.name_key))}</strong>
@@ -4302,8 +4324,18 @@ document.addEventListener('click', (event) => {
     setCatalogTab(tab.dataset.catalogTab);
     return;
   }
+  if (event.target.closest('[data-template-sort]')) {
+    catalogTemplates = sortTemplates(catalogTemplates, '');
+    renderTemplateGrid();
+    persistUI('template_order', '');
+    return;
+  }
   const card = event.target.closest('[data-template-id]');
   if (card) {
+    if (templateDragJustHappened) {
+      templateDragJustHappened = false;
+      return;
+    }
     const template = (catalogTemplates || []).find((entry) => entry.id === card.dataset.templateId);
     if (template) openTemplateDetail(template);
     return;
@@ -4354,6 +4386,53 @@ $('#modal-catalog').addEventListener('close', () => {
   catalogForm = null;
   catalogDetail = null;
   catalogChecks = [];
+});
+
+// Template cards are arranged by dragging, the way group rows are. The whole
+// order is written to the account's template_order preference, so it follows the
+// person rather than the installation.
+document.addEventListener('dragstart', (event) => {
+  const card = event.target.closest('#modal-catalog .template-card');
+  if (!card) return;
+  draggedTemplate = card.dataset.templateId;
+  card.classList.add('is-dragging');
+  if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+});
+document.addEventListener('dragover', (event) => {
+  const card = event.target.closest('#modal-catalog .template-card');
+  if (!card || !draggedTemplate) return;
+  event.preventDefault();
+  card.classList.add('is-drop-target');
+});
+document.addEventListener('dragleave', (event) => {
+  const card = event.target.closest('#modal-catalog .template-card');
+  if (card) card.classList.remove('is-drop-target');
+});
+document.addEventListener('drop', (event) => {
+  const card = event.target.closest('#modal-catalog .template-card');
+  if (!card || !draggedTemplate) return;
+  event.preventDefault();
+  const targetId = card.dataset.templateId;
+  const from = catalogTemplates.findIndex((template) => template.id === draggedTemplate);
+  if (from >= 0 && targetId !== draggedTemplate) {
+    const [moved] = catalogTemplates.splice(from, 1);
+    const at = catalogTemplates.findIndex((template) => template.id === targetId);
+    if (at >= 0) catalogTemplates.splice(at, 0, moved);
+    renderTemplateGrid();
+    persistUI('template_order', catalogTemplates.map((template) => template.id).join(','));
+    templateDragJustHappened = true;
+    setTimeout(() => { templateDragJustHappened = false; }, 100);
+  }
+  draggedTemplate = '';
+  for (const el of document.querySelectorAll('.is-dragging, .is-drop-target')) {
+    el.classList.remove('is-dragging', 'is-drop-target');
+  }
+});
+document.addEventListener('dragend', () => {
+  draggedTemplate = '';
+  for (const el of document.querySelectorAll('.is-dragging, .is-drop-target')) {
+    el.classList.remove('is-dragging', 'is-drop-target');
+  }
 });
 
 // --- the site and dependency choosers ---------------------------------------

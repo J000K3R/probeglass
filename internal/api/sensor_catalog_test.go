@@ -68,3 +68,33 @@ func TestTemplateCheckRunsAnApplicationCheck(t *testing.T) {
 		t.Errorf("the check answered %q, want the HTTP status", out.Device.SysDescr)
 	}
 }
+
+func TestTemplateOrderIsAPerAccountPreference(t *testing.T) {
+	h := newHarness(t)
+	h.setup()
+
+	resp := h.do(http.MethodPut, "/api/settings",
+		map[string]any{"ui": map[string]string{"template_order": "qnap,sonarr,generic"}}, nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("valid order: status = %d, body = %s", resp.StatusCode, readBody(t, resp))
+	}
+	resp.Body.Close()
+
+	resp = h.do(http.MethodGet, "/api/settings", nil, nil)
+	var settings struct {
+		UI map[string]string `json:"ui"`
+	}
+	decode(t, resp, &settings)
+	if got := settings.UI["template_order"]; got != "qnap,sonarr,generic" {
+		t.Errorf("template_order = %q, want the saved order", got)
+	}
+
+	for _, bad := range []string{"QNAP", "qnap,qnap", "qnap,../etc"} {
+		resp = h.do(http.MethodPut, "/api/settings",
+			map[string]any{"ui": map[string]string{"template_order": bad}}, nil)
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("order %q: status = %d, want 400", bad, resp.StatusCode)
+		}
+		resp.Body.Close()
+	}
+}

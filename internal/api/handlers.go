@@ -1413,6 +1413,35 @@ func validWidgetList(value string) bool {
 	return true
 }
 
+// validTemplateOrder checks the template card order: a comma-separated list of
+// template ids, each a slug the catalogue could actually have. The list may be
+// shorter than the catalogue (a new template is appended alphabetically) and may
+// name an id that has since been removed; neither is an error, because an order is
+// a memory of what somebody arranged, not a declaration of what exists.
+func validTemplateOrder(value string) bool {
+	if len(value) > 4096 {
+		return false
+	}
+	if value == "" {
+		return true
+	}
+	seen := map[string]bool{}
+	count := 0
+	for _, id := range strings.Split(value, ",") {
+		count++
+		if count > 256 || id == "" || len(id) > 64 || seen[id] {
+			return false
+		}
+		for _, r := range id {
+			if (r < 'a' || r > 'z') && (r < '0' || r > '9') && r != '-' {
+				return false
+			}
+		}
+		seen[id] = true
+	}
+	return true
+}
+
 func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		UI map[string]string `json:"ui"`
@@ -1425,6 +1454,13 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	for key, value := range in.UI {
 		if key == model.PrefWidgets {
 			if !validWidgetList(value) {
+				writeError(w, http.StatusBadRequest, "invalid value %q for %s", value, key)
+				return
+			}
+			continue
+		}
+		if key == model.PrefTemplateOrder {
+			if !validTemplateOrder(value) {
 				writeError(w, http.StatusBadRequest, "invalid value %q for %s", value, key)
 				return
 			}

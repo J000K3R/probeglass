@@ -947,6 +947,10 @@ const (
 	// whitelist in the API and the registry in the browser are what keep it
 	// honest. See Widgets.
 	PrefWidgets = "widgets"
+	// PrefTemplateOrder is the order somebody arranged the sensor template cards
+	// in: a comma-separated list of template ids. Empty means alphabetical, which
+	// is what an installation that never dragged one shows.
+	PrefTemplateOrder = "template_order"
 )
 
 // Layouts are the ways the dashboard can show the same set of sensors, in the
@@ -1042,6 +1046,9 @@ func DefaultPrefs() map[string]string {
 		// behind it (an API key, or nobody at all) is told.
 		PrefMode:        "advanced",
 		PrefTourVersion: "0",
+		// Empty means alphabetical: the order a catalogue nobody has arranged
+		// starts in.
+		PrefTemplateOrder: "",
 		// The header, as above: the lamp and the four figures, which is what the
 		// dashboard showed before anyone could rearrange it.
 		PrefWidgets: DefaultWidgets,
@@ -1051,7 +1058,7 @@ func DefaultPrefs() map[string]string {
 // PrefKeys lists the preference keys the API will accept.
 var PrefKeys = []string{
 	PrefTheme, PrefAccent, PrefDensity, PrefLayout, PrefLanguage, PrefMode, PrefLive, PrefClock,
-	PrefTourVersion, PrefWidgets,
+	PrefTourVersion, PrefWidgets, PrefTemplateOrder,
 }
 
 // Pref returns one of the user's preferences, falling back to the default when

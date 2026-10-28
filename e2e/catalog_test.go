@@ -381,3 +381,69 @@ func TestMOSDiscoveryOffersThePartsOfTheNAS(t *testing.T) {
 		}
 	}
 }
+
+func TestTemplateOrderCanBeDraggedAndReset(t *testing.T) {
+	browser := findBrowser(t)
+	base := startServer(t, buildBinary(t))
+	ctx, done := openBrowser(t, browser)
+	defer done()
+	dir := artifactsDir(t)
+
+	firstRun(t, ctx, base, dir)
+
+	if err := withTimeout(ctx, func(tctx context.Context) error {
+		return chromedp.Do(tctx,
+			chromedp.Click(`#new-sensor`),
+			chromedp.Poll[chromedp.Void](
+				`document.querySelectorAll('#template-grid .template-card').length >= 10`,
+				chromedp.WithPollingTimeout(15*time.Second)),
+		)
+	}); err != nil {
+		capture(t, ctx, dir, "template-order-grid")
+		t.Fatalf("the template grid did not open: %v", err)
+	}
+
+	ids := read[[]string](t, ctx,
+		`[...document.querySelectorAll('#template-grid .template-card')].slice(0, 3).map((c) => c.dataset.templateId)`,
+		"the first template ids")
+	if len(ids) < 3 {
+		t.Fatalf("the grid has fewer than three templates: %v", ids)
+	}
+
+	if _, err := chromedp.Run(ctx, chromedp.Evaluate[bool](`(() => {
+		const cards = [...document.querySelectorAll('#template-grid .template-card')];
+		const from = cards.find((c) => c.dataset.templateId === '`+ids[2]+`');
+		const to = cards.find((c) => c.dataset.templateId === '`+ids[0]+`');
+		if (!from || !to) return false;
+		const dt = new DataTransfer();
+		from.dispatchEvent(new DragEvent('dragstart', { bubbles: true, cancelable: true, dataTransfer: dt }));
+		to.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: dt }));
+		to.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }));
+		from.dispatchEvent(new DragEvent('dragend', { bubbles: true, cancelable: true, dataTransfer: dt }));
+		return true;
+	})()`)); err != nil {
+		t.Fatalf("could not drag a template card: %v", err)
+	}
+
+	eventually(t, ctx,
+		`document.querySelector('#template-grid .template-card')?.dataset.templateId === '`+ids[2]+`'`,
+		"the dragged template did not move to the front", dir, "template-order-drag", 10*time.Second)
+
+	order := readAsync[string](t, ctx,
+		`fetch('/api/settings').then((r) => r.json()).then((s) => s.ui?.template_order || '')`,
+		"the saved template order")
+	if !strings.HasPrefix(order, ids[2]+",") {
+		t.Errorf("the saved order is %q, want it to start with %q", order, ids[2])
+	}
+
+	if _, err := chromedp.Run(ctx, chromedp.Click(`#modal-catalog [data-template-sort]`)); err != nil {
+		t.Fatalf("could not press the alphabetical button: %v", err)
+	}
+	eventually(t, ctx, `(() => {
+		const names = [...document.querySelectorAll('#template-grid .template-card strong')].map((n) => n.textContent);
+		return names.every((name, i) => i === 0 || names[i - 1].localeCompare(name) <= 0);
+	})()`, "the A-Z button did not restore the alphabetical order", dir, "template-order-az", 10*time.Second)
+	eventually(t, ctx,
+		`fetch('/api/settings').then((r) => r.json()).then((s) => (s.ui?.template_order || '') === '')`,
+		"the alphabetical order was not saved", dir, "template-order-cleared", 10*time.Second)
+}

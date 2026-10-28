@@ -59,7 +59,7 @@ let confirmDialog = (message) => window.confirm(message);
 const ICON_BASE = new URL('icons/', import.meta.url);
 const BRAND_BASE = new URL('brands/', import.meta.url);
 // MOS is the one brand Dashboard Icons publishes only as a PNG.
-const BRAND_EXT = { mos: 'png', 'unifi-protect': 'png' };
+const BRAND_EXT = { mos: 'png', 'unifi-protect': 'png', esphome: 'png' };
 
 /** The URL a symbol is drawn from, or "" when there is nothing to draw. */
 export function iconURL(ref) {

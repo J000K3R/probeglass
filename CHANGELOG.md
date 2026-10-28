@@ -73,6 +73,16 @@ here and what the release says are the same document.
   Machines, Protect, Access and Talk, plus airMAX/airFiber and EdgeMAX. Each has
   uptime and reachability; airMAX also checks board temperature. SNMP still has to
   be enabled for the device in the controller.
+- **The template cards sort alphabetically and can be arranged.** Drag one
+  template onto another to put it in front; the order is remembered on your
+  account. The **A–Z** button next to the filters clears it and returns to the
+  translation's alphabetical order.
+- **More homelab templates.** Plex, Emby, Tautulli, SABnzbd, qBittorrent,
+  Transmission, Nextcloud, Immich, Vaultwarden, Gitea, Syncthing, Netdata,
+  Prometheus, InfluxDB, Traefik, Nginx Proxy Manager, ESPHome, Tasmota,
+  Zigbee2MQTT, Frigate, OctoPrint, Homebridge, Audiobookshelf, Navidrome, Kavita,
+  OpenMediaVault and Unraid — 27 more entries, each with its web/health endpoint
+  and reachability.
 - **A `/metrics` endpoint for Prometheus.** Sensor status, the 24-hour, 7-day and
   30-day uptime ratios, the last latency and the open incidents, in the Prometheus
   text format, so a homelab that already runs a monitoring stack can scrape
