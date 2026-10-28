@@ -18,10 +18,10 @@ import (
 // language on their behalf.
 type labels struct {
 	Lang       string
-	Title      string
 	Services   string
 	Service    string
 	Status     string
+	Checks     string
 	LastCheck  string
 	Incidents  string
 	NoServices string
@@ -36,19 +36,19 @@ type labels struct {
 
 var (
 	english = labels{
-		Lang: "en", Title: "Status", Services: "Services", Service: "Service",
-		Status: "Status", LastCheck: "Last checked", Incidents: "Recent incidents",
-		NoServices: "No services have been published yet.",
-		Updated:    "Updated", Footer: "ProbeGlass",
+		Lang: "en", Services: "Services", Service: "Service",
+		Status: "Status", Checks: "Checks", LastCheck: "Last checked",
+		Incidents: "Recent incidents", NoServices: "No services have been published yet.",
+		Updated: "Updated", Footer: "ProbeGlass",
 		Never: "never", Ongoing: "ongoing", Resolved: "resolved",
 		up: "Operational", down: "Down", warn: "Degraded", paused: "Paused",
 		unknown: "Unknown",
 	}
 	german = labels{
-		Lang: "de", Title: "Status", Services: "Dienste", Service: "Dienst",
-		Status: "Status", LastCheck: "Zuletzt geprüft", Incidents: "Letzte Vorfälle",
-		NoServices: "Es sind noch keine Dienste veröffentlicht.",
-		Updated:    "Aktualisiert", Footer: "ProbeGlass",
+		Lang: "de", Services: "Dienste", Service: "Dienst",
+		Status: "Status", Checks: "Prüfungen", LastCheck: "Zuletzt geprüft",
+		Incidents: "Letzte Vorfälle", NoServices: "Es sind noch keine Dienste veröffentlicht.",
+		Updated: "Aktualisiert", Footer: "ProbeGlass",
 		Never: "noch nie", Ongoing: "andauernd", Resolved: "behoben",
 		up: "Betriebsbereit", down: "Ausgefallen", warn: "Gestört",
 		paused: "Pausiert", unknown: "Unbekannt",
@@ -79,14 +79,22 @@ func pickLabels(acceptLanguage string) labels {
 type view struct {
 	CSS         template.CSS
 	Lang        string
+	Config      Config
 	Title       string
+	Subtitle    string
 	Updated     string
 	Overall     model.Status
 	OverallWord string
 	Counts      string
 	Labels      labels
-	Sensors     []sensorView
+	Sections    []sectionView
 	Incidents   []incidentView
+}
+
+type sectionView struct {
+	Title   string
+	Colour  string
+	Sensors []sensorView
 }
 
 type sensorView struct {
@@ -97,6 +105,14 @@ type sensorView struct {
 	Uptime7    string
 	Uptime30   string
 	LastCheck  string
+	IconURL    string
+	IconDrawn  bool
+	Beats      []beatView
+}
+
+type beatView struct {
+	Class string
+	Title string
 }
 
 type incidentView struct {
@@ -111,16 +127,20 @@ type incidentView struct {
 // so that a new caller cannot forget them.
 func Render(w io.Writer, page Page, acceptLanguage string) error {
 	l := pickLabels(acceptLanguage)
+	cfg := page.Config
+	Normalise(&cfg)
 	v := view{
 		CSS:       template.CSS(pageCSS), //nolint:gosec // an embedded file, never user input
 		Lang:      l.Lang,
-		Title:     l.Title,
-		Updated:   page.Updated.UTC().Format("02 Jan 2006 15:04 UTC"),
+		Config:    cfg,
+		Title:     cfg.Title,
+		Subtitle:  cfg.Subtitle,
 		Overall:   page.Overall(),
 		Labels:    l,
-		Sensors:   make([]sensorView, 0, len(page.Sensors)),
+		Sections:  make([]sectionView, 0, len(page.Sections)),
 		Incidents: make([]incidentView, 0, len(page.Incidents)),
 	}
+	v.Updated = page.Updated.UTC().Format("02 Jan 2006 15:04 UTC")
 	if l.Lang == "de" {
 		v.Updated = page.Updated.UTC().Format("02.01.2006 15:04 UTC")
 	}
@@ -136,24 +156,41 @@ func Render(w io.Writer, page Page, acceptLanguage string) error {
 		case model.StatusPaused:
 			paused++
 		case model.StatusWarn, model.StatusUnknown:
-			// Degraded and never-probed are drawn by the row, not counted in the
-			// one-line summary: it says how many are fine, how many are out and
-			// how many are paused, which is what a reader acts on.
+			// Drawn by the row, not counted in the one-line summary: it says how
+			// many are fine, how many are out and how many are paused.
 		}
 	}
 	v.Counts = l.counts(up, down, paused)
 
-	for _, s := range page.Sensors {
-		v.Sensors = append(v.Sensors, sensorView{
-			Name:       s.Name,
-			Status:     s.Status,
-			StatusWord: l.word(s.Status),
-			Uptime24:   uptimeText(s.Uptime24, l),
-			Uptime7:    uptimeText(s.Uptime7, l),
-			Uptime30:   uptimeText(s.Uptime30, l),
-			LastCheck:  l.when(s.LastCheck),
-		})
+	for _, section := range page.Sections {
+		sv := sectionView{Title: section.Title, Colour: section.Colour}
+		for _, s := range section.Sensors {
+			row := sensorView{
+				Name:       s.Name,
+				Status:     s.Status,
+				StatusWord: l.word(s.Status),
+				Uptime24:   uptimeText(s.Uptime24, l),
+				Uptime7:    uptimeText(s.Uptime7, l),
+				Uptime30:   uptimeText(s.Uptime30, l),
+				LastCheck:  l.when(s.LastCheck),
+				IconURL:    s.IconURL,
+				IconDrawn:  s.IconDrawn,
+			}
+			for _, beat := range s.Heartbeat {
+				class := "down"
+				switch {
+				case beat.Up:
+					class = "up"
+				case beat.Excused:
+					class = "excused"
+				}
+				row.Beats = append(row.Beats, beatView{Class: class, Title: l.when(beat.When)})
+			}
+			sv.Sensors = append(sv.Sensors, row)
+		}
+		v.Sections = append(v.Sections, sv)
 	}
+
 	for _, inc := range page.Incidents {
 		state := l.Resolved
 		if inc.Ongoing {
@@ -281,7 +318,7 @@ func (l labels) unit(en, de string) string {
 var pageCSS string
 
 var pageTemplate = template.Must(template.New("status").Parse(`<!doctype html>
-<html lang="{{.Lang}}">
+<html lang="{{.Lang}}" data-theme="{{.Config.Theme}}" data-accent="{{.Config.Accent}}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -291,46 +328,94 @@ var pageTemplate = template.Must(template.New("status").Parse(`<!doctype html>
 <style>{{.CSS}}</style>
 </head>
 <body>
-<main>
-<header>
-<h1>{{.Title}}</h1>
-<p class="updated">{{.Labels.Updated}} {{.Updated}}</p>
+<main class="layout-{{.Config.Layout}}">
+<header class="page-head">
+  <h1>{{.Title}}</h1>
+  {{if .Subtitle}}<p class="subtitle">{{.Subtitle}}</p>{{end}}
+  <p class="updated">{{.Labels.Updated}} {{.Updated}}</p>
 </header>
+
 <div class="banner {{.Overall}}">
   <strong>{{.OverallWord}}</strong>
   {{if .Counts}}<span class="counts">{{.Counts}}</span>{{end}}
 </div>
 
-<section>
-<h2>{{.Labels.Services}}</h2>
-{{if .Sensors}}
-<div class="table-wrap">
-<table>
-<thead><tr>
-  <th>{{.Labels.Service}}</th>
-  <th>{{.Labels.Status}}</th>
-  <th class="num">24h</th>
-  <th class="num hide-sm">7d</th>
-  <th class="num hide-sm">30d</th>
-  <th class="hide-sm">{{.Labels.LastCheck}}</th>
-</tr></thead>
-<tbody>
-{{range .Sensors}}<tr>
-  <td>{{.Name}}</td>
-  <td><span class="pill {{.Status}}">{{.StatusWord}}</span></td>
-  <td class="num">{{.Uptime24}}</td>
-  <td class="num hide-sm">{{.Uptime7}}</td>
-  <td class="num hide-sm">{{.Uptime30}}</td>
-  <td class="muted hide-sm">{{.LastCheck}}</td>
-</tr>
-{{end}}</tbody>
-</table>
-</div>
-{{else}}<p class="muted">{{.Labels.NoServices}}</p>{{end}}
-</section>
+{{if .Sections}}
+{{range .Sections}}
+<section class="group{{if .Colour}} c-{{.Colour}}{{end}}">
+  {{if .Title}}<h2>{{.Title}}</h2>{{end}}
 
-{{if .Incidents}}
-<section>
+  {{if eq $.Config.Layout "cards"}}
+  <div class="cards">
+    {{range .Sensors}}
+    <article class="card {{.Status}}">
+      <div class="card-top">
+        {{if $.Config.ShowLogos}}{{template "logo" .}}{{end}}
+        <b>{{.Name}}</b>
+        <span class="pill {{.Status}}">{{.StatusWord}}</span>
+      </div>
+      {{if or $.Config.ShowUptime24 $.Config.ShowUptime7 $.Config.ShowUptime30}}
+      <div class="card-stats">
+        {{if $.Config.ShowUptime24}}<span><i>24h</i>{{.Uptime24}}</span>{{end}}
+        {{if $.Config.ShowUptime7}}<span><i>7d</i>{{.Uptime7}}</span>{{end}}
+        {{if $.Config.ShowUptime30}}<span><i>30d</i>{{.Uptime30}}</span>{{end}}
+      </div>
+      {{end}}
+      {{if and $.Config.ShowHeartbeat .Beats}}{{template "beats" .}}{{end}}
+      {{if $.Config.ShowLastCheck}}<div class="small muted">{{$.Labels.LastCheck}}: {{.LastCheck}}</div>{{end}}
+    </article>
+    {{end}}
+  </div>
+
+  {{else if eq $.Config.Layout "compact"}}
+  <div class="rows">
+    {{range .Sensors}}
+    <div class="row">
+      {{if $.Config.ShowLogos}}{{template "logo" .}}{{end}}
+      <span class="row-name">{{.Name}}</span>
+      <span class="pill {{.Status}}">{{.StatusWord}}</span>
+      {{if $.Config.ShowUptime24}}<span class="num">{{.Uptime24}}</span>{{end}}
+      {{if and $.Config.ShowHeartbeat .Beats}}{{template "beats" .}}{{end}}
+    </div>
+    {{end}}
+  </div>
+
+  {{else}}
+  <div class="table-wrap">
+    <table>
+      <thead><tr>
+        <th>{{$.Labels.Service}}</th>
+        <th>{{$.Labels.Status}}</th>
+        {{if $.Config.ShowUptime24}}<th class="num">24h</th>{{end}}
+        {{if $.Config.ShowUptime7}}<th class="num hide-sm">7d</th>{{end}}
+        {{if $.Config.ShowUptime30}}<th class="num hide-sm">30d</th>{{end}}
+        {{if $.Config.ShowHeartbeat}}<th class="hide-sm">{{$.Labels.Checks}}</th>{{end}}
+        {{if $.Config.ShowLastCheck}}<th class="hide-sm">{{$.Labels.LastCheck}}</th>{{end}}
+      </tr></thead>
+      <tbody>
+      {{range .Sensors}}
+      <tr>
+        <td class="service">{{if $.Config.ShowLogos}}{{template "logo" .}}{{end}}{{.Name}}</td>
+        <td><span class="pill {{.Status}}">{{.StatusWord}}</span></td>
+        {{if $.Config.ShowUptime24}}<td class="num">{{.Uptime24}}</td>{{end}}
+        {{if $.Config.ShowUptime7}}<td class="num hide-sm">{{.Uptime7}}</td>{{end}}
+        {{if $.Config.ShowUptime30}}<td class="num hide-sm">{{.Uptime30}}</td>{{end}}
+        {{if $.Config.ShowHeartbeat}}<td class="hide-sm">{{if .Beats}}{{template "beats" .}}{{end}}</td>{{end}}
+        {{if $.Config.ShowLastCheck}}<td class="muted hide-sm">{{.LastCheck}}</td>{{end}}
+      </tr>
+      {{end}}
+      </tbody>
+    </table>
+  </div>
+  {{end}}
+</section>
+{{end}}
+{{else}}
+<p class="muted">{{.Labels.NoServices}}</p>
+{{end}}
+
+{{if and .Config.ShowIncidents .Incidents}}
+<section class="group">
 <h2>{{.Labels.Incidents}}</h2>
 <ul class="incidents">
 {{range .Incidents}}<li{{if .Ongoing}} class="ongoing"{{end}}>
@@ -345,4 +430,8 @@ var pageTemplate = template.Must(template.New("status").Parse(`<!doctype html>
 </main>
 </body>
 </html>
+
+{{define "logo"}}{{if .IconURL}}{{if .IconDrawn}}<span class="logo logo-drawn" style="--logo:url('{{.IconURL}}')" aria-hidden="true"></span>{{else}}<img class="logo" src="{{.IconURL}}" alt="" width="18" height="18">{{end}}{{end}}{{end}}
+
+{{define "beats"}}<span class="beats" aria-hidden="true">{{range .Beats}}<i class="beat {{.Class}}" title="{{.Title}}"></i>{{end}}</span>{{end}}
 `))

@@ -98,14 +98,17 @@ here and what the release says are the same document.
   sensor that stops seeing a certificate loses it. The sensor's own
   `cert_warn_days` still decides when it fails, so the page can warn earlier than
   the alert.
-- **A public status page.** A server-rendered page at `/status/<token>` for the
-  people who use the homelab rather than operate it: the sensors you publish,
-  their current state, 24-hour, 7-day and 30-day uptime and the incidents of the
-  last thirty days. The link is the credential and can be rotated or switched
-  off; the selection is separate from it and kept while the page is off. Targets,
-  options and credentials are never drawn, incident causes are off by default,
-  and the page follows the reader's `Accept-Language`. The token is kept out of
-  the request log.
+- **A public status page you build yourself.** A server-rendered page at
+  `/status/<token>` for the people who use the homelab rather than operate it.
+  Title and subtitle, system/light/dark, one of six accent colours, and three
+  layouts — list, cards, compact. Each service can show any of the three uptime
+  windows, the last check, its logo and a heartbeat of the last thirty probes;
+  incidents and their causes are separate switches. Services are grouped into
+  sections you name and order yourself, each with its own accent colour, and a
+  filterable picker decides what belongs in each. The link is the credential and
+  can be rotated or switched off; the page is separate from it and kept while it
+  is off. Targets, options and credentials are never drawn. Follows the reader's
+  `Accept-Language`, and the token is kept out of the request log.
 - **A `/metrics` endpoint for Prometheus.** Sensor status, the 24-hour, 7-day and
   30-day uptime ratios, the last latency and the open incidents, in the Prometheus
   text format, so a homelab that already runs a monitoring stack can scrape
@@ -145,6 +148,9 @@ here and what the release says are the same document.
 - **The template dialog closes after creating its sensors.** A new sensor goes
   back to the dashboard with the new cards on it, rather than leaving the
   catalogue open over a form that is no longer being filled.
+- **The network scan is a tab in the catalogue.** It sits beside Templates and
+  Single sensor, with a card that explains it and a button that opens the scan;
+  the small button in the filter bar stays.
 - **The template filters are one button again.** The search box and a single
   **Filter** button; vendor, system and "watches" open in a small panel, and what
   is chosen is shown as removable chips under the bar. The cards themselves say

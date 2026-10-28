@@ -461,9 +461,14 @@ func TestNetworkScanDialogRefusesPublicRanges(t *testing.T) {
 		return chromedp.Do(tctx,
 			chromedp.Click(`#new-sensor`),
 			chromedp.Poll[chromedp.Void](
-				`!!document.querySelector('#modal-catalog [data-scan-open]')`,
+				`!!document.querySelector('#modal-catalog [data-catalog-tab="templates"]')`,
 				chromedp.WithPollingTimeout(15*time.Second)),
-			chromedp.Click(`#modal-catalog [data-scan-open]`),
+			// The scan is one of the three entrances to a sensor, not a button
+			// hidden in the template filters.
+			chromedp.Click(`#modal-catalog [data-catalog-tab="scan"]`),
+			chromedp.WaitVisible(`#modal-catalog [data-scan-tab-start]`),
+			chromedp.Click(`#modal-catalog [data-scan-tab-start]`),
+			chromedp.WaitNotPresent(`#modal-catalog[open]`),
 			chromedp.WaitVisible(`#modal-scan[open]`),
 			chromedp.SetValue(`#scan-cidr`, "8.8.8.0/24"),
 			chromedp.Click(`#scan-start`),

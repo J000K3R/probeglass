@@ -482,6 +482,11 @@
             aria-selected="true" data-i18n="catalog.templates"></button>
     <button type="button" class="chip chip-choice" role="tab" data-catalog-tab="sensors"
             aria-selected="false" data-i18n="catalog.sensors"></button>
+    <!-- The scan is a way into the catalogue rather than a source of templates:
+         it finds the devices first and then offers the checks. Its own tab keeps
+         it beside the other two entrances instead of hiding it behind a filter. -->
+    <button type="button" class="chip chip-choice" role="tab" data-catalog-tab="scan"
+            aria-selected="false" data-i18n="catalog.scan"></button>
   </div>
   <div class="sheet-body" id="catalog-body"></div>
   <p id="catalog-error" class="form-error" role="alert"></p>
@@ -519,6 +524,25 @@
   <div class="sheet-foot">
     <button class="btn" type="button" data-close data-i18n="common.cancel">Cancel</button>
     <button class="btn btn-primary" type="button" id="scan-add" disabled></button>
+  </div>
+</dialog>
+
+<dialog id="modal-status-sensors" class="sheet sheet-narrow" aria-labelledby="status-sensors-title">
+  <div class="sheet-head">
+    <h2 id="status-sensors-title"></h2>
+    <button class="icon-btn" type="button" data-close data-i18n-aria="common.close" aria-label="Close">&times;</button>
+  </div>
+  <div class="sheet-body">
+    <p class="muted small" data-i18n="status.assignHint">Only the ticked sensors appear in this section.</p>
+    <div class="status-tools">
+      <input type="search" id="status-sensors-search" data-i18n-placeholder="status.assignFilter"
+             placeholder="Filter sensors" aria-label="Filter sensors">
+    </div>
+    <div class="status-sensors" id="status-sensors-pick"></div>
+  </div>
+  <div class="sheet-foot">
+    <button class="btn" type="button" data-close data-i18n="common.cancel">Cancel</button>
+    <button class="btn btn-primary" type="button" id="status-sensors-apply"></button>
   </div>
 </dialog>
 

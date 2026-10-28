@@ -48,7 +48,8 @@ results_daily     bucket = "2026-10-08"
 incidents         started_at, resolved_at, cause, and the acknowledgement
 certificates      the last certificate each TLS-capable sensor saw: one row per
                   sensor, replaced on renewal, ON DELETE CASCADE
-status_sensors    the sensors the public status page publishes, one row each
+status_sensors    the public page's selection from before it had sections; read
+                  once to migrate it into the page configuration in settings
 users             one account per row: username, password hash, role, TOTP state,
                   token epoch, prefs (this account's interface settings)
 recovery_codes    one hashed one-time code per row, marked used rather than deleted

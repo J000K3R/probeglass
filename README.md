@@ -133,9 +133,11 @@ frontend pipeline to keep alive.
   within-30-days are filters, and the list is fed by the probes — a renewal
   replaces its row.
 - **Public status page** — a read-only, server-rendered page at `/status/<token>`
-  for the people who use the homelab: the sensors you publish, their state, the
-  three uptime windows and the incidents of the last thirty days. The link can be
-  rotated or switched off; no target, option or credential is ever drawn.
+  for the people who use the homelab. You give it a title, a theme, an accent and
+  one of three layouts; group the services into sections you name; and choose
+  which uptime windows, logos, heartbeats, incidents and causes each shows. The
+  link can be rotated or switched off; no target, option or credential is ever
+  drawn.
 - **Dashboard** — five views of the same sensors: cards, a dense list, a foldable
   **tree** by site and group, a **wall** of tiles carrying the last forty checks as
   a heartbeat, and a **map** of your sites. The map draws the world from

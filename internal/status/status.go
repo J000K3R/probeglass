@@ -3,8 +3,9 @@
 //
 // It is deliberately not the dashboard. The dashboard draws everything because
 // its reader is the administrator; this page draws only what was ticked in
-// Settings, carries no target, no option and no credential, and is rendered by
-// the server so that sharing it needs no account and no JavaScript.
+// Settings, in the shape the operator chose, carries no target, no option and no
+// credential, and is rendered by the server so that sharing it needs no account
+// and no JavaScript.
 package status
 
 import (
@@ -29,6 +30,13 @@ type Uptime struct {
 	Known bool
 }
 
+// Beat is one recent probe, as the heartbeat strip draws it.
+type Beat struct {
+	Up      bool
+	Excused bool
+	When    time.Time
+}
+
 // Sensor is one published service, as the page draws it.
 type Sensor struct {
 	Name      string
@@ -37,6 +45,19 @@ type Sensor struct {
 	Uptime7   Uptime
 	Uptime30  Uptime
 	LastCheck time.Time
+	// IconURL is where the symbol is fetched from, and IconDrawn says whether it
+	// is one of the monochrome drawings (drawn with a mask, so it follows the
+	// theme) rather than a colour logo (an image as it is).
+	IconURL   string
+	IconDrawn bool
+	Heartbeat []Beat
+}
+
+// SectionView is one heading of the rendered page and the services under it.
+type SectionView struct {
+	Title   string
+	Colour  string
+	Sensors []Sensor
 }
 
 // Incident is one outage on a published service.
@@ -52,6 +73,8 @@ type Incident struct {
 
 // Page is everything one request to the public page needs.
 type Page struct {
+	Config     Config
+	Sections   []SectionView
 	Sensors    []Sensor
 	Incidents  []Incident
 	ShowCauses bool
@@ -93,24 +116,27 @@ func (p Page) Overall() model.Status {
 	}
 }
 
-// IncidentWindow is how far back the page looks for outages. Thirty days is
-// what somebody deciding whether the service is reliable wants to see; the
-// dashboard's own log goes back forever.
-const IncidentWindow = 30 * 24 * time.Hour
+// HeartbeatProbes is how many recent checks the strip holds. Thirty is about one
+// line on a phone at the smallest the page is read.
+const HeartbeatProbes = 30
 
-// Build assembles the page from the database and the scheduler's live state.
-func Build(ctx context.Context, st *store.Store, snaps map[int64]scheduler.Snapshot, now time.Time) (Page, error) {
-	page := Page{Sensors: []Sensor{}, Incidents: []Incident{}, Updated: now}
-
-	ids, err := st.StatusSensors(ctx)
-	if err != nil {
-		return Page{}, err
+// Build assembles the page from the database, the stored configuration and the
+// scheduler's live state.
+func Build(ctx context.Context, st *store.Store, snaps map[int64]scheduler.Snapshot, now time.Time, iconBase string) (Page, error) {
+	cfg := LoadConfig(ctx, st)
+	page := Page{
+		Config:     cfg,
+		Sections:   []SectionView{},
+		Sensors:    []Sensor{},
+		Incidents:  []Incident{},
+		ShowCauses: cfg.ShowCauses,
+		Updated:    now,
 	}
-	_, page.ShowCauses = st.StatusPageSettings(ctx)
+
+	ids := cfg.SensorIDs()
 	if len(ids) == 0 {
 		return page, nil
 	}
-
 	published := make(map[int64]bool, len(ids))
 	for _, id := range ids {
 		published[id] = true
@@ -125,6 +151,7 @@ func Build(ctx context.Context, st *store.Store, snaps map[int64]scheduler.Snaps
 		byID[c.ID] = c
 	}
 
+	// Uptime for the three windows, one aggregation each for the whole table.
 	windows := []time.Duration{24 * time.Hour, 7 * 24 * time.Hour, 30 * 24 * time.Hour}
 	uptimes := make([]map[int64]store.UptimeStats, len(windows))
 	for i, w := range windows {
@@ -135,65 +162,66 @@ func Build(ctx context.Context, st *store.Store, snaps map[int64]scheduler.Snaps
 		uptimes[i] = stats
 	}
 
-	for _, id := range ids {
-		sensor, ok := byID[id]
-		if !ok {
-			continue // deleted between the two queries; the join would hide it
-		}
-		row := Sensor{
-			Name:   sensor.Name,
-			Status: snaps[id].Status,
-		}
-		if !sensor.Enabled {
-			row.Status = model.StatusPaused
-		} else if row.Status == "" || row.Status == model.StatusUnknown {
-			// No state yet: fall back to the last probe on disk. It is one indexed
-			// lookup per unpublished sensor, and only in this moment — the scheduler
-			// has a state for every sensor it reconciled, which is all of them but
-			// the first seconds after a restart.
-			row.Status = model.StatusUnknown
-			last, err := st.LastResult(ctx, id)
-			switch {
-			case errors.Is(err, sql.ErrNoRows):
-				// Never probed: unknown is the answer.
-			case err != nil:
+	// The heartbeat is fetched only when the page draws it, one indexed query per
+	// published sensor.
+	heartbeats := map[int64][]Beat{}
+	if cfg.ShowHeartbeat {
+		for _, id := range ids {
+			results, err := st.RecentResults(ctx, id, HeartbeatProbes)
+			if err != nil {
 				return Page{}, err
-			default:
-				row.LastCheck = last.TS
-				// A success is a success; a failure is not yet an outage, because
-				// the retry count has not been applied. Saying "unknown" for that
-				// moment is the honest answer and never turns a blip red in public.
-				if last.Success {
-					row.Status = model.StatusUp
-				}
 			}
+			beats := make([]Beat, 0, len(results))
+			for _, r := range results {
+				beats = append(beats, Beat{Up: r.Success, Excused: r.Excused, When: r.TS})
+			}
+			heartbeats[id] = beats
 		}
-		if snap, ok := snaps[id]; ok && snap.LastResult != nil {
-			row.LastCheck = snap.LastResult.TS
-		}
-		row.Uptime24 = uptimeOf(uptimes[0][id])
-		row.Uptime7 = uptimeOf(uptimes[1][id])
-		row.Uptime30 = uptimeOf(uptimes[2][id])
-		page.Sensors = append(page.Sensors, row)
 	}
 
-	// The page is a list of services, read once; alphabetical order is the one
-	// an outsider can predict without knowing how the homelab is grouped.
-	sort.SliceStable(page.Sensors, func(i, j int) bool {
-		return lessFold(page.Sensors[i].Name, page.Sensors[j].Name)
-	})
+	for _, section := range cfg.Sections {
+		view := SectionView{Title: section.Title, Colour: section.Colour}
+		for _, entry := range section.Sensors {
+			sensor, ok := byID[entry.ID]
+			if !ok {
+				continue // deleted since the page was configured
+			}
+			row := Sensor{
+				Name:      entry.Label,
+				Uptime24:  uptimeOf(uptimes[0][entry.ID]),
+				Uptime7:   uptimeOf(uptimes[1][entry.ID]),
+				Uptime30:  uptimeOf(uptimes[2][entry.ID]),
+				Heartbeat: heartbeats[entry.ID],
+			}
+			if row.Name == "" {
+				row.Name = sensor.Name
+			}
+			icon := entry.Icon
+			if icon == "" {
+				icon = sensor.Icon
+			}
+			row.IconURL, row.IconDrawn = iconOf(icon, iconBase)
+			row.Status = snaps[entry.ID].Status
+			settleStatus(ctx, st, &row, sensor, snaps[entry.ID])
+			view.Sensors = append(view.Sensors, row)
+			page.Sensors = append(page.Sensors, row)
+		}
+		if len(view.Sensors) > 0 {
+			page.Sections = append(page.Sections, view)
+		}
+	}
 
 	incidents, err := st.ListIncidentsWithNames(ctx, store.IncidentFilter{
 		OnlyOpen: true,
-		Limit:    200,
+		Limit:    500,
 	})
 	if err != nil {
 		return Page{}, err
 	}
 	resolved, err := st.ListIncidentsWithNames(ctx, store.IncidentFilter{
 		OnlyResolved: true,
-		Since:        now.Add(-IncidentWindow),
-		Limit:        200,
+		Since:        now.Add(-time.Duration(cfg.IncidentDays) * 24 * time.Hour),
+		Limit:        500,
 	})
 	if err != nil {
 		return Page{}, err
@@ -209,7 +237,7 @@ func Build(ctx context.Context, st *store.Store, snaps map[int64]scheduler.Snaps
 			Resolved: inc.ResolvedAt,
 			Ongoing:  inc.ResolvedAt == nil,
 		}
-		if page.ShowCauses {
+		if cfg.ShowCauses {
 			row.Cause = inc.Cause
 		}
 		page.Incidents = append(page.Incidents, row)
@@ -221,9 +249,8 @@ func Build(ctx context.Context, st *store.Store, snaps map[int64]scheduler.Snaps
 		}
 		return a.Started.After(b.Started)
 	})
-	// A status page with two hundred lines of history is a log, and nobody reads
-	// a log on the page they check from their phone. The dashboard is where the
-	// whole list lives.
+	// A status page with hundreds of lines of history is a log, and nobody reads
+	// a log on the page they check from their phone.
 	if len(page.Incidents) > 50 {
 		page.Incidents = page.Incidents[:50]
 	}
@@ -231,16 +258,103 @@ func Build(ctx context.Context, st *store.Store, snaps map[int64]scheduler.Snaps
 	return page, nil
 }
 
+// settleStatus finishes a row's status: a disabled sensor is paused, and a
+// missing scheduler state falls back to the last probe on disk.
+//
+// The fallback is one indexed lookup per affected sensor, and only in the
+// seconds after a restart when the scheduler has not reconciled yet.
+func settleStatus(ctx context.Context, st *store.Store, row *Sensor, sensor model.Sensor, snap scheduler.Snapshot) {
+	if snap.LastResult != nil {
+		row.LastCheck = snap.LastResult.TS
+	}
+	if !sensor.Enabled {
+		row.Status = model.StatusPaused
+		return
+	}
+	if row.Status != "" && row.Status != model.StatusUnknown {
+		return
+	}
+	row.Status = model.StatusUnknown
+	last, err := st.LastResult(ctx, sensor.ID)
+	switch {
+	case errors.Is(err, sql.ErrNoRows) || last == nil:
+		// Never probed: unknown is the answer.
+	case err != nil:
+		return
+	default:
+		row.LastCheck = last.TS
+		// A success is a success; a failure is not yet an outage, because the
+		// retry count has not been applied. Saying "unknown" for that moment is
+		// the honest answer and never turns a blip red in public.
+		if last.Success {
+			row.Status = model.StatusUp
+		}
+	}
+}
+
 func uptimeOf(s store.UptimeStats) Uptime {
 	return Uptime{Percent: s.Percent, Known: s.Total > 0}
 }
 
-// lessFold compares names case-insensitively, which is what a reader expects
-// from "alphabetical" even though SQL would not.
-func lessFold(a, b string) bool {
-	la, lb := strings.ToLower(a), strings.ToLower(b)
-	if la == lb {
-		return a < b
+// iconOf turns a stored symbol reference into a URL the public page can fetch.
+//
+// Built-in drawings and brand marks live in the embedded assets, which are served
+// without a session. An uploaded image lives in the database behind a viewer
+// route, so the page reaches it through its own token: iconBase is the status
+// page's URL, and the handler serves the bytes only while the token is valid and
+// the image belongs to a sensor on the page.
+func iconOf(ref, iconBase string) (url string, drawn bool) {
+	switch {
+	case strings.HasPrefix(ref, "upload:"):
+		id := strings.TrimPrefix(ref, "upload:")
+		if !plainDigits(id) || iconBase == "" {
+			return "", false
+		}
+		return iconBase + "/icon/" + id, false
+	case strings.HasPrefix(ref, "builtin:"):
+		name := strings.TrimPrefix(ref, "builtin:")
+		if !plainName(name) {
+			return "", false
+		}
+		return "/assets/icons/" + name + ".svg", true
+	case strings.HasPrefix(ref, "brand:"):
+		name := strings.TrimPrefix(ref, "brand:")
+		if !plainName(name) {
+			return "", false
+		}
+		ext := "svg"
+		switch name {
+		case "mos", "unifi-protect", "esphome":
+			ext = "png"
+		}
+		return "/assets/brands/" + name + "." + ext, false
 	}
-	return la < lb
+	return "", false
+}
+
+// plainDigits accepts an icon row id, and nothing that could become a path.
+func plainDigits(s string) bool {
+	if s == "" || len(s) > 18 {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// plainName accepts the names the asset folders actually hold, so a stored
+// reference cannot become a path to something else.
+func plainName(name string) bool {
+	if name == "" || len(name) > 64 {
+		return false
+	}
+	for _, r := range name {
+		if (r < 'a' || r > 'z') && (r < '0' || r > '9') && r != '-' {
+			return false
+		}
+	}
+	return true
 }

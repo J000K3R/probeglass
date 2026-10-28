@@ -3988,12 +3988,32 @@ function setCatalogTab(tab) {
   for (const button of dialog.querySelectorAll('[data-catalog-tab]')) {
     button.setAttribute('aria-selected', String(button.dataset.catalogTab === tab));
   }
-  $('#catalog-body').innerHTML = tab === 'templates' ? catalogTemplatesMarkup() : catalogSensorsMarkup();
+  $('#catalog-body').innerHTML = tab === 'templates'
+    ? catalogTemplatesMarkup()
+    : (tab === 'scan' ? catalogScanMarkup() : catalogSensorsMarkup());
   if (tab === 'templates') renderTemplateGrid();
   const add = $('#catalog-add');
   add.hidden = true;
   add.disabled = true;
   $('#catalog-error').textContent = '';
+}
+
+/**
+ * catalogScanMarkup is the third way into a sensor: find the devices first.
+ *
+ * It is a card and one button rather than the scan form itself because the scan
+ * form has its own footer and its own result list; two forms in one dialog would
+ * need two footers. The button closes this window and opens that one, so after
+ * the scan the person lands on the dashboard with the new sensors.
+ */
+function catalogScanMarkup() {
+  return `
+    <div class="catalog-scan">
+      <span class="catalog-scan-icon" aria-hidden="true">${iconUI.iconMarkup('builtin:wifi', { size: 28 }) || ''}</span>
+      <h3>${esc(t('catalog.scanTitle'))}</h3>
+      <p class="muted">${esc(t('catalog.scanHint'))}</p>
+      <button type="button" class="btn btn-primary" data-scan-tab-start>${esc(t('catalog.scanStart'))}</button>
+    </div>`;
 }
 
 /** catalogSensorsMarkup is the old type panel, in the catalog window. */
@@ -4472,7 +4492,11 @@ document.addEventListener('click', (event) => {
     setCatalogTab(tab.dataset.catalogTab);
     return;
   }
-  if (event.target.closest('[data-scan-open]')) {
+  if (event.target.closest('[data-scan-open]') || event.target.closest('[data-scan-tab-start]')) {
+    // The catalogue is a modal and the scan is another one; closing this one
+    // first means the scan opens on the dashboard rather than on top of a form
+    // somebody has half filled in.
+    closeCatalog();
     openScanDialog();
     return;
   }
@@ -4720,13 +4744,19 @@ document.addEventListener('click', (event) => {
   }
   if (event.target.closest('#scan-add')) {
     applyScan();
+    return;
   }
+  if (event.target.closest('#status-sensors-apply')) applyStatusSensors();
 });
 document.addEventListener('change', (event) => {
   if (event.target.closest('#scan-results [data-scan-suggestion]')) updateScanAdd();
   if (event.target.closest('#scan-options')) {
     syncConditionalOptions(scanCredentialFields, $('#scan-options'));
   }
+  if (event.target.closest('#status-sensors-pick [data-assign-sensor]')) syncStatusAssignCount();
+});
+document.addEventListener('input', (event) => {
+  if (event.target.id === 'status-sensors-search') filterStatusAssign(event.target.value);
 });
 
 // --- the site and dependency choosers ---------------------------------------
@@ -5415,6 +5445,11 @@ $('#detail').addEventListener('click', (event) => {
     if (state.detail) void loadDetailBody(state.detail);
     return;
   }
+  // The status page's sections are edited in place: their controls carry the
+  // section's index rather than an action, because the decision belongs to the
+  // form and not to a modal.
+  if (onStatusSectionClick(event.target)) return;
+
   const button = event.target.closest('[data-action]');
   if (!button) return;
   const sensor = state.sensors.find((c) => c.id === state.detail);
@@ -5586,6 +5621,11 @@ function renderChannels() {
 }
 
 $('#channel-list').addEventListener('click', async (event) => {
+  // The status page's sections are edited in place: their controls carry the
+  // section's index rather than an action, because the decision belongs to the
+  // form and not to a modal.
+  if (onStatusSectionClick(event.target)) return;
+
   const button = event.target.closest('[data-action]');
   if (!button) return;
   const channel = state.channels.find((c) => c.id === Number(button.dataset.id));
@@ -6042,40 +6082,17 @@ async function disableMetricsToken() {
 /**
  * statusPanel is the public status page: the link, and what the link shows.
  *
- * The two decisions are kept apart on purpose. The link is a switch — generate,
- * rotate, switch off — and the selection is a form that is saved. Rotating a link
- * breaks every copy of it that was handed out, so it cannot happen because
- * somebody ticked a sensor and pressed Save.
+ * The link and the page are two decisions. The link is a switch — generate,
+ * rotate, switch off — and rotating it breaks every copy that was handed out, so
+ * it cannot happen because somebody edited a title and pressed Save. The page
+ * itself is the form under it, and it lives in state.statusPage.config until the
+ * Save button sends it.
  */
 function statusPanel() {
   if (!can('admin')) return '';
-  const page = state.statusPage || { enabled: false, token: '', sensor_ids: [], show_causes: false };
-  const chosen = new Set((page.sensor_ids || []).map(Number));
+  const page = state.statusPage || { enabled: false, token: '', config: null };
+  const cfg = statusConfig();
   const url = page.token ? `${location.origin}/status/${page.token}` : '';
-
-  const byGroup = new Map();
-  for (const sensor of state.sensors) {
-    const key = sensor.group || '';
-    if (!byGroup.has(key)) byGroup.set(key, []);
-    byGroup.get(key).push(sensor);
-  }
-  const groupNames = [...byGroup.keys()].sort((a, b) => {
-    if (!a || !b) return a ? -1 : 1;
-    return a.localeCompare(b);
-  });
-  const groups = groupNames.map((name) => {
-    const list = byGroup.get(name).slice().sort((a, b) => a.name.localeCompare(b.name));
-    return `<section class="status-group" data-status-group>
-      <h4>${esc(name || t('sensor.groupNone'))}</h4>
-      ${list.map((sensor) => `
-        <label class="status-pick">
-          <input type="checkbox" data-status-sensor="${sensor.id}"${chosen.has(Number(sensor.id)) ? ' checked' : ''}>
-          ${iconUI.iconMarkup(sensor.icon, { size: 16, cls: 'icon-lead' })}<span>${esc(sensor.name)}</span>
-          ${sensor.enabled === false ? `<span class="pill st-paused">${esc(t('status.paused'))}</span>` : ''}
-        </label>`).join('')}
-    </section>`;
-  }).join('');
-
   return `
     <section class="panel" id="status-panel" data-panel="status" data-group="monitor">
       <div class="panel-head">
@@ -6096,23 +6113,40 @@ function statusPanel() {
         <button class="btn btn-primary" data-action="status-enable">${esc(t('status.enable'))}</button>
       </div>`}
 
-      <h3 class="section-title">${esc(t('status.selection'))}</h3>
-      <p class="muted small">${esc(t('status.selectionHint'))}</p>
-      ${state.sensors.length ? `
-      <div class="status-tools">
-        <input type="search" id="status-filter" data-i18n-placeholder="status.filter"
-               placeholder="${esc(t('status.filter'))}" aria-label="${esc(t('status.filter'))}">
-        <button class="btn btn-ghost btn-small" data-action="status-all">${esc(t('status.all'))}</button>
-        <button class="btn btn-ghost btn-small" data-action="status-none">${esc(t('status.none'))}</button>
-        <span class="muted small" id="status-count"></span>
+      <h3 class="section-title">${esc(t('status.pageTitle'))}</h3>
+      <div class="grid-2">
+        <label class="field"><span>${esc(t('status.titleLabel'))}</span>
+          <input id="status-title" type="text" maxlength="80" value="${esc(cfg.title)}" autocomplete="off"></label>
+        <label class="field"><span>${esc(t('status.subtitle'))}</span>
+          <input id="status-subtitle" type="text" maxlength="240" value="${esc(cfg.subtitle || '')}" autocomplete="off"></label>
       </div>
-      <div class="status-sensors" id="status-sensors">${groups}</div>` :
-      `<p class="muted small">${esc(t('status.noSensors'))}</p>`}
+      <div class="status-choice-row">
+        ${statusChoice('theme', 'status.theme', cfg.theme, ['auto', 'light', 'dark'])}
+        ${statusChoice('layout', 'status.layout', cfg.layout, STATUS_LAYOUTS)}
+        ${statusAccents(cfg.accent)}
+      </div>
 
-      <label class="field check">
-        <input type="checkbox" id="status-causes"${page.show_causes ? ' checked' : ''}>
-        <span>${withHelp(t('status.causes'), 'help.status.causes')}</span>
-      </label>
+      <fieldset class="field">
+        <legend>${esc(t('status.show'))}</legend>
+        <div class="status-toggles">
+          ${statusToggle('show_uptime_24', cfg.show_uptime_24, t('status.showUptime24'))}
+          ${statusToggle('show_uptime_7', cfg.show_uptime_7, t('status.showUptime7'))}
+          ${statusToggle('show_uptime_30', cfg.show_uptime_30, t('status.showUptime30'))}
+          ${statusToggle('show_last_check', cfg.show_last_check, t('status.showLastCheck'))}
+          ${statusToggle('show_heartbeat', cfg.show_heartbeat, t('status.showHeartbeat'))}
+          ${statusToggle('show_logos', cfg.show_logos, t('status.showLogos'))}
+          ${statusToggle('show_incidents', cfg.show_incidents, t('status.showIncidents'))}
+          ${statusToggle('show_causes', cfg.show_causes, t('status.showCauses'))}
+        </div>
+      </fieldset>
+
+      <fieldset class="field">
+        <legend>${esc(t('status.sections'))}</legend>
+        <p class="muted small">${esc(t('status.sectionsHint'))}</p>
+        <div class="status-sections" id="status-sections">${statusSectionsMarkup(cfg)}</div>
+        <button class="btn btn-small" type="button" data-status-add-section>+ ${esc(t('status.sectionAdd'))}</button>
+      </fieldset>
+
       <div class="form-actions">
         <button class="btn btn-primary" data-action="status-save">${esc(t('status.save'))}</button>
       </div>
@@ -6120,7 +6154,87 @@ function statusPanel() {
     </section>`;
 }
 
-/** loadStatusPage fetches the link and the published set for the panel. */
+// LAYOUTS is the layouts the page offers; the labels are status.layout.<name>.
+const STATUS_LAYOUTS = ['list', 'cards', 'compact'];
+
+/** statusConfig is the page being edited, with the server's defaults filled in. */
+function statusConfig() {
+  const cfg = state.statusPage?.config;
+  if (!cfg) {
+    return {
+      title: 'Status', subtitle: '', theme: 'auto', accent: 'azure', layout: 'list',
+      show_logos: true, show_uptime_24: true, show_uptime_7: true, show_uptime_30: true,
+      show_last_check: true, show_heartbeat: true, show_incidents: true, show_causes: false,
+      incident_days: 30, sections: [],
+    };
+  }
+  if (!Array.isArray(cfg.sections)) cfg.sections = [];
+  return cfg;
+}
+
+/**
+ * statusChoice is one row of chips over a radio group. The radios are native so
+ * that the keyboard and the form state work the way they do everywhere else.
+ */
+function statusChoice(kind, labelKey, current, values) {
+  return `<div class="status-choice" role="group" aria-label="${esc(t(labelKey))}">
+    <span class="status-choice-label">${esc(t(labelKey))}</span>
+    <div class="choice-group">${values.map((value) => `
+      <label class="chip chip-choice"><input type="radio" name="status-${kind}" value="${value}"
+        data-status-${kind}${value === current ? ' checked' : ''}><span>${esc(t(`status.${kind}.${value}`))}</span></label>`).join('')}
+    </div></div>`;
+}
+
+/** statusAccents is the colour row, drawn with the colour it applies. */
+function statusAccents(current) {
+  return `<div class="status-choice" role="group" aria-label="${esc(t('status.accent'))}">
+    <span class="status-choice-label">${esc(t('status.accent'))}</span>
+    <div class="choice-group">${ACCENTS.map((accent) => `
+      <label class="chip chip-choice status-swatch"><input type="radio" name="status-accent" value="${accent}"
+        data-status-accent${accent === current ? ' checked' : ''}><i class="swatch sw-${accent}" aria-hidden="true"></i><span>${esc(t(`status.colour.${accent}`))}</span></label>`).join('')}
+    </div></div>`;
+}
+
+function statusToggle(key, checked, label) {
+  return `<label class="chip chip-choice status-toggle"><input type="checkbox"
+    data-status-show="${esc(key)}"${checked ? ' checked' : ''}><span>${esc(label)}</span></label>`;
+}
+
+/** statusSectionsMarkup draws the sections in their order. */
+function statusSectionsMarkup(cfg) {
+  if (!cfg.sections.length) {
+    return `<p class="muted small" id="status-no-sections">${esc(t('status.noSections'))}</p>`;
+  }
+  return cfg.sections.map((section, index) => `
+    <div class="status-section" data-section="${index}">
+      <div class="status-section-head">
+        <input type="text" data-section-title="${index}" maxlength="80"
+               value="${esc(section.title || '')}" placeholder="${esc(t('status.sectionPlaceholder'))}"
+               aria-label="${esc(t('status.sectionTitle'))}">
+        <button class="btn btn-ghost btn-small" type="button" data-section-up="${index}"
+                ${index === 0 ? 'disabled' : ''} aria-label="${esc(t('status.sectionUp'))}" title="${esc(t('status.sectionUp'))}">↑</button>
+        <button class="btn btn-ghost btn-small" type="button" data-section-down="${index}"
+                ${index === cfg.sections.length - 1 ? 'disabled' : ''} aria-label="${esc(t('status.sectionDown'))}" title="${esc(t('status.sectionDown'))}">↓</button>
+        <button class="btn btn-ghost btn-small" type="button" data-section-remove="${index}"
+                aria-label="${esc(t('status.sectionRemove'))}" title="${esc(t('status.sectionRemove'))}">✕</button>
+      </div>
+      <div class="status-section-meta">
+        <div class="choice-group">${['', ...ACCENTS].map((colour) => `
+          <label class="chip chip-choice status-swatch"><input type="radio" name="section-colour-${index}"
+            value="${colour}" data-section-colour="${index}"${(section.colour || '') === colour ? ' checked' : ''}><i class="swatch ${colour ? `sw-${colour}` : 'sw-accent'}" aria-hidden="true"></i><span>${esc(colour ? t(`status.colour.${colour}`) : t('status.sectionAccent'))}</span></label>`).join('')}
+        </div>
+        <button class="btn btn-small" type="button" data-section-sensors="${index}">${esc(t('status.sectionSensors', { count: (section.sensors || []).length }))}</button>
+      </div>
+    </div>`).join('');
+}
+
+/** renderStatusSections redraws only the group of sections, not the whole form. */
+function renderStatusSections() {
+  const box = $('#status-sections');
+  if (box) box.innerHTML = statusSectionsMarkup(statusConfig());
+}
+
+/** loadStatusPage fetches the link and the page configuration. */
 async function loadStatusPage() {
   if (!can('admin')) {
     state.statusPage = null;
@@ -6130,26 +6244,61 @@ async function loadStatusPage() {
   state.statusPage = {
     enabled: !!data.enabled,
     token: data.token || '',
-    sensor_ids: (data.sensor_ids || []).map(Number),
-    show_causes: !!data.show_causes,
+    config: data.config || null,
   };
 }
 
-/** statusChecked is the selection as the panel currently shows it. */
-function statusChecked() {
-  return $$('#status-sensors [data-status-sensor]:checked').map((el) => Number(el.dataset.statusSensor));
+// statusAssignSection is the section the sensor picker is editing.
+let statusAssignSection = -1;
+
+/** openStatusSensors picks the sensors of one section. */
+function openStatusSensors(index) {
+  const cfg = statusConfig();
+  const section = cfg.sections[index];
+  if (!section) return;
+  statusAssignSection = index;
+  const chosen = new Set((section.sensors || []).map((entry) => Number(entry.id)));
+  const byGroup = new Map();
+  for (const sensor of state.sensors) {
+    const key = sensor.group || '';
+    if (!byGroup.has(key)) byGroup.set(key, []);
+    byGroup.get(key).push(sensor);
+  }
+  const names = [...byGroup.keys()].sort((a, b) => {
+    if (!a || !b) return a ? -1 : 1;
+    return a.localeCompare(b);
+  });
+  $('#status-sensors-title').textContent = section.title
+    ? t('status.assignTitle', { title: section.title })
+    : t('status.assignTitleUntitled');
+  $('#status-sensors-pick').innerHTML = names.map((name) => {
+    const list = byGroup.get(name).slice().sort((a, b) => a.name.localeCompare(b.name));
+    return `<section class="status-group" data-status-group>
+      <h4>${esc(name || t('sensor.groupNone'))}</h4>
+      ${list.map((sensor) => `
+        <label class="status-pick">
+          <input type="checkbox" data-assign-sensor="${sensor.id}"${chosen.has(Number(sensor.id)) ? ' checked' : ''}>
+          ${iconUI.iconMarkup(sensor.icon, { size: 16, cls: 'icon-lead' })}<span>${esc(sensor.name)}</span>
+          ${sensor.enabled === false ? `<span class="pill st-paused">${esc(t('status.paused'))}</span>` : ''}
+        </label>`).join('')}
+    </section>`;
+  }).join('');
+  const search = $('#status-sensors-search');
+  if (search) search.value = '';
+  filterStatusAssign('');
+  syncStatusAssignCount();
+  $('#modal-status-sensors').showModal();
 }
 
-function syncStatusCount() {
-  const count = statusChecked().length;
-  const label = $('#status-count');
-  if (label) label.textContent = t('status.selected', { count });
+function syncStatusAssignCount() {
+  const count = $$('#status-sensors-pick [data-assign-sensor]:checked').length;
+  const apply = $('#status-sensors-apply');
+  if (apply) apply.textContent = t('status.assignApply', { count });
 }
 
-/** filterStatusSensors narrows the list without changing the selection. */
-function filterStatusSensors(query) {
+function filterStatusAssign(query) {
   const needle = String(query || '').trim().toLowerCase();
-  for (const group of $$('#status-sensors [data-status-group]')) {
+  for (const group of $$('#status-sensors-pick [data-status-group]')) {
     let shown = 0;
     for (const row of $$('.status-pick', group)) {
       const hit = !needle || row.textContent.toLowerCase().includes(needle);
@@ -6160,22 +6309,29 @@ function filterStatusSensors(query) {
   }
 }
 
+function applyStatusSensors() {
+  const cfg = statusConfig();
+  const section = cfg.sections[statusAssignSection];
+  if (!section) return;
+  const previous = new Map((section.sensors || []).map((entry) => [Number(entry.id), entry]));
+  const ids = $$('#status-sensors-pick [data-assign-sensor]:checked').map((el) => Number(el.dataset.assignSensor));
+  section.sensors = ids.map((id) => previous.get(id) || { id });
+  $('#modal-status-sensors').close();
+  renderStatusSections();
+}
+
 async function saveStatusPage() {
   const error = $('#status-error');
   if (error) error.textContent = '';
   try {
     const data = await api('/api/status-page', {
       method: 'PUT',
-      body: {
-        sensor_ids: statusChecked(),
-        show_causes: !!$('#status-causes')?.checked,
-      },
+      body: { config: statusConfig() },
     });
     state.statusPage = {
       enabled: !!data.enabled,
       token: data.token || '',
-      sensor_ids: (data.sensor_ids || []).map(Number),
-      show_causes: !!data.show_causes,
+      config: data.config || null,
     };
     await renderSettings();
     toast(t('status.saved'));
@@ -6190,8 +6346,8 @@ async function setStatusToken(method) {
   state.statusPage = {
     enabled: !!data.enabled,
     token: data.token || '',
-    sensor_ids: (data.sensor_ids || []).map(Number),
-    show_causes: !!data.show_causes,
+    // Keep unsaved edits; the link is a separate decision from the page.
+    config: state.statusPage?.config || data.config || null,
   };
   await renderSettings();
 }
@@ -7294,7 +7450,6 @@ async function renderSettings() {
   // and then showSettingsCategory falls back to the first one there is.
   showSettingsCategory(state.settingsTab);
   syncBackupScope();
-  syncStatusCount();
   // The panel is rebuilt on every visit, so this mounts onto the fresh input and
   // the listener on the old one goes away with it.
   const newPassword = $('#password-form input[name="new_password"]');
@@ -7330,14 +7485,33 @@ function doctorMarkup(out) {
 $('#settings-body').addEventListener('change', onSettingsChange);
 const settingsBody = $('#settings-body');
 settingsBody.addEventListener('click', onSettingsClick);
-// The status page's sensor filter is the one text field in Settings that filters
-// rather than saves; it is not a preference, so it does not go through the change
-// handler either.
+// The status page is a form, not a preference: its fields edit the page config
+// that the Save button sends, so they do not go through persistUI either.
 settingsBody.addEventListener('input', (event) => {
-  if (event.target.id === 'status-filter') filterStatusSensors(event.target.value);
+  const cfg = statusConfig();
+  if (event.target.id === 'status-title') {
+    cfg.title = event.target.value;
+  } else if (event.target.id === 'status-subtitle') {
+    cfg.subtitle = event.target.value;
+  } else if (event.target.matches('[data-section-title]')) {
+    const index = Number(event.target.dataset.sectionTitle);
+    if (cfg.sections[index]) cfg.sections[index].title = event.target.value;
+  }
 });
 settingsBody.addEventListener('change', (event) => {
-  if (event.target.matches('[data-status-sensor]')) syncStatusCount();
+  const cfg = statusConfig();
+  if (event.target.matches('[data-status-show]')) {
+    cfg[event.target.dataset.statusShow] = event.target.checked;
+  } else if (event.target.matches('[data-status-theme]')) {
+    cfg.theme = event.target.value;
+  } else if (event.target.matches('[data-status-accent]')) {
+    cfg.accent = event.target.value;
+  } else if (event.target.matches('[data-status-layout]')) {
+    cfg.layout = event.target.value;
+  } else if (event.target.matches('[data-section-colour]')) {
+    const index = Number(event.target.dataset.sectionColour);
+    if (cfg.sections[index]) cfg.sections[index].colour = event.target.value;
+  }
 });
 // Dragging is the mouse path; the number in the editor stays as the keyboard one.
 settingsBody.addEventListener('dragstart', onGroupDragStart);
@@ -7590,6 +7764,52 @@ async function onPasswordChange(event) {
   }
 }
 
+/**
+ * onStatusSectionClick handles the section editor's own controls and returns
+ * whether it did. It is one function because the four buttons share the same
+ * "find the index, change the draft, redraw the list" shape.
+ */
+function onStatusSectionClick(target) {
+  if (target.closest('[data-status-add-section]')) {
+    const cfg = statusConfig();
+    cfg.sections.push({ title: '', colour: '', sensors: [] });
+    renderStatusSections();
+    setTimeout(() => {
+      const input = $(`[data-section-title="${cfg.sections.length - 1}"]`);
+      if (input) input.focus();
+    }, 0);
+    return true;
+  }
+  const pick = target.closest('[data-section-sensors]');
+  if (pick) {
+    openStatusSensors(Number(pick.dataset.sectionSensors));
+    return true;
+  }
+  const remove = target.closest('[data-section-remove]');
+  if (remove) {
+    const index = Number(remove.dataset.sectionRemove);
+    const cfg = statusConfig();
+    if (cfg.sections[index]) {
+      cfg.sections.splice(index, 1);
+      renderStatusSections();
+    }
+    return true;
+  }
+  const up = target.closest('[data-section-up]');
+  const down = target.closest('[data-section-down]');
+  if (up || down) {
+    const index = Number((up || down).dataset.sectionUp ?? (up || down).dataset.sectionDown);
+    const other = up ? index - 1 : index + 1;
+    const cfg = statusConfig();
+    if (cfg.sections[index] && cfg.sections[other]) {
+      [cfg.sections[index], cfg.sections[other]] = [cfg.sections[other], cfg.sections[index]];
+      renderStatusSections();
+    }
+    return true;
+  }
+  return false;
+}
+
 async function onSettingsClick(event) {
   // The category tabs first: they are not an action and carry no data-action, and
   // the two are in the same container so that one delegated listener serves both.
@@ -7609,6 +7829,11 @@ async function onSettingsClick(event) {
     await persistWidgets(widgetsUI.DEFAULT_IDS.slice());
     return;
   }
+
+  // The status page's sections are edited in place: their controls carry the
+  // section's index rather than an action, because the decision belongs to the
+  // form and not to a modal.
+  if (onStatusSectionClick(event.target)) return;
 
   const button = event.target.closest('[data-action]');
   if (!button) return;
@@ -7658,19 +7883,6 @@ async function onSettingsClick(event) {
       toast(t('status.disabled'));
     } else if (action === 'status-save') {
       await saveStatusPage();
-    } else if (action === 'status-all' || action === 'status-none') {
-      // Only what the filter is showing: "all" next to a search box means the
-      // sensors on screen, not the sixty behind them. A group the filter hid is
-      // hidden even though its rows still say they are visible.
-      for (const group of $$('#status-sensors [data-status-group]')) {
-        if (group.hidden) continue;
-        for (const row of $$('.status-pick', group)) {
-          if (row.hidden) continue;
-          const box = $('input[type="checkbox"]', row);
-          if (box) box.checked = action === 'status-all';
-        }
-      }
-      syncStatusCount();
     } else if (action === 'backup-file') {
       $('#restore-file').click();
     } else if (action === 'tour') {

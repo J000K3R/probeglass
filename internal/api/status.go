@@ -1,8 +1,11 @@
 package api
 
 import (
+	"context"
 	"crypto/subtle"
+	"errors"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/j000k3r/probeglass/internal/model"
@@ -29,7 +32,7 @@ func (s *Server) handlePublicStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	page, err := status.Build(r.Context(), s.store, s.sched.Snapshots(), time.Now())
+	page, err := status.Build(r.Context(), s.store, s.sched.Snapshots(), time.Now(), "/status/"+given)
 	if err != nil {
 		s.log.Error("build the public status page", "error", err)
 		http.Error(w, "the status page could not be built", http.StatusInternalServerError)
@@ -48,33 +51,102 @@ func (s *Server) handlePublicStatus(w http.ResponseWriter, r *http.Request) {
 	// No script, no image, no font, no frame. The styles are inline because the
 	// page is one file by design; everything else is refused.
 	h.Set("Content-Security-Policy",
-		"default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'")
+		"default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; base-uri 'none'; form-action 'none'")
 
 	if err := status.Render(w, page, r.Header.Get("Accept-Language")); err != nil {
 		s.log.Error("render the public status page", "error", err)
 	}
 }
 
+// handleStatusIcon answers GET /status/{token}/icon/{id}, the uploaded symbol of
+// a published sensor.
+//
+// The dashboard's own icon route is behind a viewer session, and a public page
+// has no session to present. Rather than making every upload public, this route
+// lends the page's token to one image and only while that image belongs to a
+// sensor the page actually shows. Built-in drawings and brand marks do not come
+// through here — they are static assets.
+func (s *Server) handleStatusIcon(w http.ResponseWriter, r *http.Request) {
+	given := r.PathValue("token")
+	token, _ := s.store.StatusPageSettings(r.Context())
+	if token == "" || subtle.ConstantTimeCompare([]byte(given), []byte(token)) != 1 {
+		http.NotFound(w, r)
+		return
+	}
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 63)
+	if err != nil || id <= 0 {
+		http.NotFound(w, r)
+		return
+	}
+	if !s.statusIconPublished(r.Context(), id) {
+		http.NotFound(w, r)
+		return
+	}
+	ic, data, err := s.store.GetIcon(r.Context(), id)
+	if errors.Is(err, store.ErrNotFound) {
+		http.NotFound(w, r)
+		return
+	}
+	if err != nil {
+		s.fail(w, err, http.StatusInternalServerError, "could not load the icon")
+		return
+	}
+	etag := `"icon-` + strconv.FormatInt(ic.ID, 10) + `"`
+	h := w.Header()
+	h.Set("Content-Type", ic.MediaType)
+	h.Set("Content-Length", strconv.Itoa(len(data)))
+	h.Set("ETag", etag)
+	// The URL carries the token, so the cache entry is that one link's rather
+	// than the installation's; a day is as long as a symbol needs.
+	h.Set("Cache-Control", "private, max-age=86400")
+	if r.Header.Get("If-None-Match") == etag {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+	_, _ = w.Write(data)
+}
+
+// statusIconPublished reports whether an icon belongs to a sensor the current
+// page configuration draws, either through the sensor or through an entry's
+// override.
+func (s *Server) statusIconPublished(ctx context.Context, id int64) bool {
+	ref := "upload:" + strconv.FormatInt(id, 10)
+	cfg := status.LoadConfig(ctx, s.store)
+	onPage := map[int64]bool{}
+	for _, section := range cfg.Sections {
+		for _, entry := range section.Sensors {
+			if entry.Icon == ref {
+				return true
+			}
+			onPage[entry.ID] = true
+		}
+	}
+	sensors, err := s.store.ListSensors(ctx)
+	if err != nil {
+		return false
+	}
+	for _, sensor := range sensors {
+		if onPage[sensor.ID] && sensor.Icon == ref {
+			return true
+		}
+	}
+	return false
+}
+
 // statusPageResponse is the shape both the read and the save answer in, so the
 // dashboard can redraw from either without a second request.
 type statusPageResponse struct {
-	Enabled    bool    `json:"enabled"`
-	Token      string  `json:"token"`
-	SensorIDs  []int64 `json:"sensor_ids"`
-	ShowCauses bool    `json:"show_causes"`
+	Enabled bool          `json:"enabled"`
+	Token   string        `json:"token"`
+	Config  status.Config `json:"config"`
 }
 
 func (s *Server) statusPageState(r *http.Request) (statusPageResponse, error) {
-	token, causes := s.store.StatusPageSettings(r.Context())
-	ids, err := s.store.StatusSensors(r.Context())
-	if err != nil {
-		return statusPageResponse{}, err
-	}
+	token, _ := s.store.StatusPageSettings(r.Context())
 	return statusPageResponse{
-		Enabled:    token != "",
-		Token:      token,
-		SensorIDs:  ids,
-		ShowCauses: causes,
+		Enabled: token != "",
+		Token:   token,
+		Config:  status.LoadConfig(r.Context(), s.store),
 	}, nil
 }
 
@@ -94,14 +166,17 @@ func (s *Server) handleGetStatusPage(w http.ResponseWriter, r *http.Request) {
 // page are two decisions, and rotating the link is a separate button so that a
 // save cannot silently break every link somebody has.
 func (s *Server) handleSaveStatusPage(w http.ResponseWriter, r *http.Request) {
-	var in struct {
-		SensorIDs  []int64 `json:"sensor_ids"`
-		ShowCauses *bool   `json:"show_causes"`
-	}
+	// The defaults are the starting point, so a body that leaves a switch out
+	// keeps the behaviour the page had rather than silently turning it off. A
+	// switch that is meant to be off says so.
+	in := struct {
+		Config status.Config `json:"config"`
+	}{Config: status.DefaultConfig()}
 	if err := decodeJSON(r, &in); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body: %s", err.Error())
 		return
 	}
+	status.Normalise(&in.Config)
 
 	sensors, err := s.store.ListSensors(r.Context())
 	if err != nil {
@@ -112,35 +187,18 @@ func (s *Server) handleSaveStatusPage(w http.ResponseWriter, r *http.Request) {
 	for _, c := range sensors {
 		known[c.ID] = true
 	}
-	seen := make(map[int64]bool, len(in.SensorIDs))
-	ids := make([]int64, 0, len(in.SensorIDs))
-	for _, id := range in.SensorIDs {
+	for _, id := range in.Config.SensorIDs() {
 		if !known[id] {
 			writeError(w, http.StatusBadRequest, "sensor %d does not exist", id)
 			return
 		}
-		if seen[id] {
-			continue
-		}
-		seen[id] = true
-		ids = append(ids, id)
 	}
 
-	if err := s.store.SetStatusSensors(r.Context(), ids); err != nil {
-		s.fail(w, err, http.StatusInternalServerError, "could not save the status page selection")
+	if err := status.SaveConfig(r.Context(), s.store, in.Config); err != nil {
+		s.fail(w, err, http.StatusInternalServerError, "could not save the status page")
 		return
 	}
-	if in.ShowCauses != nil {
-		value := "0"
-		if *in.ShowCauses {
-			value = "1"
-		}
-		if err := s.store.SetSetting(r.Context(), model.SettingStatusCauses, value); err != nil {
-			s.fail(w, err, http.StatusInternalServerError, "could not save the status page setting")
-			return
-		}
-	}
-	s.log.Info("public status page saved", "sensors", len(ids))
+	s.log.Info("public status page saved", "sensors", len(in.Config.SensorIDs()))
 	state, err := s.statusPageState(r)
 	if err != nil {
 		s.fail(w, err, http.StatusInternalServerError, "could not read the status page back")

@@ -1505,6 +1505,17 @@ button.widget-pick-label {
   border-color: var(--accent);
   color: var(--accent-ink);
 }
+/* The scan is the third entrance to a sensor. It is a card rather than a form:
+   the form itself lives in its own dialog, with its own footer and results. */
+.catalog-scan {
+  display: grid; gap: var(--sp-3); justify-items: start;
+  padding: var(--sp-4); border: 1px solid var(--border);
+  border-radius: var(--radius); background: var(--surface-2);
+}
+.catalog-scan h3 { margin: 0; font-size: var(--text-2); }
+.catalog-scan p { margin: 0; max-width: 60ch; }
+.catalog-scan-icon { color: var(--accent); }
+
 .catalog-filters { display: grid; gap: var(--sp-2); }
 .catalog-filter-bar { display: flex; gap: var(--sp-2); align-items: center; }
 .catalog-filter-bar input[type='search'] { flex: 1 1 auto; min-width: 0; }
@@ -1642,6 +1653,41 @@ button.widget-pick-label {
 .status-pick .pill { margin-left: auto; }
 .status-pick > span:not(.icon):not(.pill) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .status-pick[hidden], .status-group[hidden] { display: none; }
+
+/* The public page's editor. It is a form in a settings panel rather than a
+   dialog because the page is a thing somebody builds over a few minutes, and
+   every part of it has to be visible at once to see the shape. */
+.status-choice-row { display: grid; gap: var(--sp-2); margin: var(--sp-2) 0 var(--sp-3); }
+.status-choice { display: grid; gap: 4px; }
+.status-choice-label {
+  font-size: var(--text-5); text-transform: uppercase; letter-spacing: 0.05em;
+  color: var(--text-dim); font-weight: 600;
+}
+.status-toggles { display: flex; flex-wrap: wrap; gap: var(--sp-1); }
+.status-swatch .swatch {
+  display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+  margin-right: 6px; border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+}
+.sw-azure { background: #3b82f6; }
+.sw-violet { background: #8b5cf6; }
+.sw-emerald { background: #10b981; }
+.sw-amber { background: #f59e0b; }
+.sw-rose { background: #f43f5e; }
+.sw-slate { background: #64748b; }
+.sw-accent { background: var(--accent); }
+
+.status-sections { display: grid; gap: var(--sp-2); margin: var(--sp-2) 0; }
+.status-section {
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface-2); padding: var(--sp-2) var(--sp-3);
+  display: grid; gap: var(--sp-2);
+}
+.status-section-head { display: flex; gap: var(--sp-1); align-items: center; }
+.status-section-head input[type="text"] { flex: 1 1 auto; min-width: 0; }
+.status-section-meta { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; justify-content: space-between; }
+.status-section-meta .choice-group { flex-wrap: wrap; }
+.status-section-meta .chip { min-height: calc(var(--ctl-h) - 8px); font-size: var(--text-4); }
+#status-sensors-pick { max-height: 50vh; }
 .scan-results { display: grid; gap: var(--gap); }
 .scan-host {
   display: grid;

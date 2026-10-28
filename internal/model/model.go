@@ -1145,6 +1145,9 @@ const (
 	// for a failure. Off by default: a cause is written for the operator, and a
 	// public page that quotes it can quote more than the operator meant to share.
 	SettingStatusCauses = "status.causes"
+	// SettingStatusPage is the public page's whole shape: title, colours, layout,
+	// switches and sections, as one JSON value.
+	SettingStatusPage = "status.page"
 	SettingRetentionRaw = "retention.raw"
 	// SettingTileURL and SettingTileAttribution configure the map. They are
 	// installation-wide rather than per user, so they live here and not in the

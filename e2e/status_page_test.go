@@ -16,9 +16,20 @@ import (
 // panel shows is the link the server answers.
 
 type statusPanelState struct {
-	Enabled   bool    `json:"enabled"`
-	Token     string  `json:"token"`
-	SensorIDs []int64 `json:"sensor_ids"`
+	Enabled bool   `json:"enabled"`
+	Token   string `json:"token"`
+	Config  struct {
+		Title    string `json:"title"`
+		Theme    string `json:"theme"`
+		Accent   string `json:"accent"`
+		Layout   string `json:"layout"`
+		Sections []struct {
+			Title   string `json:"title"`
+			Sensors []struct {
+				ID int64 `json:"id"`
+			} `json:"sensors"`
+		} `json:"sections"`
+	} `json:"config"`
 }
 
 type sensorLite struct {
@@ -77,37 +88,56 @@ func TestTheStatusPagePanelAndThePageItShares(t *testing.T) {
 		t.Fatalf("the status page link was not generated: %v", err)
 	}
 
-	// Tick the first sensor in the list, save, and read the link back.
+	// Build the page: a title, dark theme, violet accent, cards, one section with
+	// the first sensor. This is the whole editor, one field at a time.
 	var chosen sensorLite
 	err = withTimeout(ctx, func(tctx context.Context) error {
 		return chromedp.Do(tctx,
-			chromedp.Evaluate[chromedp.Void](`document.querySelector('#status-sensors input[data-status-sensor]').click()`),
+			chromedp.Clear(`#status-title`),
+			chromedp.SendKeys(`#status-title`, "Homelab"),
+			chromedp.Click(`#status-panel [data-status-theme][value="dark"]`),
+			chromedp.Click(`#status-panel [data-status-accent][value="violet"]`),
+			chromedp.Click(`#status-panel [data-status-layout][value="cards"]`),
+			chromedp.Click(`#status-panel [data-status-add-section]`),
+			chromedp.SendKeys(`[data-section-title="0"]`, "Web"),
+			chromedp.Click(`[data-section-sensors="0"]`),
+			chromedp.WaitVisible(`#modal-status-sensors[open]`),
+			chromedp.Click(`#status-sensors-pick input[data-assign-sensor]`),
+			chromedp.Click(`#status-sensors-apply`),
+			chromedp.WaitNotPresent(`#modal-status-sensors[open]`),
 			chromedp.Click(`#status-panel [data-action="status-save"]`),
 			// Asked of the server rather than of the panel: the panel is rebuilt
 			// after a save, and a poll on the old element cannot see that.
 			chromedp.Poll[chromedp.Void](`fetch('/api/status-page').then(r => r.json())
-				.then(s => s.sensor_ids.length === 1)`, chromedp.WithPollingTimeout(10*time.Second)),
+				.then(s => s.config.sections.length === 1 && s.config.sections[0].sensors.length === 1)`,
+				chromedp.WithPollingTimeout(10*time.Second)),
 		)
 	})
 	if err != nil {
-		capture(t, ctx, screenshotDir, "status-selection-not-saved")
-		t.Fatalf("the selection was not saved: %v", err)
+		capture(t, ctx, screenshotDir, "status-page-not-saved")
+		t.Fatalf("the page was not saved: %v", err)
 	}
 
 	saved := readAsync[statusPanelState](t, ctx, `fetch('/api/status-page').then(r => r.json())`,
 		"read the status page state")
-	if !saved.Enabled || len(saved.SensorIDs) != 1 {
+	if !saved.Enabled || len(saved.Config.Sections) != 1 || len(saved.Config.Sections[0].Sensors) != 1 {
 		t.Fatalf("after saving: %+v", saved)
+	}
+	id := saved.Config.Sections[0].Sensors[0].ID
+	if saved.Config.Title != "Homelab" || saved.Config.Theme != "dark" ||
+		saved.Config.Accent != "violet" || saved.Config.Layout != "cards" ||
+		saved.Config.Sections[0].Title != "Web" {
+		t.Errorf("the page came back as %+v", saved.Config)
 	}
 	sensors := readAsync[[]sensorLite](t, ctx, `fetch('/api/sensors').then(r => r.json())`,
 		"read the sensors")
 	for _, s := range sensors {
-		if s.ID == saved.SensorIDs[0] {
+		if s.ID == id {
 			chosen = s
 		}
 	}
 	if chosen.Name == "" {
-		t.Fatalf("the saved sensor %d is not in the list", saved.SensorIDs[0])
+		t.Fatalf("the saved sensor %d is not in the list", id)
 	}
 
 	// The page itself, fetched from the settings tab with no extra header. The
@@ -124,13 +154,18 @@ func TestTheStatusPagePanelAndThePageItShares(t *testing.T) {
 	if want := "noindex, nofollow"; !strings.Contains(html, want) {
 		t.Errorf("the public page does not carry %q", want)
 	}
+	for _, want := range []string{`data-theme="dark"`, `data-accent="violet"`, "layout-cards", "Homelab", ">Web<", "card-top"} {
+		if !strings.Contains(html, want) {
+			t.Errorf("the configured page does not carry %q", want)
+		}
+	}
 
 	// A German browser gets the German words; the page is for the people the link
 	// was sent to, and they did not choose a language in this installation.
 	german := readAsync[string](t, ctx,
 		`fetch(`+jsQuote(publicURL)+`, {headers: {'Accept-Language': 'de'}}).then(r => r.text())`,
 		"read the public status page in German")
-	if !strings.Contains(german, "Dienste") {
+	if !strings.Contains(german, "Aktualisiert") {
 		t.Error("a German browser did not get the German page")
 	}
 

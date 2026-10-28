@@ -52,12 +52,16 @@ func TestPickLabelsFollowsTheBrowser(t *testing.T) {
 // html/template and not by concatenation: a sensor name is text somebody typed,
 // and it is about to be shown to people outside the installation.
 func TestRenderEscapesWhatASensorIsCalled(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Sections = []Section{{Title: "Web", Sensors: []Entry{{ID: 1}}}}
 	page := Page{
+		Config:  cfg,
 		Updated: time.Date(2026, 10, 28, 17, 0, 0, 0, time.UTC),
-		Sensors: []Sensor{{
+		Sections: []SectionView{{Title: "Web", Sensors: []Sensor{{
 			Name:   `<script>alert("x")</script>`,
 			Status: model.StatusUp,
-		}},
+		}}}},
+		Sensors: []Sensor{{Status: model.StatusUp}},
 	}
 	var out bytes.Buffer
 	if err := Render(&out, page, "en"); err != nil {
@@ -72,5 +76,61 @@ func TestRenderEscapesWhatASensorIsCalled(t *testing.T) {
 	}
 	if !strings.Contains(html, `<meta name="robots" content="noindex, nofollow">`) {
 		t.Error("the page does not keep search engines away")
+	}
+}
+
+func TestNormaliseFillsAndDrops(t *testing.T) {
+	cfg := Config{
+		Title:        strings.Repeat("x", 200),
+		Theme:        "neon",
+		Accent:       "pink",
+		Layout:       "wall",
+		IncidentDays: 12,
+		Sections: []Section{
+			{Title: "  Web  ", Colour: "amber", Sensors: []Entry{{ID: 3}, {ID: 3}, {ID: 0}, {ID: 4}}},
+			{Title: "Again", Sensors: []Entry{{ID: 4}}},
+		},
+	}
+	Normalise(&cfg)
+	if len(cfg.Title) != 80 {
+		t.Errorf("title was not clamped: %d characters", len(cfg.Title))
+	}
+	if cfg.Theme != "auto" || cfg.Accent != "azure" || cfg.Layout != "list" || cfg.IncidentDays != 30 {
+		t.Errorf("defaults not applied: %+v", cfg)
+	}
+	if len(cfg.Sections) != 2 || cfg.Sections[0].Title != "Web" {
+		t.Errorf("sections: %+v", cfg.Sections)
+	}
+	if got := cfg.SensorIDs(); len(got) != 2 || got[0] != 3 || got[1] != 4 {
+		t.Errorf("SensorIDs = %v, want [3 4]", got)
+	}
+	if cfg.Sections[0].Colour != "amber" {
+		t.Errorf("a valid colour was lost: %q", cfg.Sections[0].Colour)
+	}
+}
+
+func TestIconOfOnlyReturnsOurAssets(t *testing.T) {
+	cases := []struct {
+		ref   string
+		url   string
+		drawn bool
+	}{
+		{"builtin:router", "/assets/icons/router.svg", true},
+		{"brand:sonarr", "/assets/brands/sonarr.svg", false},
+		{"brand:mos", "/assets/brands/mos.png", false},
+		{"upload:7", "/status/tok/icon/7", false},
+		{"upload:7", "", false}, // no token, no route
+		{"builtin:../../etc/passwd", "", false},
+		{"", "", false},
+	}
+	for _, tc := range cases {
+		base := "/status/tok"
+		if tc.url == "" {
+			base = ""
+		}
+		url, drawn := iconOf(tc.ref, base)
+		if url != tc.url || drawn != tc.drawn {
+			t.Errorf("iconOf(%q) = (%q, %v), want (%q, %v)", tc.ref, url, drawn, tc.url, tc.drawn)
+		}
 	}
 }

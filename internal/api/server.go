@@ -163,6 +163,8 @@ func (s *Server) Handler() http.Handler {
 	// The public status page, reachable with the token in its URL. The handler
 	// checks it and draws only what an administrator published.
 	mux.HandleFunc("GET /status/{token}", s.handlePublicStatus)
+	// The uploaded symbol of a published sensor, lent the page's token.
+	mux.HandleFunc("GET /status/{token}/icon/{id}", s.handleStatusIcon)
 	mux.HandleFunc("GET /api/version", s.handleVersion)
 	mux.HandleFunc("GET /api/session", s.handleSession)
 	mux.HandleFunc("POST /api/login", s.handleLogin)
