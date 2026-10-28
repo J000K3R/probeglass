@@ -106,7 +106,8 @@ here and what the release says are the same document.
   incidents and their causes are separate switches. Services are grouped into
   sections you name and order yourself, each with its own accent colour, and a
   filterable picker decides what belongs in each. **Status messages** can be
-  written at the top of the page, each with its own colour and symbol. The link
+  written at the top of the page, each with its own colour and symbol; next to
+  the full picker are info, warning, error, done, help, maintenance and the bell. The link
   is the credential and can be rotated or switched off; the page is separate
   from it and kept while it is off. A signed-in administrator who opens the link
   gets an **Edit page** button back to the panel, and the footer is the centred
@@ -152,6 +153,9 @@ here and what the release says are the same document.
 - **The template dialog closes after creating its sensors.** A new sensor goes
   back to the dashboard with the new cards on it, rather than leaving the
   catalogue open over a form that is no longer being filled.
+- **General symbols for messages and labels.** Info, warning, error, done, help
+  and maintenance join the built-in drawings, available in every icon picker —
+  sensors, sites, groups, tags and status messages.
 - **The network scan is a tab in the catalogue.** It sits beside Templates and
   Single sensor, with a card that explains it and a button that opens the scan;
   the small button in the filter bar stays.

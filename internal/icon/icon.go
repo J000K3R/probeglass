@@ -191,4 +191,12 @@ var Names = []string{
 	"monitor",
 	"clock",
 	"tag",
+	// The general signs a status page uses for a message: an aside, a warning,
+	// something broken, something fixed, a question, planned work.
+	"info",
+	"warning",
+	"error",
+	"success",
+	"help",
+	"maintenance",
 }

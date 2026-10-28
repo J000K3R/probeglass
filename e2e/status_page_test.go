@@ -100,6 +100,7 @@ func TestTheStatusPagePanelAndThePageItShares(t *testing.T) {
 			chromedp.Click(`#status-panel [data-status-layout][value="cards"]`),
 			chromedp.Click(`#status-panel [data-status-add-notice]`),
 			chromedp.SendKeys(`[data-notice-text="0"]`, "Maintenance tonight"),
+			chromedp.Click(`#status-panel [data-notice-icon="0"][data-icon-ref="builtin:warning"]`),
 			chromedp.Click(`#status-panel [data-notice-colour="0"][value="amber"]`),
 			chromedp.Click(`#status-panel [data-status-add-section]`),
 			chromedp.SendKeys(`[data-section-title="0"]`, "Web"),
@@ -158,7 +159,8 @@ func TestTheStatusPagePanelAndThePageItShares(t *testing.T) {
 		t.Errorf("the public page does not carry %q", want)
 	}
 	for _, want := range []string{`data-theme="dark"`, `data-accent="violet"`, "layout-cards", "Homelab", ">Web<", "card-top",
-		"Maintenance tonight", "notice c-amber", "site-brand", "/#/settings/monitor/status"} {
+		"Maintenance tonight", "notice c-amber", "/assets/icons/warning.svg",
+		"site-brand", "/#/settings/monitor/status"} {
 		if !strings.Contains(html, want) {
 			t.Errorf("the configured page does not carry %q", want)
 		}

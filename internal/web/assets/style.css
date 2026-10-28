@@ -1684,6 +1684,9 @@ button.widget-pick-label {
 }
 .status-notice-head { display: flex; gap: var(--sp-1); align-items: center; }
 .status-notice-head input[type="text"] { flex: 1 1 auto; min-width: 0; }
+.status-notice-icons { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.status-icon-pick { min-height: 28px; padding: 3px 6px; font-size: var(--text-4); }
+.status-icon-pick.is-current { border-color: var(--accent); color: var(--accent); }
 .status-notice .choice-group { flex-wrap: wrap; }
 .status-notice .chip { min-height: calc(var(--ctl-h) - 8px); font-size: var(--text-4); }
 

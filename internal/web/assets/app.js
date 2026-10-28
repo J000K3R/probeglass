@@ -6229,6 +6229,13 @@ function statusToggle(key, checked, label) {
     data-status-show="${esc(key)}"${checked ? ' checked' : ''}><span>${esc(label)}</span></label>`;
 }
 
+// QUICK_NOTICE_ICONS are the signs a status message usually wants. The full
+// picker is still beside them; these are the ones worth one press.
+const QUICK_NOTICE_ICONS = [
+  '', 'builtin:info', 'builtin:warning', 'builtin:error',
+  'builtin:success', 'builtin:help', 'builtin:maintenance', 'builtin:bell',
+];
+
 /** statusNoticesMarkup draws the messages at the top of the page. */
 function statusNoticesMarkup(cfg) {
   const notices = cfg.notices || [];
@@ -6244,6 +6251,15 @@ function statusNoticesMarkup(cfg) {
                aria-label="${esc(t('status.noticeText'))}">
         <button class="btn btn-ghost btn-small" type="button" data-notice-remove="${index}"
                 aria-label="${esc(t('status.noticeRemove'))}" title="${esc(t('status.noticeRemove'))}">✕</button>
+      </div>
+      <div class="status-notice-icons" role="group" aria-label="${esc(t('status.noticeIcon'))}">
+        ${QUICK_NOTICE_ICONS.map((ref) => `
+          <button type="button" class="btn btn-ghost btn-small status-icon-pick${(notice.icon || '') === ref ? ' is-current' : ''}"
+                  data-notice-icon="${index}" data-icon-ref="${ref}"
+                  aria-pressed="${(notice.icon || '') === ref ? 'true' : 'false'}"
+                  title="${esc(ref ? iconUI.iconLabel(ref) : t('icons.none'))}">
+            ${ref ? iconUI.iconMarkup(ref, { size: 16 }) : esc(t('icons.none'))}
+          </button>`).join('')}
       </div>
       <div class="choice-group">${['', ...ACCENTS].map((colour) => `
         <label class="chip chip-choice status-swatch"><input type="radio" name="notice-colour-${index}"
@@ -7853,6 +7869,24 @@ function onStatusSectionClick(target) {
       const input = $(`[data-notice-text="${cfg.notices.length - 1}"]`);
       if (input) input.focus();
     }, 0);
+    return true;
+  }
+  const noticeIcon = target.closest('[data-notice-icon]');
+  if (noticeIcon) {
+    const index = Number(noticeIcon.dataset.noticeIcon);
+    const ref = noticeIcon.dataset.iconRef || '';
+    const cfg = statusConfig();
+    if ((cfg.notices || [])[index]) cfg.notices[index].icon = ref;
+    const notice = noticeIcon.closest('.status-notice');
+    const hidden = notice?.querySelector('input[type="hidden"]');
+    if (hidden) hidden.value = ref;
+    const slot = notice?.querySelector('.icon-slot');
+    if (slot) slot.innerHTML = ref ? iconUI.iconMarkup(ref, { size: 20 }) : '';
+    for (const button of $$('[data-notice-icon]', notice)) {
+      const current = (button.dataset.iconRef || '') === ref;
+      button.classList.toggle('is-current', current);
+      button.setAttribute('aria-pressed', current ? 'true' : 'false');
+    }
     return true;
   }
   const removeNotice = target.closest('[data-notice-remove]');
