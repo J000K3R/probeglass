@@ -56,6 +56,9 @@ func TestThePublicStatusPageShowsOnlyWhatWasPublished(t *testing.T) {
 		"config": map[string]any{
 			"title":  "Homelab",
 			"layout": "cards",
+			"notices": []map[string]any{{
+				"text": "Maintenance tonight", "colour": "amber", "icon": "builtin:clock",
+			}},
 			"sections": []map[string]any{{
 				"title":   "Web",
 				"sensors": []map[string]any{{"id": published.ID}},
@@ -106,8 +109,34 @@ func TestThePublicStatusPageShowsOnlyWhatWasPublished(t *testing.T) {
 			t.Errorf("the page leaks %q", unwanted)
 		}
 	}
-	if !strings.Contains(body, "Homelab") || !strings.Contains(body, "Web") {
-		t.Error("the page does not carry its configured title and section")
+	for _, want := range []string{"Homelab", "Web", "Maintenance tonight", `class="notice c-amber"`,
+		"/assets/icons/clock.svg", "https://j000k3r.github.io/probeglass-website/"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the page does not carry %q", want)
+		}
+	}
+	// The outsider's copy has no way into the dashboard.
+	if strings.Contains(body, "/#/settings/monitor/status") {
+		t.Error("the page offers its editor to somebody who is not signed in")
+	}
+
+	// The administrator's own request carries the session cookie, and with it the
+	// link back to the panel.
+	req, err := http.NewRequest(http.MethodGet, h.http.URL+"/status/"+state.Token, nil)
+	if err != nil {
+		t.Fatalf("build request: %v", err)
+	}
+	req.AddCookie(h.cookie)
+	adminResp, err := h.http.Client().Do(req)
+	if err != nil {
+		t.Fatalf("admin page: %v", err)
+	}
+	adminBody, _ := io.ReadAll(adminResp.Body)
+	adminResp.Body.Close()
+	for _, want := range []string{"/#/settings/monitor/status", "Edit page"} {
+		if !strings.Contains(string(adminBody), want) {
+			t.Errorf("the administrator's page does not carry %q", want)
+		}
 	}
 	if !strings.Contains(body, `name="robots" content="noindex, nofollow"`) {
 		t.Error("the page does not keep search engines away")

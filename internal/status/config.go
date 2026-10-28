@@ -40,7 +40,22 @@ type Config struct {
 	// IncidentDays is 7, 30 or 90.
 	IncidentDays int `json:"incident_days"`
 
+	// Notices are the messages the operator writes at the top of the page, the
+	// way a status page says "we are moving the NAS this evening" without an
+	// incident.
+	Notices []Notice `json:"notices"`
+
 	Sections []Section `json:"sections"`
+}
+
+// Notice is one message on the public page.
+type Notice struct {
+	Text string `json:"text"`
+	// Colour is one of the accents, or empty for the page's own.
+	Colour string `json:"colour,omitempty"`
+	// Icon is an icon reference — a built-in drawing, a brand mark or an upload —
+	// shown before the text. Empty draws none.
+	Icon string `json:"icon,omitempty"`
 }
 
 // Section is one heading on the public page. A sensor belongs to one section;
@@ -82,6 +97,7 @@ func DefaultConfig() Config {
 		ShowHeartbeat: true,
 		ShowIncidents: true,
 		IncidentDays:  30,
+		Notices:       []Notice{},
 		Sections:      []Section{},
 	}
 }
@@ -142,6 +158,21 @@ func Normalise(cfg *Config) {
 	if cfg.IncidentDays != 7 && cfg.IncidentDays != 30 && cfg.IncidentDays != 90 {
 		cfg.IncidentDays = 30
 	}
+
+	if len(cfg.Notices) > 10 {
+		cfg.Notices = cfg.Notices[:10]
+	}
+	notices := make([]Notice, 0, len(cfg.Notices))
+	for _, notice := range cfg.Notices {
+		notice.Text = clamp(strings.TrimSpace(notice.Text), 280)
+		if notice.Text == "" {
+			continue
+		}
+		notice.Colour = oneOf(notice.Colour, Accents, "")
+		notice.Icon = strings.TrimSpace(notice.Icon)
+		notices = append(notices, notice)
+	}
+	cfg.Notices = notices
 
 	if len(cfg.Sections) > 20 {
 		cfg.Sections = cfg.Sections[:20]

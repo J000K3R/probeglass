@@ -105,10 +105,14 @@ here and what the release says are the same document.
   windows, the last check, its logo and a heartbeat of the last thirty probes;
   incidents and their causes are separate switches. Services are grouped into
   sections you name and order yourself, each with its own accent colour, and a
-  filterable picker decides what belongs in each. The link is the credential and
-  can be rotated or switched off; the page is separate from it and kept while it
-  is off. Targets, options and credentials are never drawn. Follows the reader's
-  `Accept-Language`, and the token is kept out of the request log.
+  filterable picker decides what belongs in each. **Status messages** can be
+  written at the top of the page, each with its own colour and symbol. The link
+  is the credential and can be rotated or switched off; the page is separate
+  from it and kept while it is off. A signed-in administrator who opens the link
+  gets an **Edit page** button back to the panel, and the footer is the centred
+  ProbeGlass mark, linking to the website. Targets, options and credentials are
+  never drawn. Follows the reader's `Accept-Language`, and the token is kept out
+  of the request log.
 - **A `/metrics` endpoint for Prometheus.** Sensor status, the 24-hour, 7-day and
   30-day uptime ratios, the last latency and the open incidents, in the Prometheus
   text format, so a homelab that already runs a monitoring stack can scrape

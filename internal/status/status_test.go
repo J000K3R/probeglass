@@ -86,6 +86,11 @@ func TestNormaliseFillsAndDrops(t *testing.T) {
 		Accent:       "pink",
 		Layout:       "wall",
 		IncidentDays: 12,
+		Notices: []Notice{
+			{Text: "  Maintenance tonight  ", Colour: "amber", Icon: "builtin:clock"},
+			{Text: "   ", Colour: "rose"},
+			{Text: "Unknown colour", Colour: "pink"},
+		},
 		Sections: []Section{
 			{Title: "  Web  ", Colour: "amber", Sensors: []Entry{{ID: 3}, {ID: 3}, {ID: 0}, {ID: 4}}},
 			{Title: "Again", Sensors: []Entry{{ID: 4}}},
@@ -106,6 +111,15 @@ func TestNormaliseFillsAndDrops(t *testing.T) {
 	}
 	if cfg.Sections[0].Colour != "amber" {
 		t.Errorf("a valid colour was lost: %q", cfg.Sections[0].Colour)
+	}
+	if len(cfg.Notices) != 2 {
+		t.Fatalf("notices: %+v", cfg.Notices)
+	}
+	if cfg.Notices[0].Text != "Maintenance tonight" || cfg.Notices[0].Colour != "amber" {
+		t.Errorf("the first notice was not normalised: %+v", cfg.Notices[0])
+	}
+	if cfg.Notices[1].Colour != "" {
+		t.Errorf("an unknown notice colour was kept: %q", cfg.Notices[1].Colour)
 	}
 }
 

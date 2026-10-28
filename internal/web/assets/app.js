@@ -88,6 +88,9 @@ const state = {
   // statusPage is the public page the operator shares: its link, the sensors it
   // draws and whether it repeats a probe's words. Only an administrator's.
   statusPage: null,
+  // settingsPanel is the panel a deep link asked for; the settings view uses it
+  // to scroll there once it has been drawn, and then forgets it.
+  settingsPanel: null,
   settings: null,
   // The colours a group may be given, as the server lists them. Defaulted to the
   // same six names so that the editor is complete before the first answer arrives.
@@ -1616,12 +1619,20 @@ const ROUTES = ['dashboard', 'incidents', 'certificates', 'channels', 'settings'
  * does not say which sensor raised the alarm.
  */
 function parseHash(hash) {
-  const [name, arg] = String(hash || '').replace(/^#\/?/, '').split('/');
+  const [name, arg, panel] = String(hash || '').replace(/^#\/?/, '').split('/');
   if (name === 'sensor') {
     const id = Number(arg);
-    return { route: 'dashboard', sensor: Number.isFinite(id) && id > 0 ? id : null };
+    return { route: 'dashboard', sensor: Number.isFinite(id) && id > 0 ? id : null, tab: '', panel: '' };
   }
-  return { route: ROUTES.includes(name) ? name : 'dashboard', sensor: null };
+  const route = ROUTES.includes(name) ? name : 'dashboard';
+  // "#/settings/monitor/status" is the link the public page offers its
+  // administrator: the Monitoring category with the status panel in view.
+  return {
+    route,
+    sensor: null,
+    tab: route === 'settings' ? (arg || '') : '',
+    panel: route === 'settings' ? (panel || '') : '',
+  };
 }
 
 /**
@@ -1629,9 +1640,15 @@ function parseHash(hash) {
  * first load and on every hashchange.
  */
 function applyHash() {
-  const { route, sensor } = parseHash(location.hash);
+  const { route, sensor, tab, panel } = parseHash(location.hash);
   if (sensor === null) {
-    setRoute(route);
+    if (tab) {
+      state.settingsTab = tab;
+      state.settingsPanel = panel || null;
+    }
+    // Keep the deep link in the address bar while it is being applied; a plain
+    // "#/settings" has nothing to keep.
+    setRoute(route, tab ? location.hash : undefined);
     return;
   }
   // Keep the deep link in the address bar rather than rewriting it to
@@ -1715,6 +1732,11 @@ async function loadRouteData(route) {
       if (can('admin')) jobs.push(loadMetricsToken(), loadStatusPage());
       await Promise.all(jobs);
       await renderSettings();
+      if (state.settingsPanel) {
+        const panel = $(`#${state.settingsPanel}-panel`);
+        if (panel) panel.scrollIntoView({ block: 'start' });
+        state.settingsPanel = null;
+      }
     }
   } catch (err) {
     toast(err.message, 'error');
@@ -6141,6 +6163,13 @@ function statusPanel() {
       </fieldset>
 
       <fieldset class="field">
+        <legend>${esc(t('status.notices'))}</legend>
+        <p class="muted small">${esc(t('status.noticesHint'))}</p>
+        <div class="status-notices" id="status-notices">${statusNoticesMarkup(cfg)}</div>
+        <button class="btn btn-small" type="button" data-status-add-notice>+ ${esc(t('status.noticeAdd'))}</button>
+      </fieldset>
+
+      <fieldset class="field">
         <legend>${esc(t('status.sections'))}</legend>
         <p class="muted small">${esc(t('status.sectionsHint'))}</p>
         <div class="status-sections" id="status-sections">${statusSectionsMarkup(cfg)}</div>
@@ -6198,6 +6227,44 @@ function statusAccents(current) {
 function statusToggle(key, checked, label) {
   return `<label class="chip chip-choice status-toggle"><input type="checkbox"
     data-status-show="${esc(key)}"${checked ? ' checked' : ''}><span>${esc(label)}</span></label>`;
+}
+
+/** statusNoticesMarkup draws the messages at the top of the page. */
+function statusNoticesMarkup(cfg) {
+  const notices = cfg.notices || [];
+  if (!notices.length) {
+    return `<p class="muted small" id="status-no-notices">${esc(t('status.noNotices'))}</p>`;
+  }
+  return notices.map((notice, index) => `
+    <div class="status-notice" data-notice="${index}">
+      <div class="status-notice-head">
+        ${iconUI.iconFieldMarkup(notice.icon || '', { name: `notice_icon_${index}`, compact: true })}
+        <input type="text" data-notice-text="${index}" maxlength="280"
+               value="${esc(notice.text || '')}" placeholder="${esc(t('status.noticePlaceholder'))}"
+               aria-label="${esc(t('status.noticeText'))}">
+        <button class="btn btn-ghost btn-small" type="button" data-notice-remove="${index}"
+                aria-label="${esc(t('status.noticeRemove'))}" title="${esc(t('status.noticeRemove'))}">✕</button>
+      </div>
+      <div class="choice-group">${['', ...ACCENTS].map((colour) => `
+        <label class="chip chip-choice status-swatch"><input type="radio" name="notice-colour-${index}"
+          value="${colour}" data-notice-colour="${index}"${(notice.colour || '') === colour ? ' checked' : ''}><i class="swatch ${colour ? `sw-${colour}` : 'sw-accent'}" aria-hidden="true"></i><span>${esc(colour ? t(`status.colour.${colour}`) : t('status.sectionAccent'))}</span></label>`).join('')}
+      </div>
+    </div>`).join('');
+}
+
+function renderStatusNotices() {
+  const box = $('#status-notices');
+  if (box) box.innerHTML = statusNoticesMarkup(statusConfig());
+}
+
+/** collectStatusNotices reads the icon pickers, which change without an input
+ *  event on the notice itself, back into the page being edited. */
+function collectStatusNotices() {
+  const cfg = statusConfig();
+  cfg.notices = (cfg.notices || []).map((notice, index) => ({
+    ...notice,
+    icon: $(`input[name="notice_icon_${index}"]`)?.value || '',
+  }));
 }
 
 /** statusSectionsMarkup draws the sections in their order. */
@@ -6323,6 +6390,7 @@ function applyStatusSensors() {
 async function saveStatusPage() {
   const error = $('#status-error');
   if (error) error.textContent = '';
+  collectStatusNotices();
   try {
     const data = await api('/api/status-page', {
       method: 'PUT',
@@ -7496,6 +7564,9 @@ settingsBody.addEventListener('input', (event) => {
   } else if (event.target.matches('[data-section-title]')) {
     const index = Number(event.target.dataset.sectionTitle);
     if (cfg.sections[index]) cfg.sections[index].title = event.target.value;
+  } else if (event.target.matches('[data-notice-text]')) {
+    const index = Number(event.target.dataset.noticeText);
+    if ((cfg.notices || [])[index]) cfg.notices[index].text = event.target.value;
   }
 });
 settingsBody.addEventListener('change', (event) => {
@@ -7511,6 +7582,9 @@ settingsBody.addEventListener('change', (event) => {
   } else if (event.target.matches('[data-section-colour]')) {
     const index = Number(event.target.dataset.sectionColour);
     if (cfg.sections[index]) cfg.sections[index].colour = event.target.value;
+  } else if (event.target.matches('[data-notice-colour]')) {
+    const index = Number(event.target.dataset.noticeColour);
+    if ((cfg.notices || [])[index]) cfg.notices[index].colour = event.target.value;
   }
 });
 // Dragging is the mouse path; the number in the editor stays as the keyboard one.
@@ -7770,6 +7844,27 @@ async function onPasswordChange(event) {
  * "find the index, change the draft, redraw the list" shape.
  */
 function onStatusSectionClick(target) {
+  if (target.closest('[data-status-add-notice]')) {
+    const cfg = statusConfig();
+    cfg.notices = cfg.notices || [];
+    cfg.notices.push({ text: '', colour: '', icon: '' });
+    renderStatusNotices();
+    setTimeout(() => {
+      const input = $(`[data-notice-text="${cfg.notices.length - 1}"]`);
+      if (input) input.focus();
+    }, 0);
+    return true;
+  }
+  const removeNotice = target.closest('[data-notice-remove]');
+  if (removeNotice) {
+    const index = Number(removeNotice.dataset.noticeRemove);
+    const cfg = statusConfig();
+    if ((cfg.notices || [])[index]) {
+      cfg.notices.splice(index, 1);
+      renderStatusNotices();
+    }
+    return true;
+  }
   if (target.closest('[data-status-add-section]')) {
     const cfg = statusConfig();
     cfg.sections.push({ title: '', colour: '', sensors: [] });

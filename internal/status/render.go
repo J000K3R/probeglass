@@ -27,6 +27,7 @@ type labels struct {
 	NoServices string
 	Updated    string
 	Footer     string
+	Edit       string
 	Never      string
 	Ongoing    string
 	Resolved   string
@@ -39,7 +40,7 @@ var (
 		Lang: "en", Services: "Services", Service: "Service",
 		Status: "Status", Checks: "Checks", LastCheck: "Last checked",
 		Incidents: "Recent incidents", NoServices: "No services have been published yet.",
-		Updated: "Updated", Footer: "ProbeGlass",
+		Updated: "Updated", Footer: "ProbeGlass", Edit: "Edit page",
 		Never: "never", Ongoing: "ongoing", Resolved: "resolved",
 		up: "Operational", down: "Down", warn: "Degraded", paused: "Paused",
 		unknown: "Unknown",
@@ -48,7 +49,7 @@ var (
 		Lang: "de", Services: "Dienste", Service: "Dienst",
 		Status: "Status", Checks: "Prüfungen", LastCheck: "Zuletzt geprüft",
 		Incidents: "Letzte Vorfälle", NoServices: "Es sind noch keine Dienste veröffentlicht.",
-		Updated: "Aktualisiert", Footer: "ProbeGlass",
+		Updated: "Aktualisiert", Footer: "ProbeGlass", Edit: "Seite bearbeiten",
 		Never: "noch nie", Ongoing: "andauernd", Resolved: "behoben",
 		up: "Betriebsbereit", down: "Ausgefallen", warn: "Gestört",
 		paused: "Pausiert", unknown: "Unbekannt",
@@ -88,7 +89,9 @@ type view struct {
 	Counts      string
 	Labels      labels
 	Sections    []sectionView
+	Notices     []noticeView
 	Incidents   []incidentView
+	EditURL     string
 }
 
 type sectionView struct {
@@ -115,6 +118,13 @@ type beatView struct {
 	Title string
 }
 
+type noticeView struct {
+	Text      string
+	Colour    string
+	IconURL   string
+	IconDrawn bool
+}
+
 type incidentView struct {
 	Sensor  string
 	When    string
@@ -138,8 +148,14 @@ func Render(w io.Writer, page Page, acceptLanguage string) error {
 		Overall:   page.Overall(),
 		Labels:    l,
 		Sections:  make([]sectionView, 0, len(page.Sections)),
+		Notices:   make([]noticeView, 0, len(page.Notices)),
 		Incidents: make([]incidentView, 0, len(page.Incidents)),
+		EditURL:   page.EditURL,
 	}
+	for _, notice := range page.Notices {
+		v.Notices = append(v.Notices, noticeView(notice))
+	}
+
 	v.Updated = page.Updated.UTC().Format("02 Jan 2006 15:04 UTC")
 	if l.Lang == "de" {
 		v.Updated = page.Updated.UTC().Format("02.01.2006 15:04 UTC")
@@ -335,6 +351,13 @@ var pageTemplate = template.Must(template.New("status").Parse(`<!doctype html>
   <p class="updated">{{.Labels.Updated}} {{.Updated}}</p>
 </header>
 
+{{range .Notices}}
+<div class="notice{{if .Colour}} c-{{.Colour}}{{end}}">
+  {{template "logo" .}}
+  <p>{{.Text}}</p>
+</div>
+{{end}}
+
 <div class="banner {{.Overall}}">
   <strong>{{.OverallWord}}</strong>
   {{if .Counts}}<span class="counts">{{.Counts}}</span>{{end}}
@@ -426,7 +449,13 @@ var pageTemplate = template.Must(template.New("status").Parse(`<!doctype html>
 </section>
 {{end}}
 
-<footer>{{.Labels.Footer}}</footer>
+<footer class="site-foot">
+  <a class="site-brand" href="https://j000k3r.github.io/probeglass-website/" target="_blank" rel="noopener noreferrer">
+    <img src="/assets/favicon.svg" alt="" width="26" height="26">
+    <span>{{.Labels.Footer}}</span>
+  </a>
+  {{if .EditURL}}<a class="site-edit" href="{{.EditURL}}">{{.Labels.Edit}}</a>{{end}}
+</footer>
 </main>
 </body>
 </html>

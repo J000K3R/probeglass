@@ -38,6 +38,13 @@ func (s *Server) handlePublicStatus(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "the status page could not be built", http.StatusInternalServerError)
 		return
 	}
+	// An administrator who opens the shared link is also the person who may
+	// change the page, and a page that cannot be edited from itself is a page
+	// somebody has to remember the way back to. Nobody else is told the link
+	// exists, and the panel is still behind the normal session.
+	if user, ok, err := s.sessionUser(r); err == nil && ok && user.Role.Rank() >= model.RoleAdmin.Rank() {
+		page.EditURL = "/#/settings/monitor/status"
+	}
 
 	h := w.Header()
 	h.Set("Content-Type", "text/html; charset=utf-8")
@@ -113,6 +120,11 @@ func (s *Server) statusIconPublished(ctx context.Context, id int64) bool {
 	ref := "upload:" + strconv.FormatInt(id, 10)
 	cfg := status.LoadConfig(ctx, s.store)
 	onPage := map[int64]bool{}
+	for _, notice := range cfg.Notices {
+		if notice.Icon == ref {
+			return true
+		}
+	}
 	for _, section := range cfg.Sections {
 		for _, entry := range section.Sensors {
 			if entry.Icon == ref {

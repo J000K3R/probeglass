@@ -110,7 +110,10 @@ h2 {
 
 .table-wrap {
   background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--radius); overflow: hidden;
+  border-radius: var(--radius);
+  /* A table with every window, the heartbeat and the last check can be wider
+     than a phone. It scrolls rather than losing its last column. */
+  overflow-x: auto;
 }
 table { width: 100%; border-collapse: collapse; font-size: 14px; }
 th {
@@ -120,7 +123,7 @@ th {
 }
 td { padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; }
 tr:last-child td { border-bottom: 0; }
-td.service { display: flex; align-items: center; gap: 8px; min-width: 200px; }
+td.service { display: flex; align-items: center; gap: 6px; min-width: 180px; }
 .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .muted { color: var(--dim); }
 .small { font-size: 12px; }
@@ -146,7 +149,7 @@ td.service { display: flex; align-items: center; gap: 8px; min-width: 200px; }
 td.service .logo-drawn, .card-top .logo-drawn, .row .logo-drawn { color: var(--dim); }
 
 /* The heartbeat: one small tick per probe, oldest first. */
-.beats { display: inline-flex; align-items: center; gap: 2px; height: 16px; }
+.beats { display: inline-flex; align-items: center; gap: 1px; height: 16px; }
 .beat { display: block; width: 3px; height: 14px; border-radius: 2px; background: var(--ok); opacity: 0.85; }
 .beat.down { background: var(--crit); }
 .beat.excused { background: var(--excused); }
@@ -180,7 +183,36 @@ td.service .logo-drawn, .card-top .logo-drawn, .row .logo-drawn { color: var(--d
 .incidents li:last-child { border-bottom: 0; }
 .incidents .ongoing { border-left: 3px solid var(--crit); }
 .incidents p { margin: 4px 0 0; color: var(--dim); font-size: 13px; }
-footer { margin-top: 32px; color: var(--dim); font-size: 12px; }
+/* Messages the operator writes, above the overall banner. Each carries its own
+   colour on the edge and a tint of it behind, so a warning and a success do not
+   read alike at a glance. */
+.notice {
+  display: flex; gap: 10px; align-items: flex-start; margin: 16px 0 0;
+  padding: 12px 16px; border-radius: var(--radius);
+  background: var(--surface); border: 1px solid var(--border);
+  border-left: 4px solid var(--accent);
+}
+.notice p { margin: 0; }
+.notice .logo { margin-top: 3px; }
+.notice.c-azure { border-left-color: var(--azure); background: color-mix(in srgb, var(--azure) 8%, var(--surface)); }
+.notice.c-violet { border-left-color: var(--violet); background: color-mix(in srgb, var(--violet) 8%, var(--surface)); }
+.notice.c-emerald { border-left-color: var(--emerald); background: color-mix(in srgb, var(--emerald) 8%, var(--surface)); }
+.notice.c-amber { border-left-color: var(--amber); background: color-mix(in srgb, var(--amber) 8%, var(--surface)); }
+.notice.c-rose { border-left-color: var(--rose); background: color-mix(in srgb, var(--rose) 8%, var(--surface)); }
+.notice.c-slate { border-left-color: var(--slate); background: color-mix(in srgb, var(--slate) 8%, var(--surface)); }
+
+.site-foot {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  margin-top: 34px; text-align: center; color: var(--dim); font-size: 12px;
+}
+.site-brand {
+  display: inline-flex; align-items: center; gap: 8px;
+  color: var(--dim); font-size: 13px; text-decoration: none;
+}
+.site-brand img { display: block; opacity: 0.85; }
+.site-brand:hover { color: var(--text); }
+.site-edit { color: var(--dim); font-size: 12px; text-decoration: none; }
+.site-edit:hover { color: var(--accent); }
 
 @media (max-width: 620px) {
   main { padding: 24px 14px; }

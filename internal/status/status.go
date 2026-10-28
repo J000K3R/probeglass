@@ -71,14 +71,26 @@ type Incident struct {
 	Cause string
 }
 
+// NoticeView is one message at the top of the page, with its symbol resolved.
+type NoticeView struct {
+	Text      string
+	Colour    string
+	IconURL   string
+	IconDrawn bool
+}
+
 // Page is everything one request to the public page needs.
 type Page struct {
 	Config     Config
 	Sections   []SectionView
+	Notices    []NoticeView
 	Sensors    []Sensor
 	Incidents  []Incident
 	ShowCauses bool
-	Updated    time.Time
+	// EditURL is the dashboard's status panel, set only when the reader is a
+	// signed-in administrator. It is the one link that does not lead outward.
+	EditURL string
+	Updated time.Time
 }
 
 // Overall is the one word the top of the page says: "up" when everything is
@@ -127,10 +139,18 @@ func Build(ctx context.Context, st *store.Store, snaps map[int64]scheduler.Snaps
 	page := Page{
 		Config:     cfg,
 		Sections:   []SectionView{},
+		Notices:    []NoticeView{},
 		Sensors:    []Sensor{},
 		Incidents:  []Incident{},
 		ShowCauses: cfg.ShowCauses,
 		Updated:    now,
+	}
+
+	for _, notice := range cfg.Notices {
+		iconURL, drawn := iconOf(notice.Icon, iconBase)
+		page.Notices = append(page.Notices, NoticeView{
+			Text: notice.Text, Colour: notice.Colour, IconURL: iconURL, IconDrawn: drawn,
+		})
 	}
 
 	ids := cfg.SensorIDs()

@@ -1676,6 +1676,17 @@ button.widget-pick-label {
 .sw-slate { background: #64748b; }
 .sw-accent { background: var(--accent); }
 
+.status-notices { display: grid; gap: var(--sp-2); margin: var(--sp-2) 0; }
+.status-notice {
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface-2); padding: var(--sp-2) var(--sp-3);
+  display: grid; gap: var(--sp-2);
+}
+.status-notice-head { display: flex; gap: var(--sp-1); align-items: center; }
+.status-notice-head input[type="text"] { flex: 1 1 auto; min-width: 0; }
+.status-notice .choice-group { flex-wrap: wrap; }
+.status-notice .chip { min-height: calc(var(--ctl-h) - 8px); font-size: var(--text-4); }
+
 .status-sections { display: grid; gap: var(--sp-2); margin: var(--sp-2) 0; }
 .status-section {
   border: 1px solid var(--border); border-radius: var(--radius);

@@ -98,6 +98,9 @@ func TestTheStatusPagePanelAndThePageItShares(t *testing.T) {
 			chromedp.Click(`#status-panel [data-status-theme][value="dark"]`),
 			chromedp.Click(`#status-panel [data-status-accent][value="violet"]`),
 			chromedp.Click(`#status-panel [data-status-layout][value="cards"]`),
+			chromedp.Click(`#status-panel [data-status-add-notice]`),
+			chromedp.SendKeys(`[data-notice-text="0"]`, "Maintenance tonight"),
+			chromedp.Click(`#status-panel [data-notice-colour="0"][value="amber"]`),
 			chromedp.Click(`#status-panel [data-status-add-section]`),
 			chromedp.SendKeys(`[data-section-title="0"]`, "Web"),
 			chromedp.Click(`[data-section-sensors="0"]`),
@@ -154,7 +157,8 @@ func TestTheStatusPagePanelAndThePageItShares(t *testing.T) {
 	if want := "noindex, nofollow"; !strings.Contains(html, want) {
 		t.Errorf("the public page does not carry %q", want)
 	}
-	for _, want := range []string{`data-theme="dark"`, `data-accent="violet"`, "layout-cards", "Homelab", ">Web<", "card-top"} {
+	for _, want := range []string{`data-theme="dark"`, `data-accent="violet"`, "layout-cards", "Homelab", ">Web<", "card-top",
+		"Maintenance tonight", "notice c-amber", "site-brand", "/#/settings/monitor/status"} {
 		if !strings.Contains(html, want) {
 			t.Errorf("the configured page does not carry %q", want)
 		}
@@ -187,4 +191,15 @@ func TestTheStatusPagePanelAndThePageItShares(t *testing.T) {
 	if code != 404 {
 		t.Errorf("the disabled link answered %d, want 404", code)
 	}
+
+	// The edit link the page offers its administrator opens the Status panel in
+	// the Monitoring category, not the settings page at large.
+	if _, err := chromedp.Run(ctx, chromedp.Navigate(base+"/#/settings/monitor/status")); err != nil {
+		t.Fatalf("open the edit link: %v", err)
+	}
+	eventually(t, ctx, `(() => {
+		const panel = document.querySelector('#status-panel');
+		const tab = document.querySelector('.settings-tabs [data-category="monitor"]');
+		return panel && !panel.hidden && tab && tab.getAttribute('aria-selected') === 'true';
+	})()`, "the edit link does not open the status panel", screenshotDir, "status-deep-link", 10*time.Second)
 }
