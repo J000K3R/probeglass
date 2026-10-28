@@ -574,6 +574,57 @@ func (o Options) StrMap(key string) map[string]string {
 	return out
 }
 
+// Certificate is the leaf certificate a sensor last saw, and the sensor it saw
+// it with.
+//
+// It is kept beside the probe result rather than in it because it is not a
+// measurement of the moment: a certificate is the same object for ninety days,
+// and the question an operator asks — "which of them runs out first?" — is asked
+// about the thing, not about the probe that noticed it. One row per sensor,
+// overwritten by every handshake that presents a certificate, is enough to
+// answer it.
+//
+// A sensor that sees no certificate — plain HTTP, TCP without TLS — has no row,
+// which is why the table can be read as the inventory itself.
+type Certificate struct {
+	SensorID   int64      `json:"sensor_id"`
+	SensorName string     `json:"sensor_name,omitempty"`
+	SensorType SensorType `json:"sensor_type,omitempty"`
+	SensorIcon string     `json:"sensor_icon,omitempty"`
+	Target     string     `json:"target,omitempty"`
+	Group      string     `json:"group,omitempty"`
+	Site       string     `json:"site,omitempty"`
+
+	// Subject and Issuer are the certificates' own names, written the way
+	// crypto/x509 writes them. They are shown as they are: an issuer is
+	// recognisable by its organisation, and rewriting it would only make it
+	// harder to compare with what openssl prints.
+	Subject string `json:"subject"`
+	Issuer  string `json:"issuer"`
+	Serial  string `json:"serial,omitempty"`
+	// Fingerprint is the SHA-256 of the DER bytes, lowercase hex. It is what
+	// makes two rows comparable: the same wildcard on a gateway and a NAS is
+	// one certificate, and its renewal is one event.
+	Fingerprint string   `json:"fingerprint,omitempty"`
+	DNSNames    []string `json:"dns_names,omitempty"`
+
+	NotBefore time.Time `json:"not_before"`
+	NotAfter  time.Time `json:"not_after"`
+	// TLSVersion is the protocol the handshake settled on, e.g. "TLS 1.3".
+	TLSVersion string `json:"tls_version,omitempty"`
+
+	// WarnDays is the window the sensor was configured with when it saw the
+	// certificate. It travels with the observation because the threshold is part
+	// of the answer to "is this late?", and the sensor's setting may be changed
+	// afterwards.
+	WarnDays int `json:"warn_days"`
+
+	// DaysLeft is worked out when the row is read, against the reader's clock;
+	// it is never stored, because a stored number would be wrong the next day.
+	DaysLeft   int       `json:"days_left"`
+	ObservedAt time.Time `json:"observed_at"`
+}
+
 // Result is a single probe outcome.
 type Result struct {
 	ID         int64     `json:"id"`

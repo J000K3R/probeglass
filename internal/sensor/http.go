@@ -205,7 +205,7 @@ func httpTransport(insecure bool) *http.Transport {
 }
 
 // Run implements Prober.
-func (HTTPProber) Run(ctx context.Context, c model.Sensor) Outcome {
+func (HTTPProber) Run(ctx context.Context, c model.Sensor) (out Outcome) {
 	o := c.Options
 
 	method := strings.ToUpper(strings.TrimSpace(o.Str("method", http.MethodGet)))
@@ -269,6 +269,18 @@ func (HTTPProber) Run(ctx context.Context, c model.Sensor) Outcome {
 	}
 	defer resp.Body.Close()
 
+	// The certificate belongs to every outcome after the handshake — a page
+	// returning 500, a body that does not match, a certificate about to run out —
+	// and the inventory wants it in all of those. A plain-HTTP target leaves the
+	// pointer nil, which is what tells the recorder to clear any earlier row.
+	defer func() {
+		if resp.TLS != nil {
+			if ci, ok := leafInfo(*resp.TLS); ok {
+				out.Certificate = ci.certificate()
+			}
+		}
+	}()
+
 	limit := int64(o.Int("max_body_bytes", 256*1024))
 	if limit <= 0 {
 		limit = 256 * 1024
@@ -289,7 +301,7 @@ func (HTTPProber) Run(ctx context.Context, c model.Sensor) Outcome {
 	if resp.TLS != nil {
 		if ci, ok := leafInfo(*resp.TLS); ok {
 			certNote = ci.note()
-			if ci.warning(o.Int("cert_warn_days", 0)) {
+			if ci.warning(CertWarnDays(c)) {
 				return Outcome{
 					Success:    false,
 					Latency:    latency,

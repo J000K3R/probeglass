@@ -207,7 +207,7 @@ const readSearchBar = `(() => {
 // 240 pixels; at 1100 the bar is one line still, but a line it only holds because the
 // four working controls have folded into the ⋮ beside the field — and the room they
 // gave back is the field's, which is what makes it 736 pixels there rather than the
-// 240 it is at 1440. Below about 620 there is no field worth having left, and it
+// 240 it is at 1440. Below about 680 there is no field worth having left, and it
 // leaves the row altogether; shell_test.go is where that is checked, along with the
 // ⋮ row that lays it back over the bar at the full width.
 //
@@ -297,22 +297,23 @@ func TestTheSearchFieldIsAPlainSearchInTheMiddle(t *testing.T) {
 			"of its own; it is meant to hold the one line now",
 			narrow.BarR-narrow.BarL, fieldMid, brandMid, d)
 	}
-	// The last width where that still holds, and the first where it does not. 620 is
-	// the edge: the field is 264 pixels there, which is a field. At 600 it is not in
+	// The last width where that still holds, and the first where it does not. 680 is
+	// the edge: the field is 272 pixels there, which is a field. At 660 it is not in
 	// the bar at all — the bar gave it up rather than squeeze it to seven characters,
-	// and the ⋮ has it instead.
-	if edge, err := measureSearchBar(t, ctx, dir, 620, 900); err != nil {
-		t.Fatalf("could not measure the top bar at 620: %v", err)
+	// and the ⋮ has it instead. The edge was 620 before the Certificates tab: five
+	// icons need 44 pixels more than four, and those pixels came from here.
+	if edge, err := measureSearchBar(t, ctx, dir, 680, 900); err != nil {
+		t.Fatalf("could not measure the top bar at 680: %v", err)
 	} else if got := edge.SearchR - edge.SearchL; got < 240 {
-		capture(t, ctx, dir, "search-620")
-		t.Errorf("at 620 the field is %g pixels; that is the last width it is in the bar, "+
+		capture(t, ctx, dir, "search-680")
+		t.Errorf("at 680 the field is %g pixels; that is the last width it is in the bar, "+
 			"and it is meant to be a field there", got)
 	}
-	if gone, err := measureSearchBar(t, ctx, dir, 600, 900); err != nil {
-		t.Fatalf("could not measure the top bar at 600: %v", err)
+	if gone, err := measureSearchBar(t, ctx, dir, 660, 900); err != nil {
+		t.Fatalf("could not measure the top bar at 660: %v", err)
 	} else if got := gone.SearchR - gone.SearchL; got != 0 {
-		capture(t, ctx, dir, "search-600")
-		t.Errorf("at 600 the field is still %g pixels wide in the bar; below 620 it is "+
+		capture(t, ctx, dir, "search-660")
+		t.Errorf("at 660 the field is still %g pixels wide in the bar; below 680 it is "+
 			"meant to be out of the row and behind the ⋮, laid over the bar at full "+
 			"width when it is asked for", got)
 	}

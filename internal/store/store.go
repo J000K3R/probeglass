@@ -736,6 +736,40 @@ CREATE TABLE IF NOT EXISTS sensor_escalation_channels (
 ALTER TABLE incidents ADD COLUMN escalated_at TEXT;
 `,
 	},
+	{
+		version: 12,
+		name:    "certificate-inventory",
+		sql: `
+-- The last certificate each sensor saw.
+--
+-- One row per sensor, not one per probe: a certificate is the same object for
+-- months, and the question the inventory answers — which one runs out first? —
+-- is asked about the object rather than about the probe that noticed it. A row
+-- is rewritten by every handshake that presents a certificate, and deleted when
+-- a sensor stops seeing one, so the table is exactly the inventory.
+--
+-- dns_names is newline-separated because a name cannot contain one; the serial
+-- is hexadecimal and the fingerprint is SHA-256 of the DER bytes, lowercase hex.
+-- warn_days is recorded with the observation rather than read from the sensor
+-- later, because the threshold is part of what "late" meant when it was seen.
+CREATE TABLE IF NOT EXISTS certificates (
+    sensor_id   INTEGER PRIMARY KEY REFERENCES sensors(id) ON DELETE CASCADE,
+    subject     TEXT    NOT NULL DEFAULT '',
+    issuer      TEXT    NOT NULL DEFAULT '',
+    serial      TEXT    NOT NULL DEFAULT '',
+    fingerprint TEXT    NOT NULL DEFAULT '',
+    dns_names   TEXT    NOT NULL DEFAULT '',
+    not_before  TEXT    NOT NULL DEFAULT '',
+    not_after   TEXT    NOT NULL DEFAULT '',
+    tls_version TEXT    NOT NULL DEFAULT '',
+    warn_days   INTEGER NOT NULL DEFAULT 0,
+    observed_at TEXT    NOT NULL
+);
+
+-- The page sorts by expiry, and so does every query that asks about it.
+CREATE INDEX IF NOT EXISTS certificates_not_after ON certificates(not_after);
+`,
+	},
 }
 
 // rowExecer is the part of *sql.DB and *sql.Tx that the settings sweeps below use.

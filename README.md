@@ -127,6 +127,11 @@ frontend pipeline to keep alive.
   expiry, ICMP ping, DNS, Docker containers, and SNMP over v1, v2c or v3. A
   searchable catalogue, with device templates for QNAP, Synology, UniFi and APC.
   Configured in the web UI or declared in YAML.
+- **Certificates** — every certificate an HTTPS, TCP-with-TLS or TLS sensor has
+  completed a handshake with, on one page and sorted by expiry: the sensor it
+  belongs to, the issuer, the names on it and the days left. Expired and
+  within-30-days are filters, and the list is fed by the probes — a renewal
+  replaces its row.
 - **Dashboard** — five views of the same sensors: cards, a dense list, a foldable
   **tree** by site and group, a **wall** of tiles carrying the last forty checks as
   a heartbeat, and a **map** of your sites. The map draws the world from

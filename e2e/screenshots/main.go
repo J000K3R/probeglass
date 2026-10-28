@@ -484,6 +484,15 @@ func capture(ctx context.Context, base, out string) error {
 	if err := shot(ctx, out, "incidents", 1600, 1000); err != nil {
 		return err
 	}
+	if err := do(ctx, "the certificate inventory",
+		chromedp.Click(`[data-route="certificates"]`),
+		chromedp.WaitVisible(`#cert-list tr`),
+	); err != nil {
+		return err
+	}
+	if err := shot(ctx, out, "certificates", 1600, 900); err != nil {
+		return err
+	}
 	if err := do(ctx, "the channels page",
 		chromedp.Click(`[data-route="channels"]`),
 		chromedp.WaitVisible(`#channel-list .channel`),

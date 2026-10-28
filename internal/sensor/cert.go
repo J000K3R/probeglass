@@ -1,13 +1,17 @@
 package sensor
 
 import (
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"math"
 	"strings"
 	"time"
+
+	"github.com/j000k3r/probeglass/internal/model"
 )
 
 // The three probers that can meet a TLS certificate — http, tcp and tls — share
@@ -16,10 +20,21 @@ import (
 // disagree about how many days are left.
 
 // certInfo is the leaf certificate of a finished handshake, reduced to what a
-// probe message needs.
+// probe message needs and what the certificate inventory keeps.
 type certInfo struct {
+	// Subject and Issuer are the names as crypto/x509 writes them.
+	Subject string
+	Issuer  string
+	// Serial is hexadecimal without a prefix; Fingerprint is the SHA-256 of the
+	// DER bytes, lowercase hex.
+	Serial      string
+	Fingerprint string
+	DNSNames    []string
+	NotBefore   time.Time
 	// NotAfter is when the certificate stops being valid.
 	NotAfter time.Time
+	// Version is the protocol the handshake settled on, e.g. "TLS 1.3".
+	Version string
 	// Days is whole days until NotAfter, rounded down towards minus infinity —
 	// not towards zero, so that a certificate which ran out an hour ago reports
 	// -1 rather than 0 and cannot be mistaken for one expiring today.
@@ -35,10 +50,49 @@ func leafInfo(state tls.ConnectionState) (certInfo, bool) {
 		return certInfo{}, false
 	}
 	leaf := state.PeerCertificates[0]
+	sum := sha256.Sum256(leaf.Raw)
 	return certInfo{
-		NotAfter: leaf.NotAfter,
-		Days:     daysUntil(leaf.NotAfter),
+		Subject:     leaf.Subject.String(),
+		Issuer:      leaf.Issuer.String(),
+		Serial:      leaf.SerialNumber.Text(16),
+		Fingerprint: hex.EncodeToString(sum[:]),
+		DNSNames:    append([]string(nil), leaf.DNSNames...),
+		NotBefore:   leaf.NotBefore,
+		NotAfter:    leaf.NotAfter,
+		Version:     tls.VersionName(state.Version),
+		Days:        daysUntil(leaf.NotAfter),
 	}, true
+}
+
+// certificate is this observation as the row the inventory keeps, or nil when
+// there is nothing valid to describe.
+func (ci certInfo) certificate() *model.Certificate {
+	if ci.NotAfter.IsZero() {
+		return nil
+	}
+	return &model.Certificate{
+		Subject:     ci.Subject,
+		Issuer:      ci.Issuer,
+		Serial:      ci.Serial,
+		Fingerprint: ci.Fingerprint,
+		DNSNames:    append([]string(nil), ci.DNSNames...),
+		NotBefore:   ci.NotBefore,
+		NotAfter:    ci.NotAfter,
+		TLSVersion:  ci.Version,
+	}
+}
+
+// CertWarnDays is the warning window a sensor asks for. The TLS sensor, whose
+// whole subject is the certificate, starts at a fortnight; the others start at
+// zero and only fail on a certificate that has actually run out. The probers and
+// the certificate inventory read the same number here, so the page and the alert
+// cannot disagree about what "late" means.
+func CertWarnDays(c model.Sensor) int {
+	def := 0
+	if c.Type == model.SensorTLS {
+		def = defaultCertWarnDays
+	}
+	return c.Options.Int("cert_warn_days", def)
 }
 
 // daysUntil is whole days from now until t, rounded down towards minus infinity.

@@ -45,6 +45,11 @@ const state = {
   // the full list the Incidents tab asks for.
   recentIncidents: [],
   incidents: [],
+  // certificates is the inventory: one row per HTTPS or TLS sensor that has
+  // completed a handshake. It is loaded when the tab is opened rather than with
+  // the summary, because it is a page nobody visits on every load.
+  certificates: [],
+  certFilter: 'all',
   channels: [],
   channelTypes: [],
   // The sites. They arrive with the summary rather than on their own request, so
@@ -1598,7 +1603,7 @@ async function rememberTour(reached) {
 // routing
 // ---------------------------------------------------------------------------
 
-const ROUTES = ['dashboard', 'incidents', 'channels', 'settings'];
+const ROUTES = ['dashboard', 'incidents', 'certificates', 'channels', 'settings'];
 
 /**
  * parseHash reads a location hash into a view and an optional sensor.
@@ -1697,6 +1702,9 @@ async function loadRouteData(route) {
     } else if (route === 'incidents') {
       await loadIncidents();
       renderIncidents();
+    } else if (route === 'certificates') {
+      await loadCertificates();
+      renderCertificates();
     } else if (route === 'settings') {
       // Both of these decide whether a panel exists at all, so they have to be
       // there before the panel is drawn rather than filled in afterwards.
@@ -1779,6 +1787,7 @@ window.addEventListener('hashchange', () => {
 async function renderAll() {
   if (state.route === 'dashboard') renderDashboard();
   if (state.route === 'incidents') renderIncidents();
+  if (state.route === 'certificates') renderCertificates();
   if (state.route === 'channels') renderChannels();
   if (state.route === 'settings') await renderSettings();
 }
@@ -2298,10 +2307,19 @@ async function moveSensor(sensor, delta) {
 
 async function openDetail(id) {
   const sensor = state.sensors.find((c) => c.id === id);
-  // Not found: either the summary has not arrived yet (the pending queue in
-  // refresh will call again) or the sensor is gone. Either way there is nothing
-  // to draw, and saying so would be a lie about a link that is simply early.
-  if (!sensor) return;
+  // Not found: either the summary has not arrived yet or the sensor is gone.
+  //
+  // The first case is not only the deep link it used to be. The certificates
+  // tab loads its own list, so on a cold load its rows can be on screen before
+  // the summary that carries the sensors has come back, and a click in that
+  // moment must not be swallowed. It is queued instead, and refresh opens it on
+  // the way back. After a summary there is nothing to wait for: the id is a
+  // sensor that is gone, and a link that is simply early should not look like
+  // an error.
+  if (!sensor) {
+    if (state.summary === null) state.pendingDetail = id;
+    return;
+  }
   state.detail = id;
   state.pendingDetail = null;
   // Keep the URL on the sensor so the back button returns to the dashboard, and
@@ -2693,6 +2711,130 @@ function renderIncidents() {
     }
     const row = event.target.closest('tr[data-id]');
     if (row) openDetail(Number(row.dataset.id));
+  };
+}
+
+// ---------------------------------------------------------------------------
+// certificates
+// ---------------------------------------------------------------------------
+//
+// The inventory is fed by the probes, not by a handshake of its own: the sensor
+// that watches a service already meets its certificate, and this page is that
+// meeting remembered. It follows that a certificate shows up only after a probe
+// that completed a handshake, and that the table is exactly the set of
+// certificates the installation is actually using.
+//
+// Thirty days is the page's own idea of "soon". A sensor uses its cert_warn_days
+// to decide when to fail, and that is the number that pages somebody; the page is
+// for the person who would rather renew before the alarm goes off.
+
+const CERT_SOON_DAYS = 30;
+
+function certBucket(cert) {
+  if (cert.days_left < 0) return 'expired';
+  if (cert.days_left <= CERT_SOON_DAYS) return 'soon';
+  return 'valid';
+}
+
+async function loadCertificates() {
+  const data = await api('/api/certificates');
+  state.certificates = data.certificates || [];
+}
+
+/** certDate is a certificate's date without a clock time: expiry is a day. */
+function certDate(iso) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString(locale(), { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+/** certCommonName pulls the CN out of an x509 name, or gives the whole of it. */
+function certCommonName(name) {
+  const text = String(name || '');
+  const cn = /(?:^|,)CN=([^,]+)/.exec(text);
+  return cn ? cn[1] : text;
+}
+
+/** certIssuerName prefers the organisation, which is the recognisable part. */
+function certIssuerName(name) {
+  const text = String(name || '');
+  const org = /(?:^|,)O=([^,]+)/.exec(text);
+  return org ? org[1] : certCommonName(text);
+}
+
+function certDays(cert) {
+  if (cert.days_left < 0) {
+    return `<span class="cert-days is-expired">${esc(t('certs.expired'))}</span>`;
+  }
+  if (cert.days_left === 0) {
+    return `<span class="cert-days is-soon">${esc(t('certs.today'))}</span>`;
+  }
+  const label = cert.days_left === 1 ? t('certs.day') : t('certs.days', { n: cert.days_left });
+  const cls = certBucket(cert) === 'soon' ? ' is-soon' : '';
+  return `<span class="cert-days${cls}">${esc(label)}</span>`;
+}
+
+function renderCertificates() {
+  const all = state.certificates || [];
+  const counts = { expired: 0, soon: 0, valid: 0 };
+  for (const cert of all) counts[certBucket(cert)] += 1;
+
+  for (const button of $$('#cert-filters [data-cert-filter]')) {
+    button.setAttribute('aria-pressed', button.dataset.certFilter === state.certFilter ? 'true' : 'false');
+  }
+  $('#certs-summary').textContent = t('certs.summary', counts);
+
+  const rows = state.certFilter === 'all'
+    ? all
+    : all.filter((cert) => certBucket(cert) === state.certFilter);
+
+  // An empty installation and an empty filter are different news, and saying
+  // the first in the words of the second sends somebody looking for a fault
+  // that is a setting on this page.
+  $('#certs-empty').hidden = all.length !== 0;
+  $('#certs-empty-filtered').hidden = !(all.length !== 0 && rows.length === 0);
+
+  $('#cert-list').innerHTML = rows.length ? `<table class="incidents-table certs-table">
+    <thead><tr>
+      <th>${esc(t('field.sensor'))}</th>
+      <th>${esc(t('field.certificate'))}</th>
+      <th>${esc(t('field.issuer'))}</th>
+      <th>${esc(t('field.expires'))}</th>
+      <th class="num">${esc(t('field.daysLeft'))}</th>
+    </tr></thead>
+    <tbody>${rows.map((cert) => {
+      const names = (cert.dns_names || []).join(', ');
+      const subject = certCommonName(cert.subject);
+      const issuer = certIssuerName(cert.issuer);
+      return `<tr data-id="${cert.sensor_id}" class="cert-row is-${certBucket(cert)}">
+        <td>${iconUI.iconMarkup(cert.sensor_icon, { size: 16, cls: 'icon-lead' })}<b>${esc(cert.sensor_name || cert.sensor_id)}</b>
+          <br><span class="muted cell-mono">${esc(cert.target || '')}</span></td>
+        <td><b>${esc(subject || '—')}</b>${names ? `<br><span class="muted cell-mono" title="${esc(names)}">${esc(names)}</span>` : ''}</td>
+        <td class="muted" title="${esc(cert.issuer || '')}">${esc(issuer || '—')}</td>
+        <td>${esc(certDate(cert.not_after))}<br><span class="muted">${esc(cert.tls_version || '')}</span></td>
+        <td class="num" title="${esc(t('detail.lastProbe') + ': ' + C.fmtDateTime(cert.observed_at))}">${certDays(cert)}</td>
+      </tr>`;
+    }).join('')}</tbody></table>` : '';
+
+  $('#cert-list').onclick = (event) => {
+    const row = event.target.closest('tr[data-id]');
+    if (row) openDetail(Number(row.dataset.id));
+  };
+
+  $('#cert-filters').onclick = (event) => {
+    const button = event.target.closest('[data-cert-filter]');
+    if (!button) return;
+    state.certFilter = button.dataset.certFilter;
+    renderCertificates();
+  };
+
+  $('#certs-refresh').onclick = async () => {
+    try {
+      await loadCertificates();
+      renderCertificates();
+    } catch (err) {
+      toast(err.message, 'error');
+    }
   };
 }
 

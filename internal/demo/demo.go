@@ -163,6 +163,25 @@ type sensor struct {
 	// the most recent of them, and an outage at 210 hours is invisible to the 7-day
 	// default that `seed --demo` and the Settings button both use.
 	outages []Outage
+	// cert, when set, is the certificate this entry's target presents. It is
+	// described in days from now rather than as a date, for the same reason the
+	// outages are: the dataset is written whenever somebody installs the
+	// software, and a certificate that expired in 2027 would make the demo's
+	// certificate page tell the wrong story from 2028 on.
+	cert *demoCert
+}
+
+// demoCert is one entry's certificate, as the demo writes it.
+type demoCert struct {
+	subject, issuer, serial, fingerprint string
+	names                                []string
+	validFor                             int // days from now
+	// issuedDaysAgo is how long before now the certificate was issued, which is
+	// what makes NotBefore plausible: a ninety-day certificate renewed a month
+	// ago did not start yesterday.
+	issuedDaysAgo int
+	warnDays      int
+	tlsVersion    string
 }
 
 // history is the shape of this entry's invented past, as the writer wants it. The
@@ -230,6 +249,13 @@ var sensors = []sensor{
 		options:    model.Options{"server_name": "example.org", "cert_warn_days": 14},
 		successMsg: "TLS 1.3 · certificate valid for 82 day(s)", failMsg: "TLS certificate expires in 6 day(s)",
 		outages: []Outage{},
+		cert: &demoCert{
+			subject: "CN=example.org,O=Example Organisation,C=US",
+			issuer:  "CN=R11,O=Let's Encrypt,C=US",
+			serial:  "03a3f1c2d4e5b6a7", fingerprint: "4f2a9c1e8b7d6035a4c9e2f1b08d7c66395a84e1f2c3b4d5e6f70a19283b4c5d",
+			names:    []string{"example.org", "www.example.org"},
+			validFor: 82, issuedDaysAgo: 8, warnDays: 14, tlsVersion: "TLS 1.3",
+		},
 	},
 	{
 		name: "Package mirror", sensorType: model.SensorHTTP, target: "https://deb.debian.org",
@@ -249,6 +275,13 @@ var sensors = []sensor{
 		options:    model.Options{"server_name": "cloudflare-dns.com", "cert_warn_days": 21},
 		successMsg: "TLS 1.3 · certificate valid for 61 day(s)", failMsg: "TLS handshake failed",
 		outages: []Outage{},
+		cert: &demoCert{
+			subject: "CN=cloudflare-dns.com,O=Cloudflare\\, Inc.,C=US",
+			issuer:  "CN=WE1,O=Google Trust Services,C=US",
+			serial:  "5b7e9d0c1a2f3e4d", fingerprint: "9c1d5e7f3a2b0c4d6e8f1a3b5c7d9e0f2a4b6c8d1e3f5a7b9c0d2e4f6a8b1c3d",
+			names:    []string{"cloudflare-dns.com", "one.one.one.one", "1.1.1.1"},
+			validFor: 61, issuedDaysAgo: 29, warnDays: 21, tlsVersion: "TLS 1.3",
+		},
 	},
 
 	// The homelab itself. Disabled — see the note on the sensor type.
@@ -473,6 +506,32 @@ func Seed(ctx context.Context, st *store.Store, days int) (Result, error) {
 	byName := make(map[string]sensor, len(sensors))
 	for _, d := range sensors {
 		byName[d.name] = d
+	}
+
+	// The certificates the two public TLS sensors would have met. They are written
+	// here rather than left for the scheduler because the demonstration has to be
+	// complete before the first probe: the certificate page is part of the tour,
+	// and a page that fills itself in a minute later is a page that looks broken.
+	for _, c := range created {
+		d, ok := byName[c.Name]
+		if !ok || d.cert == nil {
+			continue
+		}
+		if err := st.SaveCertificate(ctx, model.Certificate{
+			SensorID:    c.ID,
+			Subject:     d.cert.subject,
+			Issuer:      d.cert.issuer,
+			Serial:      d.cert.serial,
+			Fingerprint: d.cert.fingerprint,
+			DNSNames:    d.cert.names,
+			NotBefore:   now.AddDate(0, 0, -d.cert.issuedDaysAgo),
+			NotAfter:    now.AddDate(0, 0, d.cert.validFor),
+			TLSVersion:  d.cert.tlsVersion,
+			WarnDays:    d.cert.warnDays,
+			ObservedAt:  now.Add(-Spacing),
+		}); err != nil {
+			return Result{}, fmt.Errorf("write the certificate for %q: %w", c.Name, err)
+		}
 	}
 
 	samples := 0

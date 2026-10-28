@@ -422,7 +422,7 @@ func (s *Store) DeleteSensor(ctx context.Context, id int64) error {
 // because that is where the clause ends up.
 func (s *Store) deleteSensors(ctx context.Context, what string, args ...any) error {
 	return s.tx(ctx, func(tx *sql.Tx) error {
-		for _, table := range []string{"results_hourly", "results_daily"} {
+		for _, table := range []string{"results_hourly", "results_daily", "certificates"} {
 			q := `DELETE FROM ` + table + ` WHERE sensor_id IN (SELECT id FROM sensors WHERE ` + what + `)`
 			if _, err := tx.ExecContext(ctx, q, args...); err != nil {
 				return err

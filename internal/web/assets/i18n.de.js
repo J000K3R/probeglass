@@ -50,6 +50,7 @@ export const de = {
 
   'nav.dashboard': 'Dashboard',
   'nav.incidents': 'Vorfälle',
+  'nav.certificates': 'Zertifikate',
   'nav.channels': 'Meldungen',
   'nav.settings': 'Einstellungen',
   'nav.search': 'Suchen',
@@ -551,6 +552,10 @@ export const de = {
   'field.sensor': 'Sensor',
   'field.started': 'Beginn',
   'field.resolved': 'Behoben',
+  'field.certificate': 'Zertifikat',
+  'field.issuer': 'Aussteller',
+  'field.expires': 'Gültig bis',
+  'field.daysLeft': 'Tage übrig',
 
   'detail.uptime': 'Verfügbarkeit',
   'detail.avg': 'Mittel',
@@ -612,6 +617,26 @@ export const de = {
   'incidents.ongoing': 'andauernd',
   'incidents.resolved': 'behoben',
   'incidents.loading': 'Lädt …',
+
+  // Die Zertifikatsübersicht. „Bald“ heißt auf dieser Seite dreißig Tage —
+  // lang genug, um eine Erneuerung in Ruhe zu machen, kurz genug, dass die
+  // Seite noch etwas aussagt. Ob ein Sensor scheitert, entscheidet sein eigenes
+  // Warnfenster; das hier ist die Übersicht, und beide dürfen abweichen.
+  'certs.title': 'Zertifikate',
+  'certs.intro': 'Alle Zertifikate, die ein HTTPS-, TLS-fähiger TCP- oder TLS-Sensor gesehen hat, das bald ablaufende zuerst.',
+  'certs.refresh': 'Aktualisieren',
+  'certs.filterAria': 'Zertifikate filtern',
+  'certs.filter.expired': 'Abgelaufen',
+  'certs.filter.soon': 'In 30 Tagen',
+  'certs.filter.valid': 'Gültig',
+  'certs.summary': 'Abgelaufen: {expired} · In 30 Tagen: {soon} · Gültig: {valid}',
+  'certs.empty': 'Noch keine Zertifikate',
+  'certs.emptyBody': 'Ein Zertifikat erscheint hier, sobald ein HTTPS-, TLS-fähiger TCP- oder TLS-Sensor zum ersten Mal einen Handshake abschließt.',
+  'certs.emptyFiltered': 'Kein Zertifikat passt zu diesem Filter',
+  'certs.expired': 'abgelaufen',
+  'certs.today': 'heute',
+  'certs.day': '1 Tag',
+  'certs.days': '{n} Tage',
 
   // Einen Ausfall quittieren. Nicht dasselbe wie pausieren: der Sensor wird
   // weiter geprüft, und nur die Erinnerungen hören auf.

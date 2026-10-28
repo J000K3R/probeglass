@@ -552,8 +552,8 @@ a { color: var(--accent); }
    Both are measured in a browser rather than guessed, with the example sensors on
    the dashboard and the twelve-character user name the tests sign in with — the
    longest thing in the bar that is not a fixed size, and so the one it has to hold.
-   What the two sides ask for: on the left 594 with the tab names and the brand,
-   222 without them. On the right, on the dashboard, 875 with the labels of the two
+   What the two sides ask for: on the left 707 with the five tab names and the
+   brand, 264 without them. On the right, on the dashboard, 875 with the labels of the two
    segmented controls, 626 without those labels (they are 249, most of them the five
    of the layout switcher), 409 with no words at all, and 237 with no words while
    the header is being arranged — that last is narrower because the switcher stands
@@ -563,22 +563,24 @@ a { color: var(--accent); }
    a fixed 240px.
    A grid column is half of what is left over, so the bar holds one line at twice
    the wider side plus the 240px field, the two 18px gaps and the 40px of padding:
-   2066 with every word, 1568 with the segmented labels gone, 1134 with all of them
-   gone.
+   2066 with every word, 1730 with the segmented labels gone, 1134 with all of them
+   gone. The fifth tab, Certificates, is why the middle number moved: the left side
+   with its names is now 707 and outasks the 626 of the right without labels, so the
+   tab names stay until 1730 rather than 1568.
    So the words go in two steps. First the segmented labels, which say the same
    thing as the icon beside them and are the cheapest to lose: below 2066. That step
    is not cosmetic — at 1800 the dashboard asked for 2066, and a right column that
    cannot have the width it wants wraps inside itself, which is a second row of
    buttons in a bar that is supposed to have one. Then every other word: the tab
    names, the brand, and the four that belong to a button — New sensor, the live
-   indicator, the account — below 1568. Each of those carries its name as a title and
+   indicator, the account — below 1730. Each of those carries its name as a title and
    as an aria-label, because a `display: none` word is not in the accessibility tree
    and an icon alone has no name. */
 @media (max-width: 2065px) {
   .seg-btn span { display: none; }
 }
 
-@media (max-width: 1567px) {
+@media (max-width: 1729px) {
   /* The segmented labels are already gone from the rule above; these are the ones it
      does not reach. The brand word goes with them: the mark beside it says the same
      thing in one glyph, and the bar keeps that. */
@@ -642,7 +644,7 @@ a { color: var(--accent); }
 
   /* A segmented control is a row of buttons in a pill; in a panel it is a list of
      rows, so it loses the pill and stacks. The words come back with it — they are
-     `display: none` above 2065 and 1567 to buy the bar a line, and a panel has no
+     `display: none` above 2065 and 1729 to buy the bar a line, and a panel has no
      line to buy. An icon with no word in a menu is a menu nobody can read. */
   .topbar.menu-open .topbar-extra .segmented {
     flex-direction: column;
@@ -704,7 +706,9 @@ a { color: var(--accent); }
    field is worth having on a phone. `inset: 0` is the padding box of the bar, so the
    field lands exactly where the bar's contents were and the bar's own padding stays
    around it. */
-@media (max-width: 619px) {
+/* 680 and not 620: the fifth tab took 60 pixels from this corner of the row,
+   and a field below 240 is a stub rather than a search box. */
+@media (max-width: 679px) {
   .topbar { padding: var(--sp-3) var(--sp-3); }
   .search { display: none; }
   .topbar.search-open .topbar-side,
@@ -720,26 +724,27 @@ a { color: var(--accent); }
   .topbar-actions > #topbar-search { display: inline-flex; }
 }
 
-/* The tab is an icon-only control at every width below 1567, and 26px of side
+/* The tab is an icon-only control at every width below 1730, and 26px of side
    padding on a 42px button is most of the button — padding that was sized to sit
-   around a word. Below 380 it goes back to hugging its icon, which is 32 pixels of
-   the row bought back for the two things beside it that are still words if you open
-   them: at 375 the row is the mark and the four tabs on the left — 24 and 10 and
-   148 — the two icon buttons with the account on the right, 126, and the ten and
-   the 24 either side of them, which is 342 of 375. Above 380 there is room for the
-   wider tab — 374 of 380 is the arithmetic — so the room goes to the tab. */
-@media (max-width: 379px) {
+   around a word. Below 430 it goes back to hugging its icon: five icons at 32px
+   are 160 against the 178 the bar gives the strip at 380, where the same five at
+   the wider padding need 216. The gap goes with the padding for the same reason —
+   five round backgrounds that nearly touch read as a row, and the pixels are
+   better spent on the account button. */
+@media (max-width: 429px) {
+  .tabs { gap: 0; }
   .tab { padding: var(--sp-2) var(--sp-2); }
 }
 
-/* And in the last stretch the mark goes with it. The four tabs and the two icon
-   buttons and the account are 320 of the 320 of the narrowest phone still in use
-   once the tabs have hugged their icons; the mark and the ten pixels beside it are
-   the only thing left that says nothing the first tab does not already say, and the
-   first tab is the way home. Nothing is lost with it: it is `alt=""` and it is not a
-   control. */
+/* And in the last stretch the mark goes with it. The mark and the ten pixels
+   beside it are the only thing left that says nothing the first tab does not
+   already say, and the first tab is the way home. Nothing is lost with it: it is
+   `alt=""` and it is not a control. The five tabs are icons by then, and at 320
+   they and the account still fit because this is also where their side padding
+   drops to six: 140 pixels of strip against the 154 the bar can give it. */
 @media (max-width: 359px) {
   .brand { display: none; }
+  .tab { padding: 6px; }
 }
 
 .search { position: relative; }
@@ -1229,13 +1234,13 @@ button.widget-pick-label {
 
 /* -------------------------------------------------------------- list layout */
 
-.sensors-table, .incidents-table, .results-table {
+.sensors-table, .incidents-table, .results-table, .certs-table {
   width: 100%;
   border-collapse: collapse;
   font-size: var(--text-3);
 }
 
-.sensors-table th, .incidents-table th, .results-table th {
+.sensors-table th, .incidents-table th, .results-table th, .certs-table th {
   text-align: left;
   font-size: var(--text-5);
   text-transform: uppercase;
@@ -1247,14 +1252,14 @@ button.widget-pick-label {
   white-space: nowrap;
 }
 
-.sensors-table td, .incidents-table td, .results-table td {
+.sensors-table td, .incidents-table td, .results-table td, .certs-table td {
   padding: var(--sp-2) var(--sp-3);
   border-bottom: 1px solid var(--border);
   vertical-align: middle;
 }
 
-.sensors-table tbody tr, .incidents-table tbody tr { cursor: pointer; }
-.sensors-table tbody tr:hover, .incidents-table tbody tr:hover { background: var(--surface-2); }
+.sensors-table tbody tr, .incidents-table tbody tr, .certs-table tbody tr { cursor: pointer; }
+.sensors-table tbody tr:hover, .incidents-table tbody tr:hover, .certs-table tbody tr:hover { background: var(--surface-2); }
 .cell-name { display: grid; }
 .cell-name .muted { font-family: var(--mono); font-size: var(--text-4); }
 
@@ -1262,6 +1267,21 @@ button.widget-pick-label {
 .sensors-table tr.st-warn { background: color-mix(in srgb, var(--warn) 6%, transparent); }
 .sensors-table tr.in-excused { box-shadow: inset 3px 0 0 var(--excuse); }
 .row-crit { background: color-mix(in srgb, var(--crit) 7%, transparent); }
+
+/* The certificate inventory. The row colour is the whole point of the page: a
+   certificate that has run out and one that runs out on Thursday should not
+   look alike in a list of thirty. */
+.certs-table .cell-mono { font-family: var(--mono); font-size: var(--text-4); }
+.certs-table .icon-lead { margin-right: var(--sp-1); vertical-align: -2px; }
+.certs-table tr.is-expired { background: color-mix(in srgb, var(--crit) 6%, transparent); }
+.certs-table tr.is-soon { background: color-mix(in srgb, var(--warn) 6%, transparent); }
+.cert-days { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cert-days.is-soon { color: var(--warn); font-weight: 600; }
+.cert-days.is-expired { color: var(--crit); font-weight: 600; }
+
+.certs-summary { margin: var(--sp-2) 0 var(--sp-3); font-size: var(--text-4); }
+.cert-filters { margin-top: var(--sp-2); }
+.view-intro { margin: var(--sp-1) 0 0; max-width: 68ch; }
 
 .table-wrap {
   background: var(--surface);

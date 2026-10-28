@@ -51,6 +51,7 @@ const en = {
 
   'nav.dashboard': 'Dashboard',
   'nav.incidents': 'Incidents',
+  'nav.certificates': 'Certificates',
   'nav.channels': 'Alerts',
   'nav.settings': 'Settings',
   'nav.search': 'Search',
@@ -549,6 +550,10 @@ const en = {
   'field.sensor': 'Sensor',
   'field.started': 'Started',
   'field.resolved': 'Resolved',
+  'field.certificate': 'Certificate',
+  'field.issuer': 'Issuer',
+  'field.expires': 'Expires',
+  'field.daysLeft': 'Days left',
 
   'detail.uptime': 'Uptime',
   'detail.avg': 'Average',
@@ -616,6 +621,26 @@ const en = {
   'incidents.ongoing': 'ongoing',
   'incidents.resolved': 'resolved',
   'incidents.loading': 'Loading…',
+
+  // The certificate inventory. "Soon" is thirty days on this page — long enough
+  // that a renewal can be arranged without an evening, short enough that the
+  // page still means something. A sensor's own warning window decides whether it
+  // fails; this is the overview, and the two are allowed to differ.
+  'certs.title': 'Certificates',
+  'certs.intro': 'Every certificate an HTTPS, TLS-enabled TCP or TLS sensor has seen, soonest to expire first.',
+  'certs.refresh': 'Refresh',
+  'certs.filterAria': 'Filter certificates',
+  'certs.filter.expired': 'Expired',
+  'certs.filter.soon': 'Within 30 days',
+  'certs.filter.valid': 'Valid',
+  'certs.summary': 'Expired: {expired} · Within 30 days: {soon} · Valid: {valid}',
+  'certs.empty': 'No certificates yet',
+  'certs.emptyBody': 'A certificate appears here the first time an HTTPS, TLS-enabled TCP or TLS sensor completes a handshake.',
+  'certs.emptyFiltered': 'No certificate matches this filter',
+  'certs.expired': 'expired',
+  'certs.today': 'today',
+  'certs.day': '1 day',
+  'certs.days': '{n} days',
 
   // Acknowledging an outage. Not the same as pausing: the sensor keeps being
   // probed, and only the reminders stop.

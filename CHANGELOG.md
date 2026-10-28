@@ -90,6 +90,14 @@ here and what the release says are the same document.
   where it recognizes the product. Everything starts ticked; choose a group and
   create the selected sensors in one transaction. Only private, loopback and
   link-local ranges can be scanned, and the scan credentials are not stored.
+- **A certificate inventory.** A new **Certificates** tab lists every certificate
+  an HTTPS, TLS-enabled TCP or TLS sensor has completed a handshake with, soonest
+  to expire first, with the sensor and service it belongs to. Expired and
+  within-30-days are their own filters, and a row opens its sensor. The list is
+  fed by the probes: a renewal replaces the row rather than adding one, and a
+  sensor that stops seeing a certificate loses it. The sensor's own
+  `cert_warn_days` still decides when it fails, so the page can warn earlier than
+  the alert.
 - **A `/metrics` endpoint for Prometheus.** Sensor status, the 24-hour, 7-day and
   30-day uptime ratios, the last latency and the open incidents, in the Prometheus
   text format, so a homelab that already runs a monitoring stack can scrape

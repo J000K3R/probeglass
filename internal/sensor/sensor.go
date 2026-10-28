@@ -25,6 +25,11 @@ type Outcome struct {
 	Message string
 	// Err describes why the probe failed. It is nil on success.
 	Err error
+	// Certificate is the leaf certificate the peer presented, when the probe
+	// made a TLS handshake and the peer offered one. It is set whether or not
+	// the probe then succeeded: a page returning 500 still has a certificate,
+	// and the inventory is about the certificate.
+	Certificate *model.Certificate
 }
 
 // Failed reports whether the probe failed.

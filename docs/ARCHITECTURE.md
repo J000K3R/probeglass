@@ -46,6 +46,8 @@ results           raw probe results, indexed by (sensor_id, ts)
 results_hourly    bucket = "2026-10-08T13:00:00.000000000Z"
 results_daily     bucket = "2026-10-08"
 incidents         started_at, resolved_at, cause, and the acknowledgement
+certificates      the last certificate each TLS-capable sensor saw: one row per
+                  sensor, replaced on renewal, ON DELETE CASCADE
 users             one account per row: username, password hash, role, TOTP state,
                   token epoch, prefs (this account's interface settings)
 recovery_codes    one hashed one-time code per row, marked used rather than deleted

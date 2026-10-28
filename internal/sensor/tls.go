@@ -144,22 +144,24 @@ func (TLSProber) Run(ctx context.Context, c model.Sensor) Outcome {
 		note += " · not verified"
 	}
 
-	if ci.warning(o.Int("cert_warn_days", defaultCertWarnDays)) {
+	if ci.warning(CertWarnDays(c)) {
 		reason := "tls certificate expires soon"
 		if ci.Days < 0 {
 			reason = "tls certificate has expired"
 		}
 		return Outcome{
-			Success: false,
-			Latency: latency,
-			Message: fmt.Sprintf("%s · %s", note, ci.describe()),
-			Err:     errors.New(reason),
+			Success:     false,
+			Latency:     latency,
+			Message:     fmt.Sprintf("%s · %s", note, ci.describe()),
+			Err:         errors.New(reason),
+			Certificate: ci.certificate(),
 		}
 	}
 
 	return Outcome{
-		Success: true,
-		Latency: latency,
-		Message: fmt.Sprintf("%s · %s", note, ci.describeValid()),
+		Success:     true,
+		Latency:     latency,
+		Message:     fmt.Sprintf("%s · %s", note, ci.describeValid()),
+		Certificate: ci.certificate(),
 	}
 }

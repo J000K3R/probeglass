@@ -658,7 +658,7 @@ const readBar = `(() => {
 // on. The bar is one line at every width down to 320, and that is the assertion
 // this test exists for.
 //
-// The search field is the one thing that does not go in there. Below ~620px it
+// The search field is the one thing that does not go in there. Below ~680px it
 // leaves the row, because a field that fits there is a stub seven characters wide,
 // and a magnifier takes its place in the row rather than a row of the ⋮: the field
 // is drawn over the bar at the full width of it, one press away, which is the only
@@ -755,9 +755,10 @@ func TestTopBarGivesUpWordsThenControlsBeforeItsLine(t *testing.T) {
 				"into the ⋮ and the search field takes the room they left"},
 		{700, nil, true, true, false,
 			"still room for a field worth typing in"},
-		{620, nil, true, true, false,
-			"the last width with the field in the bar"},
-		{560, nil, true, false, true,
+		{680, nil, true, true, false,
+			"the last width with the field in the bar; the fifth tab moved this up from " +
+				"620, because below it the field would be a stub"},
+		{660, nil, true, false, true,
 			"a field that fits here is a stub seven characters wide; the magnifier takes " +
 				"its place rather than the ⋮ swallowing the field"},
 		{375, nil, true, false, true,
@@ -809,15 +810,16 @@ func TestTopBarGivesUpWordsThenControlsBeforeItsLine(t *testing.T) {
 		}
 	}
 
-	// The widths either side of the point where the tabs give up padding they cannot
-	// afford. It is a one-pixel boundary in the CSS, and it is invisible in every field
-	// above: the words are gone on both sides of it, the ⋮ is folded on both sides of
-	// it, the magnifier is in the row on both sides of it. The only thing that tells
-	// them apart is whether the strip fits, which is why it is checked on its own. At
-	// 380 the row is the mark and the tabs at their 26px of side padding and the bar
-	// has single-digit pixels to spare, which is the tightest the bar is anywhere; at
-	// 379 the tabs hug their icons and give the 32 pixels back.
-	for _, width := range []int{380, 379, 359} {
+	// The widths either side of the two points where the tabs give up padding and gap
+	// they cannot afford. They are one-pixel boundaries in the CSS, and they are
+	// invisible in every field above: the words are gone on both sides of each, the ⋮
+	// is folded on both sides, the magnifier is in the row on both sides. The only
+	// thing that tells them apart is whether the strip fits, which is why each is
+	// checked on its own. At 430 five tabs at their 26px of side padding need 216 and
+	// the strip has exactly 216; at 429 they hug their icons and drop the gap, which
+	// gives 56 pixels back. At 359 the side padding goes from eight to six, and that
+	// is what lets the five of them and the account share 320.
+	for _, width := range []int{430, 429, 380, 379, 359} {
 		setWidth(width)
 		if got := read[barShape](t, ctx, readBar, fmt.Sprintf("the top bar at %d", width)); got.TabsClipped {
 			capture(t, ctx, dir, fmt.Sprintf("topbar-tabs-boundary-%d", width))
@@ -929,7 +931,7 @@ func TestTopBarGivesUpWordsThenControlsBeforeItsLine(t *testing.T) {
 		}
 	}
 
-	// And the field that left the bar comes back over it. Below ~620px the bar has a
+	// And the field that left the bar comes back over it. Below ~680px the bar has a
 	// magnifier where the field was, and pressing it lays the field over the bar at
 	// the full width of it — which is the only shape a search field is worth having
 	// on a phone. The magnifier is in the row rather than a row of the ⋮, which is

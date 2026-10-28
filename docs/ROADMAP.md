@@ -201,6 +201,12 @@ promises; the ordering is what the design already supports cheaply.
   JSON value. The MOS NAS OS template goes further: Check device asks the API for
   disks, pools, Docker/LXC containers, VMs and hardware sensors and offers each as
   a tickable sensor.
+- [x] **Network scan.** A private IPv4 range of at most 256 addresses, a fixed port
+  list taken from the templates, optional SNMP identification, and the resulting
+  ping, HTTP, TLS and SNMP checks offered as tickable sensor suggestions.
+- [x] **Certificate inventory.** One page listing every TLS certificate seen by any
+  HTTPS, TLS-enabled TCP or TLS sensor, sorted by expiry, with expired and
+  within-30-days filters. The rows are fed by the probes and replaced on renewal.
 
 ## Next — 0.3.x and beyond
 
@@ -210,8 +216,6 @@ The rest of 0.3.0, ordered by value per unit of work.
   token, safe to share outside the LAN, with the incidents you choose to publish.
 - [ ] **SLA reports.** Monthly uptime per sensor and per group as a printable
   summary, built from the daily rollups that are already kept forever.
-- [ ] **Certificate inventory.** One page listing every TLS certificate seen by
-  any HTTPS or TLS-enabled TCP sensor, sorted by expiry.
 - [ ] **Remote probes.** A second instance reporting into the first, for
   watching the homelab from outside.
 - [ ] **Notification digest.** A daily "here is what happened" message instead

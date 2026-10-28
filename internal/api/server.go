@@ -214,6 +214,7 @@ func (s *Server) Handler() http.Handler {
 	view("GET /api/icons/{id}", s.handleIconBytes)
 	view("GET /api/groups", s.handleListGroups)
 	view("GET /api/tags", s.handleListTags)
+	view("GET /api/certificates", s.handleCertificates)
 
 	// Acting on an outage that has already happened. Nothing here changes what is
 	// monitored or how.

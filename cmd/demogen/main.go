@@ -409,6 +409,10 @@ func (r *recorder) recordDashboard(ctx context.Context, st *store.Store) error {
 		// from the dashboard, and one of the two is in force, so its timestamps are
 		// what the cards' badges are drawn from as well.
 		"/api/maintenance",
+		// The certificate inventory. It is a tab of its own, and the demo dataset
+		// writes the two certificates its public TLS sensors would have met, so the
+		// page has something to show without a network.
+		"/api/certificates",
 	}
 	for _, raw := range fixed {
 		if err := r.get(ctx, raw); err != nil {

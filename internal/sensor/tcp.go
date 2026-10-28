@@ -56,8 +56,17 @@ func (TCPProber) Validate(c model.Sensor) error {
 }
 
 // Run implements Prober.
-func (TCPProber) Run(ctx context.Context, c model.Sensor) Outcome {
+func (TCPProber) Run(ctx context.Context, c model.Sensor) (out Outcome) {
 	o := c.Options
+	var cert *model.Certificate
+	// A TLS handshake that completed leaves its certificate on every later
+	// return in this function, including the ones about a missing banner: the
+	// certificate is a fact about the port, not about what it said afterwards.
+	defer func() {
+		if cert != nil {
+			out.Certificate = cert
+		}
+	}()
 	target := strings.TrimSpace(c.Target)
 	host, _, err := net.SplitHostPort(target)
 	if err != nil {
@@ -91,8 +100,9 @@ func (TCPProber) Run(ctx context.Context, c model.Sensor) Outcome {
 		state := tlsConn.ConnectionState()
 		note = fmt.Sprintf(" · %s", tls.VersionName(state.Version))
 		if ci, ok := leafInfo(state); ok {
+			cert = ci.certificate()
 			note += ci.note()
-			if ci.warning(o.Int("cert_warn_days", 0)) {
+			if ci.warning(CertWarnDays(c)) {
 				return Outcome{
 					Success: false,
 					Latency: time.Since(start),

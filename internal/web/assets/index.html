@@ -116,6 +116,10 @@
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.2 1.5 13.4h13L8 2.2Z"/><path d="M8 6.4v3.2M8 11.8v.1"/></svg>
           <span data-i18n="nav.incidents">Incidents</span>
         </button>
+        <button class="tab" role="tab" data-route="certificates" data-i18n-aria="nav.certificates" data-i18n-title="nav.certificates" aria-label="Certificates" title="Certificates">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 1.8 13.2 3.8v4.1c0 3-2.2 5.2-5.2 6.3-3-1.1-5.2-3.3-5.2-6.3V3.8L8 1.8Z"/><path d="M5.8 7.9 7.4 9.5 10.3 6.6"/></svg>
+          <span data-i18n="nav.certificates">Certificates</span>
+        </button>
         <button class="tab" role="tab" data-route="channels" data-i18n-aria="nav.channels" data-i18n-title="nav.channels" aria-label="Alerts" title="Alerts">
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11.2V7a4 4 0 0 1 8 0v4.2l1.2 1.8H2.8L4 11.2Z"/><path d="M6.3 12.9a1.8 1.8 0 0 0 3.4 0"/></svg>
           <span data-i18n="nav.channels">Alerts</span>
@@ -288,6 +292,39 @@
              emptiness comes from instead, and offers the way back out. -->
         <p class="muted" id="incidents-empty-filtered" hidden
            data-i18n="incidents.emptyFiltered">The filter is hiding everything. Try a wider period, another sensor, or reset it.</p>
+      </div>
+    </section>
+
+    <!-- certificates -->
+    <section id="view-certificates" class="view" hidden>
+      <div class="view-head">
+        <div>
+          <h1 data-i18n="certs.title">Certificates</h1>
+          <p class="muted view-intro" data-i18n="certs.intro">Every certificate an HTTPS, TLS-enabled TCP or TLS sensor has seen, soonest to expire first.</p>
+        </div>
+        <button class="btn btn-ghost btn-small" id="certs-refresh" data-i18n="certs.refresh">Refresh</button>
+      </div>
+      <!-- The three counts double as the filter: the number is the answer to
+           "how bad is it", and pressing it is the way to see those rows. -->
+      <div class="segmented cert-filters" id="cert-filters" role="group"
+           data-i18n-aria="certs.filterAria" aria-label="Filter certificates">
+        <button class="seg-btn" type="button" data-cert-filter="all" aria-pressed="true"
+                data-i18n="filter.all">All</button>
+        <button class="seg-btn" type="button" data-cert-filter="expired" aria-pressed="false"
+                data-i18n="certs.filter.expired">Expired</button>
+        <button class="seg-btn" type="button" data-cert-filter="soon" aria-pressed="false"
+                data-i18n="certs.filter.soon">Expiring within 30 days</button>
+        <button class="seg-btn" type="button" data-cert-filter="valid" aria-pressed="false"
+                data-i18n="certs.filter.valid">Valid</button>
+      </div>
+      <p class="certs-summary muted" id="certs-summary"></p>
+      <div id="cert-list" class="table-wrap"></div>
+      <div id="certs-empty" class="empty" hidden>
+        <h2 data-i18n="certs.empty">No certificates yet</h2>
+        <p class="muted" data-i18n="certs.emptyBody">A certificate appears here the first time an HTTPS, TLS-enabled TCP or TLS sensor completes a handshake.</p>
+      </div>
+      <div id="certs-empty-filtered" class="empty" hidden>
+        <h2 data-i18n="certs.emptyFiltered">No certificate matches this filter</h2>
       </div>
     </section>
 

@@ -525,9 +525,46 @@ func (s *Scheduler) execute(ctx context.Context, c model.Sensor) {
 		s.log.Error("store probe result", "sensor", c.Name, "error", err)
 	}
 
+	// The inventory follows the probe, not the state machine: a certificate is
+	// worth keeping whether the page behind it answered or not.
+	s.recordCertificate(ctx, c, out)
+
 	s.applyOutcome(ctx, c, res)
 
 	s.broker.Publish(event.Event{Kind: event.KindResult, SensorID: c.ID, Result: &res})
+}
+
+// recordCertificate keeps the certificate inventory in step with the probe that
+// just ran.
+//
+// Only the three types that can meet a TLS certificate take part. A probe that
+// finished without one — plain HTTP, TCP without TLS — clears the sensor's row,
+// because that is a fact about the target changing rather than a failed
+// measurement. A probe that never got as far as a handshake changes nothing: the
+// certificate it could not reach may well still be the one in use, and a page
+// that emptied itself on every timeout would say less the worse things got.
+func (s *Scheduler) recordCertificate(ctx context.Context, c model.Sensor, out sensor.Outcome) {
+	switch c.Type {
+	case model.SensorHTTP, model.SensorTCP, model.SensorTLS:
+	default:
+		return
+	}
+	if out.Certificate != nil {
+		cert := *out.Certificate
+		cert.SensorID = c.ID
+		cert.WarnDays = sensor.CertWarnDays(c)
+		cert.ObservedAt = time.Now().UTC()
+		if err := s.store.SaveCertificate(ctx, cert); err != nil {
+			s.log.Error("store certificate", "sensor", c.Name, "error", err)
+		}
+		return
+	}
+	if !out.Success {
+		return
+	}
+	if err := s.store.DeleteCertificate(ctx, c.ID); err != nil {
+		s.log.Error("forget certificate", "sensor", c.Name, "error", err)
+	}
 }
 
 // transition is the outcome of one state-machine step.
@@ -810,6 +847,7 @@ func (s *Scheduler) ProbeNow(ctx context.Context, sensorID int64) (model.Result,
 	if err := s.store.InsertResult(ctx, &res); err != nil {
 		return res, err
 	}
+	s.recordCertificate(ctx, c, out)
 
 	s.mu.Lock()
 	if st := s.states[c.ID]; st != nil {
