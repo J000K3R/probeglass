@@ -1147,7 +1147,7 @@ const (
 	SettingStatusCauses = "status.causes"
 	// SettingStatusPage is the public page's whole shape: title, colours, layout,
 	// switches and sections, as one JSON value.
-	SettingStatusPage = "status.page"
+	SettingStatusPage   = "status.page"
 	SettingRetentionRaw = "retention.raw"
 	// SettingTileURL and SettingTileAttribution configure the map. They are
 	// installation-wide rather than per user, so they live here and not in the
