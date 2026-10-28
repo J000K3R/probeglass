@@ -63,6 +63,16 @@ here and what the release says are the same document.
   sensors and remove only the label, delete selected sensors, or delete all of
   them. Sensors declared in the configuration file are refused, because only the
   file may remove those.
+- **API-key application templates.** Sonarr, Radarr, Lidarr, Prowlarr, Bazarr,
+  Overseerr, Jellyseerr, the Portainer API and Paperless-ngx: each asks for its
+  API key once and checks its own status endpoint. The HTTP sensor sends the key in
+  a configurable header (`X-Api-Key`, `X-API-Key`, or `Authorization` with a
+  `Token ` prefix), masks it like every credential, and the *Arr templates verify
+  the `appName` the application reports.
+- **The whole Ubiquiti line.** Access points, switches, gateways and Dream
+  Machines, Protect, Access and Talk, plus airMAX/airFiber and EdgeMAX. Each has
+  uptime and reachability; airMAX also checks board temperature. SNMP still has to
+  be enabled for the device in the controller.
 - **A `/metrics` endpoint for Prometheus.** Sensor status, the 24-hour, 7-day and
   30-day uptime ratios, the last latency and the open incidents, in the Prometheus
   text format, so a homelab that already runs a monitoring stack can scrape

@@ -36,6 +36,9 @@ var brandNames = map[string]bool{
 	"mos": true, "home-assistant": true, "pi-hole": true, "adguard": true,
 	"grafana": true, "portainer": true, "jellyfin": true, "uptime-kuma": true,
 	"node-red": true, "mosquitto": true, "shelly": true, //nolint:misspell // the MQTT broker
+	"sonarr": true, "radarr": true, "lidarr": true, "prowlarr": true,
+	"bazarr": true, "overseerr": true, "jellyseerr": true, "paperless-ngx": true,
+	"ubiquiti": true, "unifi-protect": true,
 }
 
 // Kind is where a reference points.

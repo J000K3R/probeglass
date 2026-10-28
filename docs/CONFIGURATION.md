@@ -215,6 +215,9 @@ up.
 | `user_agent` | `ProbeGlass/<version>` | overrides the User-Agent |
 | `basic_auth_user`, `basic_auth_pass` | — | HTTP basic auth |
 | `bearer_token` | — | sent as `Authorization: Bearer …` |
+| `api_key` | — | sent in a header; masked in the API |
+| `api_key_header` | `X-Api-Key` | header that carries `api_key` (`X-API-Key`, `Authorization`, …) |
+| `api_key_prefix` | — | text before the key, including its space, e.g. `Token ` |
 | `body` | — | request body for POST/PUT/PATCH |
 | `body_contains` | — | substring the response must contain |
 | `body_not_contains` | — | substring the response must not contain |

@@ -15,7 +15,7 @@ import (
 // reused elsewhere (a router password, a registry token), so they get the same
 // treatment.
 var secretOptionKeys = map[model.SensorType][]string{
-	model.SensorHTTP: {"bearer_token", "basic_auth_pass"},
+	model.SensorHTTP: {"bearer_token", "basic_auth_pass", "api_key"},
 	// SNMP credentials are shared passwords, and they are the only thing standing
 	// between a stranger on the LAN and a device's whole MIB. A v2c community
 	// travels unencrypted; a v3 passphrase is the key to an authenticated session.

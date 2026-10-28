@@ -146,6 +146,11 @@ func (HTTPProber) Validate(c model.Sensor) error {
 			return fmt.Errorf("json_max: %w", err)
 		}
 	}
+	if header := strings.TrimSpace(c.Options.Str("api_key_header", "")); header != "" {
+		if strings.ContainsAny(header, " :\t\r\n") {
+			return fmt.Errorf("api_key_header must be a header name without spaces or a colon, got %q", header)
+		}
+	}
 	switch m := strings.ToUpper(c.Options.Str("method", http.MethodGet)); m {
 	case http.MethodGet, http.MethodHead, http.MethodPost, http.MethodPut,
 		http.MethodPatch, http.MethodDelete, http.MethodOptions:
@@ -228,6 +233,12 @@ func (HTTPProber) Run(ctx context.Context, c model.Sensor) Outcome {
 	}
 	if user := o.Str("basic_auth_user", ""); user != "" {
 		req.SetBasicAuth(user, o.Str("basic_auth_pass", ""))
+	}
+	if key := strings.TrimSpace(o.Str("api_key", "")); key != "" {
+		header := strings.TrimSpace(o.Str("api_key_header", "X-Api-Key"))
+		if header != "" {
+			req.Header.Set(header, o.Str("api_key_prefix", "")+key)
+		}
 	}
 	if bodyReader != nil && req.Header.Get("Content-Type") == "" {
 		req.Header.Set("Content-Type", "application/json")

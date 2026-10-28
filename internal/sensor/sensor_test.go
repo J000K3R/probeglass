@@ -313,6 +313,46 @@ func TestHTTPRunAgainstLocalServer(t *testing.T) {
 	}
 }
 
+func TestHTTPAPIKeyGoesInTheHeaderTheAppExpects(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/arr":
+			_, _ = w.Write([]byte(r.Header.Get("X-Api-Key")))
+		case "/paperless":
+			_, _ = w.Write([]byte(r.Header.Get("Authorization")))
+		}
+	}))
+	defer srv.Close()
+
+	cases := []struct {
+		name    string
+		path    string
+		options model.Options
+		want    string
+	}{
+		{"a plain API key header", "/arr", model.Options{"api_key": "abc123"}, "abc123"},
+		{"a key with a prefix", "/paperless", model.Options{
+			"api_key": "tok", "api_key_header": "Authorization", "api_key_prefix": "Token ",
+		}, "Token tok"},
+	}
+	for _, tc := range cases {
+		options := tc.options
+		options["body_contains"] = tc.want
+		c := validSensor(model.Sensor{Name: "app", Type: model.SensorHTTP,
+			Target: srv.URL + tc.path, Options: options})
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		out := HTTPProber{}.Run(ctx, c)
+		cancel()
+		if !out.Success {
+			t.Errorf("%s: %s", tc.name, out.Message)
+			continue
+		}
+		if out.Message == "" || !strings.Contains(out.Message, "HTTP 200") {
+			t.Errorf("%s: %s", tc.name, out.Message)
+		}
+	}
+}
+
 func TestHTTPJSONPresenceIsAStatusCheck(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
