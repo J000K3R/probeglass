@@ -9,6 +9,8 @@ package status
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"sort"
 	"strings"
 	"time"
@@ -123,14 +125,6 @@ func Build(ctx context.Context, st *store.Store, snaps map[int64]scheduler.Snaps
 		byID[c.ID] = c
 	}
 
-	// The scheduler's live state is the first answer for a status. It is not the
-	// only one: a page can be asked for before the scheduler has reconciled after
-	// a restart, and the last stored probe is still a fact about the service.
-	lastResults, err := st.LastResults(ctx, 1)
-	if err != nil {
-		return Page{}, err
-	}
-
 	windows := []time.Duration{24 * time.Hour, 7 * 24 * time.Hour, 30 * 24 * time.Hour}
 	uptimes := make([]map[int64]store.UptimeStats, len(windows))
 	for i, w := range windows {
@@ -153,10 +147,18 @@ func Build(ctx context.Context, st *store.Store, snaps map[int64]scheduler.Snaps
 		if !sensor.Enabled {
 			row.Status = model.StatusPaused
 		} else if row.Status == "" || row.Status == model.StatusUnknown {
-			// No state yet: fall back to the last probe on disk.
+			// No state yet: fall back to the last probe on disk. It is one indexed
+			// lookup per unpublished sensor, and only in this moment — the scheduler
+			// has a state for every sensor it reconciled, which is all of them but
+			// the first seconds after a restart.
 			row.Status = model.StatusUnknown
-			if results := lastResults[id]; len(results) > 0 {
-				last := results[len(results)-1]
+			last, err := st.LastResult(ctx, id)
+			switch {
+			case errors.Is(err, sql.ErrNoRows):
+				// Never probed: unknown is the answer.
+			case err != nil:
+				return Page{}, err
+			default:
 				row.LastCheck = last.TS
 				// A success is a success; a failure is not yet an outage, because
 				// the retry count has not been applied. Saying "unknown" for that
