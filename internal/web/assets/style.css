@@ -1600,6 +1600,20 @@ button.widget-pick-label {
 }
 .group-delete-row { display: flex; align-items: center; gap: var(--sp-2); }
 .group-delete-row .pill { margin-left: auto; }
+.scan-results { display: grid; gap: var(--gap); }
+.scan-host {
+  display: grid;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.scan-host-head { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; }
+.scan-host-head .pill { font-size: var(--text-4); }
+.scan-suggestions { display: grid; gap: var(--sp-1); }
+.scan-suggestions .catalog-check small { margin-left: auto; }
+
 
 
 #detail-body { padding: var(--sp-4); display: grid; gap: var(--sp-3); }

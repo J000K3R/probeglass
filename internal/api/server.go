@@ -240,6 +240,7 @@ func (s *Server) Handler() http.Handler {
 	// Changing the configuration.
 	adm("POST /api/sensor-templates/{id}/check", s.handleCheckSensorTemplate)
 	adm("POST /api/sensor-templates/{id}/discover", s.handleDiscoverSensorTemplate)
+	adm("POST /api/scan", s.handleScanNetwork)
 	adm("POST /api/sensors", s.handleCreateSensor)
 	adm("POST /api/sensors/bulk", s.handleCreateSensorsBulk)
 	adm("PUT /api/sensors/{id}", s.handleUpdateSensor)

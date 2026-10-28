@@ -454,6 +454,37 @@
   </div>
 </dialog>
 
+<dialog id="modal-scan" class="sheet" aria-labelledby="scan-title">
+  <div class="sheet-head">
+    <h2 id="scan-title" data-i18n="scan.title">Scan network</h2>
+    <button class="icon-btn" type="button" data-close data-i18n-aria="common.close" aria-label="Close">&times;</button>
+  </div>
+  <div class="sheet-body">
+    <div class="grid-2">
+      <label class="field"><span data-i18n="scan.network">Network (CIDR)</span>
+        <input id="scan-cidr" type="text" placeholder="192.168.1.0/24" autocomplete="off" spellcheck="false"></label>
+      <label class="field"><span data-i18n="scan.group">Group for the new sensors</span>
+        <input id="scan-group" type="text" value="Scanned" autocomplete="off"></label>
+    </div>
+    <p class="muted small" data-i18n="scan.networkHint"></p>
+    <section class="catalog-credentials">
+      <h3 data-i18n="scan.snmp">SNMP credentials (optional)</h3>
+      <div id="scan-options"></div>
+      <p class="muted small" data-i18n="scan.snmpHint"></p>
+    </section>
+    <div class="form-actions">
+      <button class="btn btn-primary" type="button" id="scan-start"></button>
+    </div>
+    <p class="muted small" id="scan-status"></p>
+    <p class="form-error" id="scan-error" role="alert"></p>
+    <div class="scan-results" id="scan-results"></div>
+  </div>
+  <div class="sheet-foot">
+    <button class="btn" type="button" data-close data-i18n="common.cancel">Cancel</button>
+    <button class="btn btn-primary" type="button" id="scan-add" disabled></button>
+  </div>
+</dialog>
+
 <dialog id="modal-group-delete" class="sheet sheet-narrow" aria-labelledby="group-delete-title">
   <div class="sheet-head">
     <h2 id="group-delete-title"></h2>

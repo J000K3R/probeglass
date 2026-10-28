@@ -83,6 +83,13 @@ here and what the release says are the same document.
   Zigbee2MQTT, Frigate, OctoPrint, Homebridge, Audiobookshelf, Navidrome, Kavita,
   OpenMediaVault and Unraid — 27 more entries, each with its web/health endpoint
   and reachability.
+- **A network scan that suggests sensors.** An administrator gives a private
+  IPv4 range of at most 256 addresses; ProbeGlass dials a fixed list of the ports
+  its templates already know, optionally identifies a device over SNMP, and offers
+  ping, HTTP, TLS and SNMP checks for what answered — naming the matching template
+  where it recognizes the product. Everything starts ticked; choose a group and
+  create the selected sensors in one transaction. Only private, loopback and
+  link-local ranges can be scanned, and the scan credentials are not stored.
 - **A `/metrics` endpoint for Prometheus.** Sensor status, the 24-hour, 7-day and
   30-day uptime ratios, the last latency and the open incidents, in the Prometheus
   text format, so a homelab that already runs a monitoring stack can scrape

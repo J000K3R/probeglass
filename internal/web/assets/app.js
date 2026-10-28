@@ -3878,6 +3878,8 @@ const catalogFilter = { query: '', vendor: '', system: '', tags: new Set() };
 let catalogFilterOpen = false;
 let draggedTemplate = '';
 let templateDragJustHappened = false;
+let scanHosts = [];
+let scanCredentialFields = [];
 
 function catalogTemplatesMarkup() {
   if (!catalogTemplates?.length) return `<p class="muted">${esc(t('catalog.templateHint'))}</p>`;
@@ -3917,6 +3919,7 @@ function catalogFiltersMarkup() {
       </button>
       <button type="button" class="btn btn-small" data-template-sort
               title="${esc(t('catalog.sortAlphabetical'))}">A–Z</button>
+      ${can('admin') ? `<button type="button" class="btn btn-small" data-scan-open>${esc(t('scan.title'))}</button>` : ''}
     </div>
     <div class="catalog-filter-active" id="catalog-filter-active"></div>
     <div class="catalog-filter-panel" id="catalog-filter-panel" hidden>
@@ -4324,6 +4327,10 @@ document.addEventListener('click', (event) => {
     setCatalogTab(tab.dataset.catalogTab);
     return;
   }
+  if (event.target.closest('[data-scan-open]')) {
+    openScanDialog();
+    return;
+  }
   if (event.target.closest('[data-template-sort]')) {
     catalogTemplates = sortTemplates(catalogTemplates, '');
     renderTemplateGrid();
@@ -4432,6 +4439,148 @@ document.addEventListener('dragend', () => {
   draggedTemplate = '';
   for (const el of document.querySelectorAll('.is-dragging, .is-drop-target')) {
     el.classList.remove('is-dragging', 'is-drop-target');
+  }
+});
+
+// --- the network scan ------------------------------------------------------
+
+/** openScanDialog draws the scan form and its SNMP credentials. */
+function openScanDialog() {
+  scanHosts = [];
+  scanCredentialFields = typeDef('snmp').fields.filter((f) => CATALOG_CREDENTIAL_KEYS.has(f.key));
+  $('#scan-options').innerHTML = scanCredentialFields.map((f) => `
+    <div class="option-slot" data-option-key="${esc(f.key)}">${optionField(f, { version: '2c' })}</div>`).join('');
+  syncConditionalOptions(scanCredentialFields, $('#scan-options'));
+  $('#scan-status').textContent = '';
+  $('#scan-error').textContent = '';
+  $('#scan-results').innerHTML = '';
+  $('#scan-start').textContent = t('scan.start');
+  $('#scan-add').textContent = t('scan.add');
+  $('#scan-add').disabled = true;
+  $('#modal-scan').showModal();
+  setTimeout(() => $('#scan-cidr')?.focus(), 0);
+}
+
+/** runScan asks the server to look at the range and draws what comes back. */
+async function runScan() {
+  const cidr = $('#scan-cidr').value.trim();
+  if (!cidr) {
+    $('#scan-error').textContent = t('catalog.missing', { field: t('scan.network') });
+    return;
+  }
+  const button = $('#scan-start');
+  button.disabled = true;
+  button.textContent = t('scan.scanning');
+  $('#scan-error').textContent = '';
+  $('#scan-status').textContent = '';
+  $('#scan-results').innerHTML = '';
+  try {
+    const snmp = readOptionValues($('#scan-options'), scanCredentialFields);
+    const data = await api('/api/scan', {
+      method: 'POST', body: { cidr, snmp }, timeout: 120000,
+    });
+    scanHosts = data.hosts || [];
+    renderScanResults();
+    $('#scan-status').textContent = scanHosts.length
+      ? t('scan.found', { count: scanHosts.length })
+      : t('scan.none');
+  } catch (err) {
+    $('#scan-error').textContent = err.message;
+  } finally {
+    button.disabled = false;
+    button.textContent = t('scan.start');
+  }
+}
+
+/** renderScanResults draws a card per host with a tick per suggestion. */
+function renderScanResults() {
+  const box = $('#scan-results');
+  if (!box) return;
+  box.innerHTML = scanHosts.map((host, hi) => {
+    const ports = (host.ports || []).join(', ');
+    const templates = (host.template_ids || []).join(', ');
+    const suggestions = (host.suggestions || []).map((s, si) => {
+      const label = s.label || t(s.label_key);
+      return `<label class="catalog-check">
+        <input type="checkbox" data-scan-host="${hi}" data-scan-suggestion="${si}" checked>
+        <span>${esc(label)}</span>
+        <small class="muted">${esc(t(`type.${s.type}`))}</small>
+      </label>`;
+    }).join('');
+    return `<article class="scan-host">
+      <div class="scan-host-head">
+        <b>${esc(host.ip)}</b>
+        ${host.sys_descr ? `<span class="muted small">${esc(host.sys_descr)}</span>` : ''}
+        ${ports ? `<span class="pill">${esc(t('scan.ports'))}: ${esc(ports)}</span>` : ''}
+        ${templates ? `<span class="pill">${esc(templates)}</span>` : ''}
+      </div>
+      <div class="scan-suggestions">${suggestions}</div>
+    </article>`;
+  }).join('');
+  updateScanAdd();
+}
+
+/** updateScanAdd turns the number of ticked suggestions into the footer button. */
+function updateScanAdd() {
+  const count = $$('#scan-results [data-scan-suggestion]:checked').length;
+  const button = $('#scan-add');
+  button.disabled = count === 0;
+  button.textContent = count ? `${t('scan.add')} (${count})` : t('scan.add');
+}
+
+/** applyScan creates every ticked suggestion in one request. */
+async function applyScan() {
+  const group = $('#scan-group').value.trim() || t('scan.groupDefault');
+  const sensors = [];
+  for (const input of $$('#scan-results [data-scan-suggestion]:checked')) {
+    const host = scanHosts[Number(input.dataset.scanHost)];
+    const suggestion = host?.suggestions?.[Number(input.dataset.scanSuggestion)];
+    if (!suggestion) continue;
+    const label = suggestion.label || t(suggestion.label_key);
+    sensors.push({
+      name: `${host.ip} · ${label}`,
+      type: suggestion.type,
+      target: suggestion.target,
+      interval: suggestion.interval || 60,
+      timeout: 10,
+      retries: 1,
+      enabled: true,
+      group,
+      icon: suggestion.icon || '',
+      options: suggestion.options || {},
+    });
+  }
+  if (!sensors.length) {
+    $('#scan-error').textContent = t('scan.none');
+    return;
+  }
+  const button = $('#scan-add');
+  button.disabled = true;
+  try {
+    await api('/api/sensors/bulk', { method: 'POST', body: { sensors } });
+    $('#modal-scan').close();
+    closeCatalog();
+    toast(t('catalog.added', { count: sensors.length }));
+    await refresh({ background: true });
+  } catch (err) {
+    $('#scan-error').textContent = err.message;
+    button.disabled = false;
+  }
+}
+
+document.addEventListener('click', (event) => {
+  if (event.target.closest('#scan-start')) {
+    runScan();
+    return;
+  }
+  if (event.target.closest('#scan-add')) {
+    applyScan();
+  }
+});
+document.addEventListener('change', (event) => {
+  if (event.target.closest('#scan-results [data-scan-suggestion]')) updateScanAdd();
+  if (event.target.closest('#scan-options')) {
+    syncConditionalOptions(scanCredentialFields, $('#scan-options'));
   }
 });
 

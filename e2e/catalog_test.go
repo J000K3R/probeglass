@@ -447,3 +447,36 @@ func TestTemplateOrderCanBeDraggedAndReset(t *testing.T) {
 		`fetch('/api/settings').then((r) => r.json()).then((s) => (s.ui?.template_order || '') === '')`,
 		"the alphabetical order was not saved", dir, "template-order-cleared", 10*time.Second)
 }
+
+func TestNetworkScanDialogRefusesPublicRanges(t *testing.T) {
+	browser := findBrowser(t)
+	base := startServer(t, buildBinary(t))
+	ctx, done := openBrowser(t, browser)
+	defer done()
+	dir := artifactsDir(t)
+
+	firstRun(t, ctx, base, dir)
+
+	if err := withTimeout(ctx, func(tctx context.Context) error {
+		return chromedp.Do(tctx,
+			chromedp.Click(`#new-sensor`),
+			chromedp.Poll[chromedp.Void](
+				`!!document.querySelector('#modal-catalog [data-scan-open]')`,
+				chromedp.WithPollingTimeout(15*time.Second)),
+			chromedp.Click(`#modal-catalog [data-scan-open]`),
+			chromedp.WaitVisible(`#modal-scan[open]`),
+			chromedp.SetValue(`#scan-cidr`, "8.8.8.0/24"),
+			chromedp.Click(`#scan-start`),
+			chromedp.Poll[chromedp.Void](
+				`!!document.querySelector('#scan-error')?.textContent`,
+				chromedp.WithPollingTimeout(15*time.Second)),
+		)
+	}); err != nil {
+		capture(t, ctx, dir, "scan-dialog")
+		t.Fatalf("could not open the scan dialog: %v", err)
+	}
+	message := read[string](t, ctx, `document.querySelector('#scan-error')?.textContent || ''`, "the scan error")
+	if !strings.Contains(strings.ToLower(message), "private") {
+		t.Errorf("a public range answered %q, want a message about private ranges", message)
+	}
+}
