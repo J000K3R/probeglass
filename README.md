@@ -133,9 +133,11 @@ frontend pipeline to keep alive.
   within-30-days are filters, and the list is fed by the probes — a renewal
   replaces its row.
 - **Public status page** — a read-only, server-rendered page at `/status/<token>`
-  for the people who use the homelab. You give it a title, a theme, an accent and
-  one of three layouts; group the services into sections you name; and choose
-  which uptime windows, logos, heartbeats, incidents and causes each shows. The
+  for the people who use the homelab. You give it a title, a logo, a background
+  image, a theme, an accent and one of three layouts; group the services into
+  sections you name (or build them from the dashboard groups in one step); and
+  choose which uptime windows, logos, heartbeats, incidents and causes each
+  shows. The
   link can be rotated or switched off; status messages with their own colour and
   symbol sit at the top, and an administrator gets an edit link back to the
   panel. No target, option or credential is ever drawn.

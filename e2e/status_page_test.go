@@ -102,14 +102,39 @@ func TestTheStatusPagePanelAndThePageItShares(t *testing.T) {
 			chromedp.SendKeys(`[data-notice-text="0"]`, "Maintenance tonight"),
 			chromedp.Click(`#status-panel [data-notice-icon="0"][data-icon-ref="builtin:warning"]`),
 			chromedp.Click(`#status-panel [data-notice-colour="0"][value="amber"]`),
-			chromedp.Click(`#status-panel [data-status-add-section]`),
+			chromedp.Clear(`#status-background`),
+			chromedp.SendKeys(`#status-background`, "https://assets.example.net/bg.jpg"),
+			chromedp.Click(`#status-panel [data-status-dim][value="60"]`),
+			// A logo from the icon picker, the same control the rest of the
+			// dashboard uses. Clicked from script: the panel sits low enough on this
+			// page that a coordinate click can land under the fixed top bar.
+			chromedp.Evaluate[chromedp.Void](`document.querySelector('#status-panel .status-logo-field [data-icon-open]').click()`),
+			chromedp.Poll[chromedp.Void](`!!document.querySelector('#status-panel .status-logo-field [data-icon-set="builtin:server"]')`,
+				chromedp.WithPollingTimeout(10*time.Second)),
+			chromedp.Evaluate[chromedp.Void](`document.querySelector('#status-panel .status-logo-field [data-icon-set="builtin:server"]').click()`),
+			chromedp.Poll[chromedp.Void](`document.querySelector('input[name="status_logo"]').value === 'builtin:server'`,
+				chromedp.WithPollingTimeout(5*time.Second)),
+			// The rest is clicked from script for the same reason as the logo: a
+			// control under the fixed top bar is still a control, and this test is
+			// about the editor's decisions, not about hit-testing.
+			chromedp.Evaluate[chromedp.Void](`document.querySelector('#status-panel [data-status-add-section]').click()`),
 			chromedp.SendKeys(`[data-section-title="0"]`, "Web"),
-			chromedp.Click(`[data-section-sensors="0"]`),
+			chromedp.Evaluate[chromedp.Void](`document.querySelector('[data-section-sensors="0"]').click()`),
 			chromedp.WaitVisible(`#modal-status-sensors[open]`),
-			chromedp.Click(`#status-sensors-pick input[data-assign-sensor]`),
-			chromedp.Click(`#status-sensors-apply`),
+			// A new section starts with nothing ticked.
+			chromedp.Poll[chromedp.Void](`document.querySelectorAll('#status-sensors-pick input[data-assign-sensor]:checked').length === 0`,
+				chromedp.WithPollingTimeout(5*time.Second)),
+			// One click ticks the whole group, and one clears it again.
+			chromedp.Evaluate[chromedp.Void](`document.querySelector('#status-sensors-pick input[data-assign-group="0"]').click()`),
+			chromedp.Poll[chromedp.Void](`document.querySelectorAll('#status-sensors-pick input[data-assign-sensor]:checked').length > 0`,
+				chromedp.WithPollingTimeout(5*time.Second)),
+			chromedp.Evaluate[chromedp.Void](`document.querySelector('#modal-status-sensors [data-assign-all="0"]').click()`),
+			chromedp.Poll[chromedp.Void](`document.querySelectorAll('#status-sensors-pick input[data-assign-sensor]:checked').length === 0`,
+				chromedp.WithPollingTimeout(5*time.Second)),
+			chromedp.Evaluate[chromedp.Void](`document.querySelector('#status-sensors-pick input[data-assign-sensor]').click()`),
+			chromedp.Evaluate[chromedp.Void](`document.querySelector('#status-sensors-apply').click()`),
 			chromedp.WaitNotPresent(`#modal-status-sensors[open]`),
-			chromedp.Click(`#status-panel [data-action="status-save"]`),
+			chromedp.Evaluate[chromedp.Void](`document.querySelector('#status-panel [data-action="status-save"]').click()`),
 			// Asked of the server rather than of the panel: the panel is rebuilt
 			// after a save, and a poll on the old element cannot see that.
 			chromedp.Poll[chromedp.Void](`fetch('/api/status-page').then(r => r.json())
@@ -160,6 +185,7 @@ func TestTheStatusPagePanelAndThePageItShares(t *testing.T) {
 	}
 	for _, want := range []string{`data-theme="dark"`, `data-accent="violet"`, "layout-cards", "Homelab", ">Web<", "card-top",
 		"Maintenance tonight", "notice c-amber", "/assets/icons/warning.svg",
+		"https://assets.example.net/bg.jpg", "--bg-dim:60", "/assets/icons/server.svg",
 		"site-brand", "/#/settings/monitor/status"} {
 		if !strings.Contains(html, want) {
 			t.Errorf("the configured page does not carry %q", want)
@@ -192,6 +218,30 @@ func TestTheStatusPagePanelAndThePageItShares(t *testing.T) {
 		"ask the disabled page")
 	if code != 404 {
 		t.Errorf("the disabled link answered %d, want 404", code)
+	}
+
+	// "Use my groups" turns the dashboard groups into sections, taking their
+	// icons and colours with them. This replaces the one hand-made section; the
+	// change is only in the editor, so the saved page is untouched.
+	err = withTimeout(ctx, func(tctx context.Context) error {
+		return chromedp.Do(tctx,
+			chromedp.Evaluate[chromedp.Void](`window.confirm = () => true`),
+			chromedp.Evaluate[chromedp.Void](`document.querySelector('#status-panel [data-status-from-groups]').click()`),
+			chromedp.Poll[chromedp.Void](`(() => {
+				const title = document.querySelector('[data-section-title="0"]');
+				return title && title.value.length > 0;
+			})()`, chromedp.WithPollingTimeout(10*time.Second)),
+		)
+	})
+	if err != nil {
+		capture(t, ctx, screenshotDir, "status-from-groups")
+		t.Fatalf("the groups were not turned into sections: %v", err)
+	}
+	if got := read[string](t, ctx, `document.querySelector('[data-section-title="0"]').value`, "the first section title"); got != "Examples" {
+		t.Errorf("the first section is %q, want the example group", got)
+	}
+	if got := read[string](t, ctx, `document.querySelector('[data-section-sensors="0"]').textContent`, "the section's sensor count"); !strings.Contains(got, "4") {
+		t.Errorf("the group's section says %q, want four sensors", got)
 	}
 
 	// The edit link the page offers its administrator opens the Status panel in

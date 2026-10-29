@@ -3,6 +3,7 @@ package status
 import (
 	"context"
 	"encoding/json"
+	"net/url"
 	"strings"
 
 	"github.com/j000k3r/probeglass/internal/model"
@@ -19,6 +20,16 @@ import (
 type Config struct {
 	Title    string `json:"title"`
 	Subtitle string `json:"subtitle"`
+	// Logo is the page's own mark at the top; empty draws none. It is an icon
+	// reference like everywhere else, so an upload is served through the page.
+	Logo string `json:"logo,omitempty"`
+	// BackgroundURL is an https image or a path on this server. It is not an
+	// upload because a background is a photograph, not a symbol, and the icon
+	// table is deliberately small. Empty keeps the plain surface colour.
+	BackgroundURL string `json:"background_url,omitempty"`
+	// BackgroundDim is how much of the page colour is laid over the image, in
+	// percent: 0 leaves the photograph bare, 90 leaves a hint of it.
+	BackgroundDim int `json:"background_dim"`
 	// Theme is "auto", "light" or "dark"; Accent one of model.ACCENTS; Layout
 	// "list", "cards" or "compact".
 	Theme  string `json:"theme"`
@@ -62,6 +73,8 @@ type Notice struct {
 // the same id in two sections is the first one's.
 type Section struct {
 	Title string `json:"title"`
+	// Icon is the symbol before the heading; empty draws none.
+	Icon string `json:"icon,omitempty"`
 	// Colour is one of the accents, or empty for the page's own accent.
 	Colour  string  `json:"colour"`
 	Sensors []Entry `json:"sensors"`
@@ -86,6 +99,7 @@ var Layouts = []string{"list", "cards", "compact"}
 func DefaultConfig() Config {
 	return Config{
 		Title:         "Status",
+		BackgroundDim: 60,
 		Theme:         "auto",
 		Accent:        "azure",
 		Layout:        "list",
@@ -152,6 +166,14 @@ func Normalise(cfg *Config) {
 		cfg.Title = "Status"
 	}
 	cfg.Subtitle = clamp(strings.TrimSpace(cfg.Subtitle), 240)
+	cfg.Logo = strings.TrimSpace(cfg.Logo)
+	cfg.BackgroundURL = backgroundURL(cfg.BackgroundURL)
+	if cfg.BackgroundDim < 0 {
+		cfg.BackgroundDim = 0
+	}
+	if cfg.BackgroundDim > 90 {
+		cfg.BackgroundDim = 90
+	}
 	cfg.Theme = oneOf(cfg.Theme, []string{"auto", "light", "dark"}, "auto")
 	cfg.Accent = oneOf(cfg.Accent, Accents, "azure")
 	cfg.Layout = oneOf(cfg.Layout, Layouts, "list")
@@ -181,6 +203,7 @@ func Normalise(cfg *Config) {
 	out := make([]Section, 0, len(cfg.Sections))
 	for _, section := range cfg.Sections {
 		section.Title = clamp(strings.TrimSpace(section.Title), 80)
+		section.Icon = strings.TrimSpace(section.Icon)
 		section.Colour = oneOf(section.Colour, Accents, "")
 		entries := make([]Entry, 0, len(section.Sensors))
 		for _, entry := range section.Sensors {
@@ -209,6 +232,24 @@ func (c Config) SensorIDs() []int64 {
 		}
 	}
 	return out
+}
+
+// backgroundURL keeps an image address that a browser can fetch from this page:
+// https, or a path on this server. Anything else — plain http, a data URI, a
+// protocol-relative address — is dropped rather than written into a style.
+func backgroundURL(raw string) string {
+	value := strings.TrimSpace(raw)
+	if value == "" || len(value) > 500 {
+		return ""
+	}
+	if strings.HasPrefix(value, "/") && !strings.HasPrefix(value, "//") {
+		return value
+	}
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" {
+		return ""
+	}
+	return value
 }
 
 func oneOf(value string, allowed []string, fallback string) string {

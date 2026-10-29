@@ -100,12 +100,15 @@ here and what the release says are the same document.
   the alert.
 - **A public status page you build yourself.** A server-rendered page at
   `/status/<token>` for the people who use the homelab rather than operate it.
-  Title and subtitle, system/light/dark, one of six accent colours, and three
-  layouts — list, cards, compact. Each service can show any of the three uptime
-  windows, the last check, its logo and a heartbeat of the last thirty probes;
-  incidents and their causes are separate switches. Services are grouped into
-  sections you name and order yourself, each with its own accent colour, and a
-  filterable picker decides what belongs in each. **Status messages** can be
+  Title and subtitle, a page logo, a background image with a dimming level,
+  system/light/dark, one of six accent colours, and three layouts — list, cards,
+  compact. Each service can show any of the three uptime windows, the last
+  check, its logo and a heartbeat of the last thirty probes; incidents and their
+  causes are separate switches. Services are grouped into sections you name and
+  order yourself, each with its own symbol and accent colour; **Use my groups**
+  turns the dashboard groups into sections in one step, and the filterable sensor
+  picker starts empty, with a group's box ticking or clearing all of its sensors
+  at once. **Status messages** can be
   written at the top of the page, each with its own colour and symbol; next to
   the full picker are info, warning, error, done, help, maintenance and the bell. The link
   is the credential and can be rotated or switched off; the page is separate

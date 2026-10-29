@@ -58,7 +58,7 @@ func (s *Server) handlePublicStatus(w http.ResponseWriter, r *http.Request) {
 	// No script, no image, no font, no frame. The styles are inline because the
 	// page is one file by design; everything else is refused.
 	h.Set("Content-Security-Policy",
-		"default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; base-uri 'none'; form-action 'none'")
+		"default-src 'none'; style-src 'unsafe-inline'; img-src 'self' https:; base-uri 'none'; form-action 'none'")
 
 	if err := status.Render(w, page, r.Header.Get("Accept-Language")); err != nil {
 		s.log.Error("render the public status page", "error", err)
@@ -120,12 +120,18 @@ func (s *Server) statusIconPublished(ctx context.Context, id int64) bool {
 	ref := "upload:" + strconv.FormatInt(id, 10)
 	cfg := status.LoadConfig(ctx, s.store)
 	onPage := map[int64]bool{}
+	if cfg.Logo == ref {
+		return true
+	}
 	for _, notice := range cfg.Notices {
 		if notice.Icon == ref {
 			return true
 		}
 	}
 	for _, section := range cfg.Sections {
+		if section.Icon == ref {
+			return true
+		}
 		for _, entry := range section.Sensors {
 			if entry.Icon == ref {
 				return true

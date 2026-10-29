@@ -78,26 +78,31 @@ func pickLabels(acceptLanguage string) labels {
 // template, so the template is only a shape and cannot disagree with the builder
 // about what a status means.
 type view struct {
-	CSS         template.CSS
-	Lang        string
-	Config      Config
-	Title       string
-	Subtitle    string
-	Updated     string
-	Overall     model.Status
-	OverallWord string
-	Counts      string
-	Labels      labels
-	Sections    []sectionView
-	Notices     []noticeView
-	Incidents   []incidentView
-	EditURL     string
+	CSS           template.CSS
+	Lang          string
+	Config        Config
+	Title         string
+	Subtitle      string
+	Logo          logoView
+	BackgroundURL string
+	BackgroundDim int
+	Updated       string
+	Overall       model.Status
+	OverallWord   string
+	Counts        string
+	Labels        labels
+	Sections      []sectionView
+	Notices       []noticeView
+	Incidents     []incidentView
+	EditURL       string
 }
 
 type sectionView struct {
-	Title   string
-	Colour  string
-	Sensors []sensorView
+	Title     string
+	Colour    string
+	IconURL   string
+	IconDrawn bool
+	Sensors   []sensorView
 }
 
 type sensorView struct {
@@ -116,6 +121,12 @@ type sensorView struct {
 type beatView struct {
 	Class string
 	Title string
+}
+
+// logoView is the header mark in the shape the shared logo template reads.
+type logoView struct {
+	IconURL   string
+	IconDrawn bool
 }
 
 type noticeView struct {
@@ -140,17 +151,20 @@ func Render(w io.Writer, page Page, acceptLanguage string) error {
 	cfg := page.Config
 	Normalise(&cfg)
 	v := view{
-		CSS:       template.CSS(pageCSS), //nolint:gosec // an embedded file, never user input
-		Lang:      l.Lang,
-		Config:    cfg,
-		Title:     cfg.Title,
-		Subtitle:  cfg.Subtitle,
-		Overall:   page.Overall(),
-		Labels:    l,
-		Sections:  make([]sectionView, 0, len(page.Sections)),
-		Notices:   make([]noticeView, 0, len(page.Notices)),
-		Incidents: make([]incidentView, 0, len(page.Incidents)),
-		EditURL:   page.EditURL,
+		CSS:           template.CSS(pageCSS), //nolint:gosec // an embedded file, never user input
+		Lang:          l.Lang,
+		Config:        cfg,
+		Title:         cfg.Title,
+		Subtitle:      cfg.Subtitle,
+		Logo:          logoView{IconURL: page.LogoURL, IconDrawn: page.LogoDrawn},
+		BackgroundURL: page.BackgroundURL,
+		BackgroundDim: page.BackgroundDim,
+		Overall:       page.Overall(),
+		Labels:        l,
+		Sections:      make([]sectionView, 0, len(page.Sections)),
+		Notices:       make([]noticeView, 0, len(page.Notices)),
+		Incidents:     make([]incidentView, 0, len(page.Incidents)),
+		EditURL:       page.EditURL,
 	}
 	for _, notice := range page.Notices {
 		v.Notices = append(v.Notices, noticeView(notice))
@@ -179,7 +193,10 @@ func Render(w io.Writer, page Page, acceptLanguage string) error {
 	v.Counts = l.counts(up, down, paused)
 
 	for _, section := range page.Sections {
-		sv := sectionView{Title: section.Title, Colour: section.Colour}
+		sv := sectionView{
+			Title: section.Title, Colour: section.Colour,
+			IconURL: section.IconURL, IconDrawn: section.IconDrawn,
+		}
 		for _, s := range section.Sensors {
 			row := sensorView{
 				Name:       s.Name,
@@ -344,9 +361,13 @@ var pageTemplate = template.Must(template.New("status").Parse(`<!doctype html>
 <style>{{.CSS}}</style>
 </head>
 <body>
+{{if .BackgroundURL}}<div class="page-bg" style="background-image:url('{{.BackgroundURL}}'); --bg-dim:{{.BackgroundDim}}"></div>{{end}}
 <main class="layout-{{.Config.Layout}}">
 <header class="page-head">
-  <h1>{{.Title}}</h1>
+  <div class="title-row">
+    {{if .Logo.IconURL}}{{template "logo" .Logo}}{{end}}
+    <h1>{{.Title}}</h1>
+  </div>
   {{if .Subtitle}}<p class="subtitle">{{.Subtitle}}</p>{{end}}
   <p class="updated">{{.Labels.Updated}} {{.Updated}}</p>
 </header>
@@ -366,7 +387,7 @@ var pageTemplate = template.Must(template.New("status").Parse(`<!doctype html>
 {{if .Sections}}
 {{range .Sections}}
 <section class="group{{if .Colour}} c-{{.Colour}}{{end}}">
-  {{if .Title}}<h2>{{.Title}}</h2>{{end}}
+  {{if .Title}}<h2>{{if .IconURL}}{{template "logo" .}}{{end}}{{.Title}}</h2>{{end}}
 
   {{if eq $.Config.Layout "cards"}}
   <div class="cards">

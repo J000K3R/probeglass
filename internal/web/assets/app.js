@@ -4768,7 +4768,23 @@ document.addEventListener('click', (event) => {
     applyScan();
     return;
   }
-  if (event.target.closest('#status-sensors-apply')) applyStatusSensors();
+  if (event.target.closest('#status-sensors-apply')) {
+    applyStatusSensors();
+    return;
+  }
+  const assignAll = event.target.closest('[data-assign-all]');
+  if (assignAll) {
+    const on = assignAll.dataset.assignAll === '1';
+    // What the filter shows, like every other "all" beside a search box.
+    for (const group of $$('#status-sensors-pick [data-status-group]')) {
+      if (group.hidden) continue;
+      for (const box of $$('input[data-assign-sensor]', group)) {
+        if (box.closest('.status-pick').hidden) continue;
+        box.checked = on;
+      }
+    }
+    syncStatusAssignCount();
+  }
 });
 document.addEventListener('change', (event) => {
   if (event.target.closest('#scan-results [data-scan-suggestion]')) updateScanAdd();
@@ -4776,6 +4792,11 @@ document.addEventListener('change', (event) => {
     syncConditionalOptions(scanCredentialFields, $('#scan-options'));
   }
   if (event.target.closest('#status-sensors-pick [data-assign-sensor]')) syncStatusAssignCount();
+  if (event.target.matches('#status-sensors-pick [data-assign-group]')) {
+    const group = event.target.closest('[data-status-group]');
+    for (const box of $$('input[data-assign-sensor]', group)) box.checked = event.target.checked;
+    syncStatusAssignCount();
+  }
 });
 document.addEventListener('input', (event) => {
   if (event.target.id === 'status-sensors-search') filterStatusAssign(event.target.value);
@@ -6149,6 +6170,21 @@ function statusPanel() {
       </div>
 
       <fieldset class="field">
+        <legend>${esc(t('status.branding'))}</legend>
+        <div class="grid-2">
+          <div class="field">
+            <span>${esc(t('status.logo'))}</span>
+            <div class="status-logo-field">${iconUI.iconFieldMarkup(cfg.logo || '', { name: 'status_logo', compact: true })}</div>
+          </div>
+          <label class="field"><span>${esc(t('status.background'))}</span>
+            <input id="status-background" type="url" maxlength="500" value="${esc(cfg.background_url || '')}"
+                   placeholder="https://…" autocomplete="off" spellcheck="false"></label>
+        </div>
+        ${statusDimChoice(cfg.background_dim ?? 60)}
+        <p class="muted small">${esc(t('status.backgroundHint'))}</p>
+      </fieldset>
+
+      <fieldset class="field">
         <legend>${esc(t('status.show'))}</legend>
         <div class="status-toggles">
           ${statusToggle('show_uptime_24', cfg.show_uptime_24, t('status.showUptime24'))}
@@ -6173,7 +6209,10 @@ function statusPanel() {
         <legend>${esc(t('status.sections'))}</legend>
         <p class="muted small">${esc(t('status.sectionsHint'))}</p>
         <div class="status-sections" id="status-sections">${statusSectionsMarkup(cfg)}</div>
-        <button class="btn btn-small" type="button" data-status-add-section>+ ${esc(t('status.sectionAdd'))}</button>
+        <div class="form-actions">
+          <button class="btn btn-small" type="button" data-status-add-section>+ ${esc(t('status.sectionAdd'))}</button>
+          <button class="btn btn-ghost btn-small" type="button" data-status-from-groups>${esc(t('status.fromGroups'))}</button>
+        </div>
       </fieldset>
 
       <div class="form-actions">
@@ -6221,6 +6260,17 @@ function statusAccents(current) {
     <div class="choice-group">${ACCENTS.map((accent) => `
       <label class="chip chip-choice status-swatch"><input type="radio" name="status-accent" value="${accent}"
         data-status-accent${accent === current ? ' checked' : ''}><i class="swatch sw-${accent}" aria-hidden="true"></i><span>${esc(t(`status.colour.${accent}`))}</span></label>`).join('')}
+    </div></div>`;
+}
+
+/** statusDimChoice is the overlay strength over the background image. */
+function statusDimChoice(current) {
+  const options = [0, 30, 60, 85];
+  return `<div class="status-choice" role="group" aria-label="${esc(t('status.backgroundDim'))}">
+    <span class="status-choice-label">${esc(t('status.backgroundDim'))}</span>
+    <div class="choice-group">${options.map((value) => `
+      <label class="chip chip-choice"><input type="radio" name="status-dim" value="${value}"
+        data-status-dim${Number(current) === value ? ' checked' : ''}><span>${esc(t(`status.dim.${value}`))}</span></label>`).join('')}
     </div></div>`;
 }
 
@@ -6273,14 +6323,50 @@ function renderStatusNotices() {
   if (box) box.innerHTML = statusNoticesMarkup(statusConfig());
 }
 
-/** collectStatusNotices reads the icon pickers, which change without an input
- *  event on the notice itself, back into the page being edited. */
-function collectStatusNotices() {
+/** collectStatusIcons reads the icon pickers, which change without an input
+ *  event on the row itself, back into the page being edited. */
+function collectStatusIcons() {
   const cfg = statusConfig();
-  cfg.notices = (cfg.notices || []).map((notice, index) => ({
-    ...notice,
-    icon: $(`input[name="notice_icon_${index}"]`)?.value || '',
-  }));
+  const logo = $('input[name="status_logo"]');
+  if (logo) cfg.logo = logo.value;
+  cfg.notices = (cfg.notices || []).map((notice, index) => {
+    const input = $(`input[name="notice_icon_${index}"]`);
+    return input ? { ...notice, icon: input.value } : notice;
+  });
+  cfg.sections = (cfg.sections || []).map((section, index) => {
+    const input = $(`input[name="section_icon_${index}"]`);
+    return input ? { ...section, icon: input.value } : section;
+  });
+}
+
+/** statusSectionsFromGroups builds one section per dashboard group, with the
+ *  group's own icon and colour and every sensor it holds. */
+function statusSectionsFromGroups() {
+  const byGroup = new Map();
+  for (const sensor of state.sensors) {
+    const name = sensor.group || '';
+    if (!byGroup.has(name)) byGroup.set(name, []);
+    byGroup.get(name).push(sensor);
+  }
+  const rank = (name) => iconUI.groupOf(state.groups, name)?.sort_order ?? 0;
+  const names = [...byGroup.keys()].sort((a, b) => {
+    if (!a || !b) return a ? -1 : 1;
+    const ra = rank(a);
+    const rb = rank(b);
+    if (ra !== rb) return ra - rb;
+    return a.localeCompare(b);
+  });
+  return names.map((name) => {
+    const settings = iconUI.groupOf(state.groups, name);
+    return {
+      title: name,
+      icon: settings?.icon || '',
+      colour: settings?.colour || '',
+      sensors: byGroup.get(name).slice()
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((sensor) => ({ id: sensor.id })),
+    };
+  });
 }
 
 /** statusSectionsMarkup draws the sections in their order. */
@@ -6291,6 +6377,7 @@ function statusSectionsMarkup(cfg) {
   return cfg.sections.map((section, index) => `
     <div class="status-section" data-section="${index}">
       <div class="status-section-head">
+        ${iconUI.iconFieldMarkup(section.icon || '', { name: `section_icon_${index}`, compact: true })}
         <input type="text" data-section-title="${index}" maxlength="80"
                value="${esc(section.title || '')}" placeholder="${esc(t('status.sectionPlaceholder'))}"
                aria-label="${esc(t('status.sectionTitle'))}">
@@ -6354,10 +6441,10 @@ function openStatusSensors(index) {
   $('#status-sensors-title').textContent = section.title
     ? t('status.assignTitle', { title: section.title })
     : t('status.assignTitleUntitled');
-  $('#status-sensors-pick').innerHTML = names.map((name) => {
+  $('#status-sensors-pick').innerHTML = names.map((name, groupIndex) => {
     const list = byGroup.get(name).slice().sort((a, b) => a.name.localeCompare(b.name));
-    return `<section class="status-group" data-status-group>
-      <h4>${esc(name || t('sensor.groupNone'))}</h4>
+    return `<section class="status-group" data-status-group="${groupIndex}">
+      <h4><label class="status-group-all"><input type="checkbox" data-assign-group="${groupIndex}"> <span>${esc(name || t('sensor.groupNone'))}</span></label></h4>
       ${list.map((sensor) => `
         <label class="status-pick">
           <input type="checkbox" data-assign-sensor="${sensor.id}"${chosen.has(Number(sensor.id)) ? ' checked' : ''}>
@@ -6377,6 +6464,15 @@ function syncStatusAssignCount() {
   const count = $$('#status-sensors-pick [data-assign-sensor]:checked').length;
   const apply = $('#status-sensors-apply');
   if (apply) apply.textContent = t('status.assignApply', { count });
+  // A group's own box shows whether all, some or none of its sensors are ticked.
+  for (const group of $$('#status-sensors-pick [data-status-group]')) {
+    const boxes = $$('input[data-assign-sensor]', group);
+    const checked = boxes.filter((box) => box.checked).length;
+    const head = $('input[data-assign-group]', group);
+    if (!head) continue;
+    head.checked = boxes.length > 0 && checked === boxes.length;
+    head.indeterminate = checked > 0 && checked < boxes.length;
+  }
 }
 
 function filterStatusAssign(query) {
@@ -6393,6 +6489,7 @@ function filterStatusAssign(query) {
 }
 
 function applyStatusSensors() {
+  collectStatusIcons();
   const cfg = statusConfig();
   const section = cfg.sections[statusAssignSection];
   if (!section) return;
@@ -6406,7 +6503,7 @@ function applyStatusSensors() {
 async function saveStatusPage() {
   const error = $('#status-error');
   if (error) error.textContent = '';
-  collectStatusNotices();
+  collectStatusIcons();
   try {
     const data = await api('/api/status-page', {
       method: 'PUT',
@@ -7583,6 +7680,8 @@ settingsBody.addEventListener('input', (event) => {
   } else if (event.target.matches('[data-notice-text]')) {
     const index = Number(event.target.dataset.noticeText);
     if ((cfg.notices || [])[index]) cfg.notices[index].text = event.target.value;
+  } else if (event.target.id === 'status-background') {
+    cfg.background_url = event.target.value;
   }
 });
 settingsBody.addEventListener('change', (event) => {
@@ -7601,6 +7700,8 @@ settingsBody.addEventListener('change', (event) => {
   } else if (event.target.matches('[data-notice-colour]')) {
     const index = Number(event.target.dataset.noticeColour);
     if ((cfg.notices || [])[index]) cfg.notices[index].colour = event.target.value;
+  } else if (event.target.matches('[data-status-dim]')) {
+    cfg.background_dim = Number(event.target.value);
   }
 });
 // Dragging is the mouse path; the number in the editor stays as the keyboard one.
@@ -7860,7 +7961,20 @@ async function onPasswordChange(event) {
  * "find the index, change the draft, redraw the list" shape.
  */
 function onStatusSectionClick(target) {
+  if (target.closest('[data-status-from-groups]')) {
+    const sections = statusSectionsFromGroups();
+    if (!sections.length) {
+      toast(t('status.fromGroupsNone'));
+      return true;
+    }
+    const cfg = statusConfig();
+    if ((cfg.sections || []).length && !confirmDialog(t('status.fromGroupsConfirm'))) return true;
+    cfg.sections = sections;
+    renderStatusSections();
+    return true;
+  }
   if (target.closest('[data-status-add-notice]')) {
+    collectStatusIcons();
     const cfg = statusConfig();
     cfg.notices = cfg.notices || [];
     cfg.notices.push({ text: '', colour: '', icon: '' });
@@ -7891,6 +8005,7 @@ function onStatusSectionClick(target) {
   }
   const removeNotice = target.closest('[data-notice-remove]');
   if (removeNotice) {
+    collectStatusIcons();
     const index = Number(removeNotice.dataset.noticeRemove);
     const cfg = statusConfig();
     if ((cfg.notices || [])[index]) {
@@ -7900,6 +8015,7 @@ function onStatusSectionClick(target) {
     return true;
   }
   if (target.closest('[data-status-add-section]')) {
+    collectStatusIcons();
     const cfg = statusConfig();
     cfg.sections.push({ title: '', colour: '', sensors: [] });
     renderStatusSections();
@@ -7916,6 +8032,7 @@ function onStatusSectionClick(target) {
   }
   const remove = target.closest('[data-section-remove]');
   if (remove) {
+    collectStatusIcons();
     const index = Number(remove.dataset.sectionRemove);
     const cfg = statusConfig();
     if (cfg.sections[index]) {
@@ -7927,6 +8044,7 @@ function onStatusSectionClick(target) {
   const up = target.closest('[data-section-up]');
   const down = target.closest('[data-section-down]');
   if (up || down) {
+    collectStatusIcons();
     const index = Number((up || down).dataset.sectionUp ?? (up || down).dataset.sectionDown);
     const other = up ? index - 1 : index + 1;
     const cfg = statusConfig();

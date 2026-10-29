@@ -81,18 +81,21 @@ func TestRenderEscapesWhatASensorIsCalled(t *testing.T) {
 
 func TestNormaliseFillsAndDrops(t *testing.T) {
 	cfg := Config{
-		Title:        strings.Repeat("x", 200),
-		Theme:        "neon",
-		Accent:       "pink",
-		Layout:       "wall",
-		IncidentDays: 12,
+		Title:         strings.Repeat("x", 200),
+		Theme:         "neon",
+		Accent:        "pink",
+		Layout:        "wall",
+		IncidentDays:  12,
+		Logo:          "  builtin:server  ",
+		BackgroundURL: "http://example.org/bg.jpg",
+		BackgroundDim: 95,
 		Notices: []Notice{
 			{Text: "  Maintenance tonight  ", Colour: "amber", Icon: "builtin:clock"},
 			{Text: "   ", Colour: "rose"},
 			{Text: "Unknown colour", Colour: "pink"},
 		},
 		Sections: []Section{
-			{Title: "  Web  ", Colour: "amber", Sensors: []Entry{{ID: 3}, {ID: 3}, {ID: 0}, {ID: 4}}},
+			{Title: "  Web  ", Icon: " builtin:globe ", Colour: "amber", Sensors: []Entry{{ID: 3}, {ID: 3}, {ID: 0}, {ID: 4}}},
 			{Title: "Again", Sensors: []Entry{{ID: 4}}},
 		},
 	}
@@ -103,11 +106,29 @@ func TestNormaliseFillsAndDrops(t *testing.T) {
 	if cfg.Theme != "auto" || cfg.Accent != "azure" || cfg.Layout != "list" || cfg.IncidentDays != 30 {
 		t.Errorf("defaults not applied: %+v", cfg)
 	}
-	if len(cfg.Sections) != 2 || cfg.Sections[0].Title != "Web" {
+	if cfg.Logo != "builtin:server" {
+		t.Errorf("logo: %q", cfg.Logo)
+	}
+	if cfg.BackgroundURL != "" {
+		t.Errorf("a plain-http background survived: %q", cfg.BackgroundURL)
+	}
+	if cfg.BackgroundDim != 90 {
+		t.Errorf("dimming was not clamped: %d", cfg.BackgroundDim)
+	}
+	if len(cfg.Sections) != 2 || cfg.Sections[0].Title != "Web" || cfg.Sections[0].Icon != "builtin:globe" {
 		t.Errorf("sections: %+v", cfg.Sections)
 	}
 	if got := cfg.SensorIDs(); len(got) != 2 || got[0] != 3 || got[1] != 4 {
 		t.Errorf("SensorIDs = %v, want [3 4]", got)
+	}
+	if got := backgroundURL("https://example.org/bg.jpg"); got != "https://example.org/bg.jpg" {
+		t.Errorf("an https background was dropped: %q", got)
+	}
+	if got := backgroundURL("/assets/favicon.svg"); got != "/assets/favicon.svg" {
+		t.Errorf("a same-origin background was dropped: %q", got)
+	}
+	if got := backgroundURL("//example.org/bg.jpg"); got != "" {
+		t.Errorf("a protocol-relative background survived: %q", got)
 	}
 	if cfg.Sections[0].Colour != "amber" {
 		t.Errorf("a valid colour was lost: %q", cfg.Sections[0].Colour)

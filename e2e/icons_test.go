@@ -57,12 +57,15 @@ type iconCard struct {
 
 // chooseBuiltin opens the picker in the dialog that is open and clicks one drawing.
 func chooseBuiltin(ref string) chromedp.Action[chromedp.Void] {
+	// Scoped to the open dialog: the settings page has icon pickers of its own
+	// (the status page's logo and its sections), and the first one in the document
+	// is not the one inside the editor that was just opened.
 	return chromedp.Steps(
-		chromedp.WaitVisible(`[data-icon-open]`),
-		chromedp.Click(`[data-icon-open]`),
-		chromedp.WaitVisible(fmt.Sprintf(`[data-icon-set=%q]`, ref)),
-		chromedp.Click(fmt.Sprintf(`[data-icon-set=%q]`, ref)),
-		chromedp.WaitNotPresent(`.icon-panel .icon-grid`),
+		chromedp.WaitVisible(`dialog[open] [data-icon-open]`),
+		chromedp.Click(`dialog[open] [data-icon-open]`),
+		chromedp.WaitVisible(fmt.Sprintf(`dialog[open] [data-icon-set=%q]`, ref)),
+		chromedp.Click(fmt.Sprintf(`dialog[open] [data-icon-set=%q]`, ref)),
+		chromedp.WaitNotPresent(`dialog[open] .icon-panel .icon-grid`),
 	)
 }
 

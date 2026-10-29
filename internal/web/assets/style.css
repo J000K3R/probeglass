@@ -1651,6 +1651,8 @@ button.widget-pick-label {
 }
 .status-pick { display: flex; align-items: center; gap: var(--sp-2); padding: 3px 0; cursor: pointer; }
 .status-pick .pill { margin-left: auto; }
+.status-group-all { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.status-group-all input { accent-color: var(--accent); }
 .status-pick > span:not(.icon):not(.pill) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .status-pick[hidden], .status-group[hidden] { display: none; }
 

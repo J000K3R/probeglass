@@ -55,9 +55,11 @@ type Sensor struct {
 
 // SectionView is one heading of the rendered page and the services under it.
 type SectionView struct {
-	Title   string
-	Colour  string
-	Sensors []Sensor
+	Title     string
+	Colour    string
+	IconURL   string
+	IconDrawn bool
+	Sensors   []Sensor
 }
 
 // Incident is one outage on a published service.
@@ -81,12 +83,18 @@ type NoticeView struct {
 
 // Page is everything one request to the public page needs.
 type Page struct {
-	Config     Config
-	Sections   []SectionView
-	Notices    []NoticeView
-	Sensors    []Sensor
-	Incidents  []Incident
-	ShowCauses bool
+	Config    Config
+	LogoURL   string
+	LogoDrawn bool
+	// BackgroundURL and BackgroundDim are the image behind the page and how much
+	// of the page colour lies over it.
+	BackgroundURL string
+	BackgroundDim int
+	Sections      []SectionView
+	Notices       []NoticeView
+	Sensors       []Sensor
+	Incidents     []Incident
+	ShowCauses    bool
 	// EditURL is the dashboard's status panel, set only when the reader is a
 	// signed-in administrator. It is the one link that does not lead outward.
 	EditURL string
@@ -137,14 +145,18 @@ const HeartbeatProbes = 30
 func Build(ctx context.Context, st *store.Store, snaps map[int64]scheduler.Snapshot, now time.Time, iconBase string) (Page, error) {
 	cfg := LoadConfig(ctx, st)
 	page := Page{
-		Config:     cfg,
-		Sections:   []SectionView{},
-		Notices:    []NoticeView{},
-		Sensors:    []Sensor{},
-		Incidents:  []Incident{},
-		ShowCauses: cfg.ShowCauses,
-		Updated:    now,
+		Config:        cfg,
+		BackgroundURL: cfg.BackgroundURL,
+		BackgroundDim: cfg.BackgroundDim,
+		Sections:      []SectionView{},
+		Notices:       []NoticeView{},
+		Sensors:       []Sensor{},
+		Incidents:     []Incident{},
+		ShowCauses:    cfg.ShowCauses,
+		Updated:       now,
 	}
+
+	page.LogoURL, page.LogoDrawn = iconOf(cfg.Logo, iconBase)
 
 	for _, notice := range cfg.Notices {
 		iconURL, drawn := iconOf(notice.Icon, iconBase)
@@ -201,6 +213,7 @@ func Build(ctx context.Context, st *store.Store, snaps map[int64]scheduler.Snaps
 
 	for _, section := range cfg.Sections {
 		view := SectionView{Title: section.Title, Colour: section.Colour}
+		view.IconURL, view.IconDrawn = iconOf(section.Icon, iconBase)
 		for _, entry := range section.Sensors {
 			sensor, ok := byID[entry.ID]
 			if !ok {

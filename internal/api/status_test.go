@@ -54,13 +54,17 @@ func TestThePublicStatusPageShowsOnlyWhatWasPublished(t *testing.T) {
 
 	resp = h.do(http.MethodPut, "/api/status-page", map[string]any{
 		"config": map[string]any{
-			"title":  "Homelab",
-			"layout": "cards",
+			"title":          "Homelab",
+			"layout":         "cards",
+			"logo":           "builtin:server",
+			"background_url": "https://example.org/bg.jpg",
+			"background_dim": 40,
 			"notices": []map[string]any{{
 				"text": "Maintenance tonight", "colour": "amber", "icon": "builtin:clock",
 			}},
 			"sections": []map[string]any{{
 				"title":   "Web",
+				"icon":    "builtin:globe",
 				"sensors": []map[string]any{{"id": published.ID}},
 			}},
 		},
@@ -110,7 +114,9 @@ func TestThePublicStatusPageShowsOnlyWhatWasPublished(t *testing.T) {
 		}
 	}
 	for _, want := range []string{"Homelab", "Web", "Maintenance tonight", `class="notice c-amber"`,
-		"/assets/icons/clock.svg", "https://j000k3r.github.io/probeglass-website/"} {
+		"/assets/icons/clock.svg", "/assets/icons/server.svg", "/assets/icons/globe.svg",
+		"https://example.org/bg.jpg", "--bg-dim:40",
+		"https://j000k3r.github.io/probeglass-website/"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("the page does not carry %q", want)
 		}
