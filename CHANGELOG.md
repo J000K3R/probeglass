@@ -11,7 +11,7 @@ here and what the release says are the same document.
 
 | Version | Released | In one line |
 | --- | --- | --- |
-| [Unreleased] | — | Nothing yet |
+| [Unreleased] | — | SNMP v3, device and application templates, a network scan, a certificate inventory, a configurable public status page, and Prometheus metrics |
 | [0.2.3] | 2026-10-20 | Six more sensor types, a grouped sensor chooser with tag settings, escalation, a YAML export, Gotify as a seventh channel, and example pictures and maintenance windows on the first dashboard |
 | [0.2.2] | 2026-10-18 | A symbol on every sensor, place and group — ours, yours, or searched for online — and one set of measurements for the whole dashboard |
 | [0.2.1] | 2026-10-16 | A sensor under maintenance says so |
@@ -124,6 +124,21 @@ here and what the release says are the same document.
   generated under **Settings → Monitoring → Metrics**, and that token is read-only
   and separate from the API key: a scraper gets the numbers and no write route.
   Rotating it closes the old one; removing it makes `/metrics` answer `404`.
+
+- **A status-page background you can upload.** PNG, JPEG or GIF up to
+  4096×4096 pixels and 12 MiB, stored in the database and carried in the JSON
+  backup. An upload is used instead of the background URL until it is removed;
+  the page names it with its SHA-256 so a replacement is visible at once although
+  the image is cached for a day. It is served under the page's token, same-origin,
+  at `/status/<token>/background`.
+
+### Changed
+
+- **One Seerr template.** Overseerr and Jellyseerr merged into Seerr in February
+  2026; the catalogue now has one request-manager entry on port 5055, checking
+  `/api/v1/status` with `X-Api-Key`. Existing sensors and their
+  `brand:overseerr`/`brand:jellyseerr` symbols keep working, and the description
+  still names both old projects so the search finds it.
 
 ### Fixed
 

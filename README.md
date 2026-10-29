@@ -137,7 +137,9 @@ frontend pipeline to keep alive.
   image, a theme, an accent and one of three layouts; group the services into
   sections you name (or build them from the dashboard groups in one step); and
   choose which uptime windows, logos, heartbeats, incidents and causes each
-  shows. The
+  shows. The background can be uploaded — PNG, JPEG or GIF, up to 4096×4096 and
+  12 MiB — and lives in the database and the backup beside everything else; an
+  upload is used instead of the URL until you remove it. The
   link can be rotated or switched off; status messages with their own colour and
   symbol sit at the top, and an administrator gets an edit link back to the
   panel. No target, option or credential is ever drawn.

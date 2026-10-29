@@ -1678,6 +1678,24 @@ button.widget-pick-label {
 .sw-slate { background: #64748b; }
 .sw-accent { background: var(--accent); }
 
+.status-background {
+  display: grid; gap: var(--sp-2); margin: var(--sp-2) 0;
+  padding: var(--sp-2) var(--sp-3); border: 1px dashed var(--border);
+  border-radius: var(--radius); background: var(--surface-2);
+}
+.status-background-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+.status-upload { cursor: pointer; }
+.status-background.is-busy { opacity: 0.65; pointer-events: none; }
+.status-background-current { display: grid; gap: var(--sp-2); }
+.status-bg-preview {
+  display: block; max-width: 320px; max-height: 140px; width: auto; height: auto;
+  object-fit: cover; border: 1px solid var(--border); border-radius: var(--radius);
+}
+.status-background-meta {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2);
+  color: var(--text-dim); font-size: var(--text-4);
+}
+
 .status-notices { display: grid; gap: var(--sp-2); margin: var(--sp-2) 0; }
 .status-notice {
   border: 1px solid var(--border); border-radius: var(--radius);

@@ -84,11 +84,30 @@ Two consequences follow, and both are intended:
   for a script or an integration you control, treat it like a root password, and
   delete it in **Settings → API key** when it is no longer needed.
 
+## The public status page
+
+The page at `/status/<token>` runs no script and reads no session. Its token is a
+bearer credential in the URL: anyone who has it can read the page, and rotating it
+revokes every copy. The page sends `X-Robots-Tag: noindex, nofollow`,
+`Referrer-Policy: no-referrer` and `Cache-Control: no-store`; its CSP is
+`default-src 'none'; style-src 'unsafe-inline'; img-src 'self' https:;
+base-uri 'none'; form-action 'none'`.
+
+- **The uploaded background is same-origin and token-lent**, like an uploaded
+  symbol: `/status/<token>/background`, reachable only with the page's token.
+- **A background URL is not.** An external `background_url` makes every viewer's
+  browser contact that host — its IP address and user agent included. Uploading
+  the image avoids that; the URL stays for people who host their own picture.
+- **The link is not in the log.** The request line records `/status/…`, never the
+  token.
+
 ## The backup file carries every secret in the clear
 
 **Settings → Backup** writes the installation's configuration, its accounts and,
 if asked for it, its history into one JSON document — and that document names
-every secret the installation holds. The password hash of every account, their
+every secret the installation holds. Uploaded icons and the status page's
+background photograph travel in it as base64; a 12 MiB image adds roughly 16 MiB
+to the file, and the restore accepts up to 64 MiB. The password hash of every account, their
 TOTP secrets and the hashes of their recovery codes; the API key; the community
 string of every SNMP sensor; and the credentials of every alert channel: the
 Telegram bot token, the Discord and Slack webhook URLs, the Matrix access token,

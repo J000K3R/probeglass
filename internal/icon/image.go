@@ -27,6 +27,32 @@ const (
 	// of the largest screen anybody draws an icon on is a file that was not meant
 	// to be a symbol, and decoding one costs memory on every upload.
 	MaxSide = 512
+
+	// BackgroundMaxBytes and BackgroundMaxSide bound the one larger image this
+	// program stores: the photograph behind a public status page. A 4K camera
+	// writes a few megabytes and 4032 pixels across, so the limits are 12 MiB and
+	// 4096 px; a bigger file is refused rather than quietly shrunk, because a
+	// background is shown at its own quality.
+	BackgroundMaxBytes = 12 << 20
+	BackgroundMaxSide  = 4096
+)
+
+// Limits is one size policy for an uploaded image: how many bytes and pixels it
+// may have, and the word the refusal uses for the thing being refused.
+type Limits struct {
+	MaxBytes int
+	MaxSide  int
+	// Noun is the subject of the error sentence: "an icon", "a background image".
+	Noun string
+}
+
+var (
+	// IconLimits is the policy for the symbols a sensor, site, group or tag wears.
+	IconLimits = Limits{MaxBytes: MaxBytes, MaxSide: MaxSide, Noun: "an icon"}
+	// BackgroundLimits is the policy for the status page's background photograph.
+	BackgroundLimits = Limits{
+		MaxBytes: BackgroundMaxBytes, MaxSide: BackgroundMaxSide, Noun: "a background image",
+	}
 )
 
 // MediaTypes are the formats an upload may be, in the order the file picker
@@ -67,21 +93,28 @@ type Info struct {
 // runs after the size limits so that a picture too large to be an icon is refused
 // before it is decoded.
 func Decode(data []byte) (Info, error) {
+	return DecodeWithin(data, IconLimits)
+}
+
+// DecodeWithin is Decode under a caller's limits. The rules are the same for an
+// icon and for the status page's background; only the size policy and the word in
+// the refusal differ.
+func DecodeWithin(data []byte, lim Limits) (Info, error) {
 	var info Info
 	if len(data) == 0 {
 		return info, errors.New("the file is empty")
 	}
-	if len(data) > MaxBytes {
-		return info, fmt.Errorf("an icon may be at most %s; this one is %s",
-			formatBytes(MaxBytes), formatBytes(len(data)))
+	if len(data) > lim.MaxBytes {
+		return info, fmt.Errorf("%s may be at most %s; this one is %s",
+			lim.Noun, formatBytes(lim.MaxBytes), formatBytes(len(data)))
 	}
 	// What the file says it is, before what it is decoded as. DetectContentType
 	// reads the first bytes and nothing else, so this rejects a text file that was
 	// renamed to .png before a decoder ever looks at it as an image.
 	sniffed := http.DetectContentType(data)
-	if !allowed(sniffed) {
-		return info, fmt.Errorf("an icon has to be a PNG, a JPEG or a GIF; this looks like %s",
-			describe(sniffed))
+	if !AllowedMediaType(sniffed) {
+		return info, fmt.Errorf("%s has to be a PNG, a JPEG or a GIF; this looks like %s",
+			lim.Noun, describe(sniffed))
 	}
 	cfg, format, err := image.DecodeConfig(bytes.NewReader(data))
 	if err != nil {
@@ -91,14 +124,14 @@ func Decode(data []byte) (Info, error) {
 	if info.Width <= 0 || info.Height <= 0 {
 		return info, errors.New("the image has no size")
 	}
-	if info.Width > MaxSide || info.Height > MaxSide {
-		return info, fmt.Errorf("an icon may be at most %d×%d pixels; this one is %d×%d",
-			MaxSide, MaxSide, info.Width, info.Height)
+	if info.Width > lim.MaxSide || info.Height > lim.MaxSide {
+		return info, fmt.Errorf("%s may be at most %d×%d pixels; this one is %d×%d",
+			lim.Noun, lim.MaxSide, lim.MaxSide, info.Width, info.Height)
 	}
 	// The decode decides the media type, not the sniff: the two agree for a real
 	// image, and where they would not, the bytes that just decoded are the ones the
 	// file will be served as.
-	if !allowed(info.MediaType) {
+	if !AllowedMediaType(info.MediaType) {
 		return info, fmt.Errorf("images of type %s are not accepted", info.MediaType)
 	}
 	if _, _, err := image.Decode(bytes.NewReader(data)); err != nil {
@@ -107,7 +140,10 @@ func Decode(data []byte) (Info, error) {
 	return info, nil
 }
 
-func allowed(mediaType string) bool {
+// AllowedMediaType reports whether a media type is one an upload may be. It is
+// exported for the backup restore, which reads the type from the bytes instead of
+// trusting the file.
+func AllowedMediaType(mediaType string) bool {
 	for _, m := range MediaTypes {
 		if m == mediaType {
 			return true
@@ -128,6 +164,9 @@ func describe(mediaType string) string {
 // formatBytes writes a size the way a person says it, for the two places a limit
 // is quoted back at whoever exceeded it.
 func formatBytes(n int) string {
+	if n%(1<<20) == 0 && n >= 1<<20 {
+		return fmt.Sprintf("%d MiB", n>>20)
+	}
 	if n%1024 == 0 && n >= 1024 {
 		return fmt.Sprintf("%d KiB", n/1024)
 	}

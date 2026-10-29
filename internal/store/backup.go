@@ -8,11 +8,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/j000k3r/probeglass/internal/icon"
 	"github.com/j000k3r/probeglass/internal/model"
 )
 
@@ -96,17 +98,18 @@ type BackupDoc struct {
 	Scope         string `json:"scope"`
 	Days          int    `json:"days"`
 
-	Settings  *map[string]string `json:"settings"`
-	Sites     *[]BackupSite      `json:"sites"`
-	Groups    *[]BackupGroup     `json:"groups"`
-	Tags      *[]BackupTag       `json:"tags"`
-	Icons     *[]BackupIcon      `json:"icons"`
-	Channels  *[]BackupChannel   `json:"channels"`
-	Sensors   *[]BackupSensor    `json:"sensors"`
-	Users     *[]BackupUser      `json:"users"`
-	Incidents *[]BackupIncident  `json:"incidents"`
-	Hourly    *[]BackupRollup    `json:"results_hourly"`
-	Daily     *[]BackupRollup    `json:"results_daily"`
+	Settings    *map[string]string  `json:"settings"`
+	Sites       *[]BackupSite       `json:"sites"`
+	Groups      *[]BackupGroup      `json:"groups"`
+	Tags        *[]BackupTag        `json:"tags"`
+	Icons       *[]BackupIcon       `json:"icons"`
+	Backgrounds *[]BackupBackground `json:"backgrounds"`
+	Channels    *[]BackupChannel    `json:"channels"`
+	Sensors     *[]BackupSensor     `json:"sensors"`
+	Users       *[]BackupUser       `json:"users"`
+	Incidents   *[]BackupIncident   `json:"incidents"`
+	Hourly      *[]BackupRollup     `json:"results_hourly"`
+	Daily       *[]BackupRollup     `json:"results_daily"`
 }
 
 // BackupSite is one place.
@@ -155,6 +158,20 @@ type BackupTag struct {
 type BackupIcon struct {
 	ID        int64  `json:"id"`
 	Name      string `json:"name,omitempty"`
+	MediaType string `json:"media_type"`
+	Width     int    `json:"width"`
+	Height    int    `json:"height"`
+	Data      []byte `json:"data"`
+	CreatedAt string `json:"created_at"`
+}
+
+// BackupBackground is the status page's photograph, bytes and all.
+//
+// One row at most, in a slice like the icons: an absent key leaves the current
+// image alone, an empty list removes it. The bytes are base64 in the JSON, and a
+// 4K photograph is several megabytes of it — the largest thing this document
+// carries, and the reason the documentation mentions its size.
+type BackupBackground struct {
 	MediaType string `json:"media_type"`
 	Width     int    `json:"width"`
 	Height    int    `json:"height"`
@@ -248,17 +265,19 @@ type BackupRollup struct {
 // Counts is how many rows each table contributed. It is what goes into the log and
 // into the sentence the dashboard shows — never the contents.
 type Counts struct {
-	Settings  int `json:"settings"`
-	Sites     int `json:"sites"`
-	Groups    int `json:"groups"`
-	Tags      int `json:"tags"`
-	Icons     int `json:"icons"`
-	Channels  int `json:"channels"`
-	Sensors   int `json:"sensors"`
-	Users     int `json:"users"`
-	Incidents int `json:"incidents"`
-	Hourly    int `json:"results_hourly"`
-	Daily     int `json:"results_daily"`
+	Settings int `json:"settings"`
+	Sites    int `json:"sites"`
+	Groups   int `json:"groups"`
+	Tags     int `json:"tags"`
+	Icons    int `json:"icons"`
+	// Backgrounds is 0 or 1.
+	Backgrounds int `json:"backgrounds"`
+	Channels    int `json:"channels"`
+	Sensors     int `json:"sensors"`
+	Users       int `json:"users"`
+	Incidents   int `json:"incidents"`
+	Hourly      int `json:"results_hourly"`
+	Daily       int `json:"results_daily"`
 }
 
 // ExportOptions is what the caller asks for.
@@ -317,6 +336,9 @@ func (s *Store) Export(ctx context.Context, w io.Writer, opts ExportOptions) (Co
 			return err
 		}
 		if err := exportIcons(ctx, tx, jw, &counts); err != nil {
+			return err
+		}
+		if err := exportBackgrounds(ctx, tx, jw, &counts); err != nil {
 			return err
 		}
 		if err := exportSites(ctx, tx, jw, &counts); err != nil {
@@ -479,6 +501,32 @@ func exportIcons(ctx context.Context, tx *sql.Tx, jw *jsonWriter, counts *Counts
 		jw.item(first, i)
 		first = false
 		counts.Icons++
+	}
+	jw.close("]", first)
+	return rows.Err()
+}
+
+// exportBackgrounds writes the status page's photograph, at most one row.
+func exportBackgrounds(ctx context.Context, tx *sql.Tx, jw *jsonWriter, counts *Counts) error {
+	rows, err := tx.QueryContext(ctx, `
+		SELECT media_type, width, height, bytes, created_at
+		FROM status_background WHERE id = 1`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	jw.section("backgrounds")
+	jw.raw("[")
+	first := true
+	for rows.Next() {
+		var b BackupBackground
+		if err := rows.Scan(&b.MediaType, &b.Width, &b.Height, &b.Data, &b.CreatedAt); err != nil {
+			return err
+		}
+		jw.item(first, b)
+		first = false
+		counts.Backgrounds++
 	}
 	jw.close("]", first)
 	return rows.Err()
@@ -954,7 +1002,8 @@ func checkBackupDoc(doc *BackupDoc) error {
 		return fmt.Errorf("%w: this backup comes from a newer database schema (%d, this is %d): "+
 			"update ProbeGlass and try again", ErrBadBackup, doc.SchemaVersion, LatestSchemaVersion())
 	}
-	if doc.Settings == nil && doc.Sites == nil && doc.Channels == nil && doc.Sensors == nil &&
+	if doc.Settings == nil && doc.Sites == nil && doc.Groups == nil && doc.Tags == nil &&
+		doc.Icons == nil && doc.Backgrounds == nil && doc.Channels == nil && doc.Sensors == nil &&
 		doc.Users == nil && doc.Incidents == nil && doc.Hourly == nil && doc.Daily == nil {
 		return fmt.Errorf("%w: this backup is empty, it names no table at all", ErrBadBackup)
 	}
@@ -1037,6 +1086,12 @@ func restoreAll(ctx context.Context, tx *sql.Tx, doc BackupDoc) (Counts, bool, e
 
 	if doc.Icons != nil {
 		if err := restoreIcons(ctx, tx, *doc.Icons, &counts); err != nil {
+			return counts, false, err
+		}
+	}
+
+	if doc.Backgrounds != nil {
+		if err := restoreBackgrounds(ctx, tx, *doc.Backgrounds, &counts); err != nil {
 			return counts, false, err
 		}
 	}
@@ -1348,6 +1403,44 @@ func restoreIcons(ctx context.Context, tx *sql.Tx, icons []BackupIcon, counts *C
 		}
 		counts.Icons++
 	}
+	return nil
+}
+
+// restoreBackgrounds replaces the status page's photograph. The type is read from
+// the bytes rather than trusted from the file, the digest is recomputed, and the
+// size limits are not applied again: this is a file the program wrote, and a limit
+// changed since must not make an old backup unrestorable.
+func restoreBackgrounds(ctx context.Context, tx *sql.Tx, backgrounds []BackupBackground, counts *Counts) error {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM status_background`); err != nil {
+		return err
+	}
+	if len(backgrounds) == 0 {
+		return nil
+	}
+	if len(backgrounds) > 1 {
+		return fmt.Errorf("%w: a backup may carry one status background, this one carries %d",
+			ErrBadBackup, len(backgrounds))
+	}
+	b := backgrounds[0]
+	if len(b.Data) == 0 {
+		return fmt.Errorf("%w: the status background in this backup has no image", ErrBadBackup)
+	}
+	mediaType := http.DetectContentType(b.Data)
+	if !icon.AllowedMediaType(mediaType) {
+		return fmt.Errorf("%w: the status background in this backup is %s, not a PNG, a JPEG or a GIF",
+			ErrBadBackup, mediaType)
+	}
+	createdAt := b.CreatedAt
+	if createdAt == "" {
+		createdAt = fmtTime(time.Now().UTC())
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO status_background (id, media_type, width, height, digest, bytes, created_at)
+		VALUES (1,?,?,?,?,?,?)`,
+		mediaType, b.Width, b.Height, backgroundDigest(b.Data), b.Data, createdAt); err != nil {
+		return fmt.Errorf("status background: %w", err)
+	}
+	counts.Backgrounds++
 	return nil
 }
 

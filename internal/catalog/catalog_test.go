@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/j000k3r/probeglass/internal/icon"
 	"github.com/j000k3r/probeglass/internal/model"
 )
 
@@ -22,6 +23,11 @@ func TestTemplatesAreUsable(t *testing.T) {
 		}
 		if len(template.Checks) == 0 {
 			t.Errorf("%s: no checks", template.ID)
+		}
+		if template.Icon != "" {
+			if err := icon.Check(template.Icon); err != nil {
+				t.Errorf("%s: %v", template.ID, err)
+			}
 		}
 		checkKeys := map[string]bool{}
 		for _, check := range template.Checks {
@@ -64,6 +70,39 @@ func TestTemplatesAreUsable(t *testing.T) {
 			default:
 				t.Errorf("%s/%s: unsupported template check type %q", template.ID, check.Key, check.Type)
 			}
+		}
+	}
+}
+
+// TestSeerrReplacesOverseerrAndJellyseerr pins the merge: one request-manager
+// template, on the port and endpoint Seerr kept from both of its predecessors.
+func TestSeerrReplacesOverseerrAndJellyseerr(t *testing.T) {
+	seerr, ok := Find("seerr")
+	if !ok {
+		t.Fatal("the catalogue has no Seerr template")
+	}
+	if seerr.Vendor != "Seerr" || seerr.Icon != "brand:seerr" {
+		t.Errorf("Seerr = %+v, want the Seerr vendor and mark", seerr)
+	}
+	var apiFound bool
+	for _, check := range seerr.Checks {
+		if check.Key != "api" {
+			continue
+		}
+		apiFound = true
+		if check.Target != "http://{address}:5055/api/v1/status" {
+			t.Errorf("Seerr API target = %q", check.Target)
+		}
+		if check.Options["api_key_header"] != "X-Api-Key" {
+			t.Errorf("Seerr API key header = %v", check.Options["api_key_header"])
+		}
+	}
+	if !apiFound {
+		t.Error("Seerr has no API check")
+	}
+	for _, old := range []string{"overseerr", "jellyseerr"} {
+		if _, ok := Find(old); ok {
+			t.Errorf("the retired %q template is still in the catalogue", old)
 		}
 	}
 }

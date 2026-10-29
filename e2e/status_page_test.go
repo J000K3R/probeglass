@@ -30,6 +30,17 @@ type statusPanelState struct {
 			} `json:"sensors"`
 		} `json:"sections"`
 	} `json:"config"`
+	Background *struct {
+		MediaType string `json:"media_type"`
+		Width     int    `json:"width"`
+		Height    int    `json:"height"`
+		Size      int    `json:"size"`
+		Digest    string `json:"digest"`
+	} `json:"background_upload"`
+	Limits *struct {
+		MaxBytes int `json:"max_bytes"`
+		MaxSide  int `json:"max_side"`
+	} `json:"background_limits"`
 }
 
 type sensorLite struct {
@@ -89,7 +100,9 @@ func TestTheStatusPagePanelAndThePageItShares(t *testing.T) {
 	}
 
 	// Build the page: a title, dark theme, violet accent, cards, one section with
-	// the first sensor. This is the whole editor, one field at a time.
+	// the first sensor, and an uploaded photograph. This is the whole editor, one
+	// field at a time.
+	bgFile := writeTestPNG(t, screenshotDir)
 	var chosen sensorLite
 	err = withTimeout(ctx, func(tctx context.Context) error {
 		return chromedp.Do(tctx,
@@ -114,6 +127,11 @@ func TestTheStatusPagePanelAndThePageItShares(t *testing.T) {
 			chromedp.Evaluate[chromedp.Void](`document.querySelector('#status-panel .status-logo-field [data-icon-set="builtin:server"]').click()`),
 			chromedp.Poll[chromedp.Void](`document.querySelector('input[name="status_logo"]').value === 'builtin:server'`,
 				chromedp.WithPollingTimeout(5*time.Second)),
+			// The photograph: the file input uploads at once, before the page is
+			// saved, because the image is not part of the JSON configuration.
+			chromedp.SetUploadFiles(`[data-status-bg-upload]`, []string{bgFile}),
+			chromedp.Poll[chromedp.Void](`fetch('/api/status-page').then(r => r.json())
+				.then(s => s.background_upload !== null)`, chromedp.WithPollingTimeout(20*time.Second)),
 			// The rest is clicked from script for the same reason as the logo: a
 			// control under the fixed top bar is still a control, and this test is
 			// about the editor's decisions, not about hit-testing.
@@ -158,6 +176,12 @@ func TestTheStatusPagePanelAndThePageItShares(t *testing.T) {
 		saved.Config.Sections[0].Title != "Web" {
 		t.Errorf("the page came back as %+v", saved.Config)
 	}
+	if saved.Background == nil || saved.Background.Width != 32 || saved.Background.Digest == "" {
+		t.Fatalf("the uploaded background did not come back: %+v", saved.Background)
+	}
+	if saved.Limits == nil || saved.Limits.MaxSide != 4096 {
+		t.Errorf("the panel does not know the background limits: %+v", saved.Limits)
+	}
 	sensors := readAsync[[]sensorLite](t, ctx, `fetch('/api/sensors').then(r => r.json())`,
 		"read the sensors")
 	for _, s := range sensors {
@@ -183,13 +207,36 @@ func TestTheStatusPagePanelAndThePageItShares(t *testing.T) {
 	if want := "noindex, nofollow"; !strings.Contains(html, want) {
 		t.Errorf("the public page does not carry %q", want)
 	}
+	versioned := "/status/" + saved.Token + "/background?v=" + saved.Background.Digest
 	for _, want := range []string{`data-theme="dark"`, `data-accent="violet"`, "layout-cards", "Homelab", ">Web<", "card-top",
 		"Maintenance tonight", "notice c-amber", "/assets/icons/warning.svg",
-		"https://assets.example.net/bg.jpg", "--bg-dim:60", "/assets/icons/server.svg",
+		versioned, "--bg-dim:60", "/assets/icons/server.svg",
 		"site-brand", "/#/settings/monitor/status"} {
 		if !strings.Contains(html, want) {
 			t.Errorf("the configured page does not carry %q", want)
 		}
+	}
+	// The upload wins over the URL that is still saved as its fallback.
+	if strings.Contains(html, "https://assets.example.net/bg.jpg") {
+		t.Error("the page drew the URL although an image was uploaded")
+	}
+
+	// The bytes, the ETag, and a conditional request that answers 304.
+	bgURL := "/status/" + saved.Token + "/background"
+	info := readAsync[map[string]any](t, ctx, `fetch(`+jsQuote(bgURL)+`).then(r => ({
+		status: r.status, type: r.headers.get('content-type'), etag: r.headers.get('etag'),
+	}))`, "read the background headers")
+	if info["status"].(float64) != 200 || info["type"] != "image/png" {
+		t.Errorf("the background answered %v %v", info["status"], info["type"])
+	}
+	wantETag := `"bg-` + saved.Background.Digest + `"`
+	if info["etag"] != wantETag {
+		t.Errorf("the background ETag = %v, want %s", info["etag"], wantETag)
+	}
+	conditional := readAsync[int](t, ctx, `fetch(`+jsQuote(bgURL)+`, {headers: {'If-None-Match': `+jsQuote(wantETag)+`}}).then(r => r.status)`,
+		"ask the background again")
+	if conditional != 304 {
+		t.Errorf("a conditional background request answered %d, want 304", conditional)
 	}
 
 	// A German browser gets the German words; the page is for the people the link
@@ -199,6 +246,32 @@ func TestTheStatusPagePanelAndThePageItShares(t *testing.T) {
 		"read the public status page in German")
 	if !strings.Contains(german, "Aktualisiert") {
 		t.Error("a German browser did not get the German page")
+	}
+
+	// Removing the upload falls back to the configured URL, and the old image is
+	// gone from the public route.
+	err = withTimeout(ctx, func(tctx context.Context) error {
+		return chromedp.Do(tctx,
+			chromedp.Evaluate[chromedp.Void](`window.confirm = () => true`),
+			chromedp.Evaluate[chromedp.Void](`document.querySelector('#status-panel [data-action="status-background-remove"]').click()`),
+			chromedp.Poll[chromedp.Void](`fetch('/api/status-page').then(r => r.json())
+				.then(s => s.background_upload === null)`, chromedp.WithPollingTimeout(10*time.Second)),
+		)
+	})
+	if err != nil {
+		capture(t, ctx, screenshotDir, "status-background-not-removed")
+		t.Fatalf("the background could not be removed: %v", err)
+	}
+	afterRemove := readAsync[string](t, ctx, `fetch(`+jsQuote(publicURL)+`).then(r => r.text())`,
+		"read the page after removing the background")
+	if !strings.Contains(afterRemove, "https://assets.example.net/bg.jpg") {
+		t.Error("the URL did not come back after the upload was removed")
+	}
+	// Asked past the browser's cache: the image was fetched a moment ago with a
+	// day of freshness, and this asks the server rather than the cache.
+	if gone := readAsync[int](t, ctx, `fetch(`+jsQuote(bgURL)+`, {cache: 'no-store'}).then(r => r.status)`,
+		"ask the removed background"); gone != 404 {
+		t.Errorf("the removed background answered %d, want 404", gone)
 	}
 
 	// Switching the link off makes it answer 404 immediately.

@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/j000k3r/probeglass/internal/icon"
 	"github.com/j000k3r/probeglass/internal/model"
 	"github.com/j000k3r/probeglass/internal/status"
 	"github.com/j000k3r/probeglass/internal/store"
@@ -157,15 +158,39 @@ type statusPageResponse struct {
 	Enabled bool          `json:"enabled"`
 	Token   string        `json:"token"`
 	Config  status.Config `json:"config"`
+	// Background is the uploaded photograph, or null when there is none, so the
+	// panel can preview it and offer to remove it.
+	Background *model.StatusBackground `json:"background_upload"`
+	Limits     statusBackgroundLimits  `json:"background_limits"`
+}
+
+type statusBackgroundLimits struct {
+	MaxBytes   int      `json:"max_bytes"`
+	MaxSide    int      `json:"max_side"`
+	MediaTypes []string `json:"media_types"`
 }
 
 func (s *Server) statusPageState(r *http.Request) (statusPageResponse, error) {
-	token, _ := s.store.StatusPageSettings(r.Context())
-	return statusPageResponse{
+	ctx := r.Context()
+	token, _ := s.store.StatusPageSettings(ctx)
+	out := statusPageResponse{
 		Enabled: token != "",
 		Token:   token,
-		Config:  status.LoadConfig(r.Context(), s.store),
-	}, nil
+		Config:  status.LoadConfig(ctx, s.store),
+		Limits: statusBackgroundLimits{
+			MaxBytes:   icon.BackgroundLimits.MaxBytes,
+			MaxSide:    icon.BackgroundLimits.MaxSide,
+			MediaTypes: icon.MediaTypes,
+		},
+	}
+	bg, ok, err := s.store.StatusBackground(ctx)
+	if err != nil {
+		return statusPageResponse{}, err
+	}
+	if ok {
+		out.Background = &bg
+	}
+	return out, nil
 }
 
 // handleGetStatusPage answers GET /api/status-page: whether the page is on, its

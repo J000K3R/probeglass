@@ -218,6 +218,8 @@ func isValidationError(err error) bool {
 		"the file is empty",
 		"the image has no size",
 		"images of type",
+		"a background image may be at most",
+		"a background image has to be",
 	} {
 		if strings.Contains(msg, s) {
 			return true

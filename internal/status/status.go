@@ -87,7 +87,9 @@ type Page struct {
 	LogoURL   string
 	LogoDrawn bool
 	// BackgroundURL and BackgroundDim are the image behind the page and how much
-	// of the page colour lies over it.
+	// of the page colour lies over it. When an image was uploaded, BackgroundURL
+	// is this page's own /background route with the image digest as its version,
+	// so a replacement is seen without waiting out the browser's day of cache.
 	BackgroundURL string
 	BackgroundDim int
 	Sections      []SectionView
@@ -163,6 +165,17 @@ func Build(ctx context.Context, st *store.Store, snaps map[int64]scheduler.Snaps
 		page.Notices = append(page.Notices, NoticeView{
 			Text: notice.Text, Colour: notice.Colour, IconURL: iconURL, IconDrawn: drawn,
 		})
+	}
+
+	// An uploaded photograph wins over the configured address; the address stays
+	// as the fallback for the moment the upload is removed.
+	if bg, ok, err := st.StatusBackground(ctx); err != nil {
+		return Page{}, err
+	} else if ok {
+		page.BackgroundURL = ""
+		if iconBase != "" {
+			page.BackgroundURL = iconBase + "/background?v=" + bg.Version()
+		}
 	}
 
 	ids := cfg.SensorIDs()

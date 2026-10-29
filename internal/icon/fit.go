@@ -40,7 +40,7 @@ func Fit(data []byte) ([]byte, Info, error) {
 	// not an image, a truncated file — gets the refusal Decode wrote, which says
 	// what is wrong with it.
 	sniffed := http.DetectContentType(data)
-	if !allowed(sniffed) {
+	if !AllowedMediaType(sniffed) {
 		_, err := Decode(data)
 		return nil, Info{}, err
 	}

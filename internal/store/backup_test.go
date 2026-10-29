@@ -3,6 +3,7 @@ package store
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"path/filepath"
@@ -33,9 +34,10 @@ type backupFixture struct {
 	// icon, group and tag are the tables that exist because somebody chose
 	// something: an uploaded image, and what a group's heading and a tag's chip
 	// look like.
-	icon  model.Icon
-	group model.Group
-	tag   model.Tag
+	icon       model.Icon
+	group      model.Group
+	tag        model.Tag
+	background model.StatusBackground
 }
 
 // newBackupFixture builds an installation that has history: two complete hours of
@@ -72,6 +74,11 @@ func newBackupFixture(t *testing.T) *backupFixture {
 	f.tag = model.Tag{Name: "core", Icon: icon.UploadRef(f.icon.ID), Colour: "rose", SortOrder: 2}
 	if err := st.SetTag(ctx, &f.tag); err != nil {
 		t.Fatalf("set tag: %v", err)
+	}
+
+	// The status page's photograph, the one larger blob the document may carry.
+	if err := st.SetStatusBackground(ctx, &f.background, testPNG(t, 80, 45)); err != nil {
+		t.Fatalf("set status background: %v", err)
 	}
 
 	f.channel = model.Channel{
@@ -214,7 +221,7 @@ func TestExportSaysWhatItContains(t *testing.T) {
 		if err := json.Unmarshal(f.export(t, ExportOptions{Scope: BackupScopeConfig}), &doc); err != nil {
 			t.Fatalf("the export is not valid JSON: %v", err)
 		}
-		for _, key := range []string{"settings", "sites", "channels", "sensors", "users"} {
+		for _, key := range []string{"settings", "sites", "groups", "tags", "icons", "backgrounds", "channels", "sensors", "users"} {
 			if _, ok := doc[key]; !ok {
 				t.Errorf("a config backup does not mention %q", key)
 			}
@@ -396,6 +403,18 @@ func TestExportRestoreRoundTrip(t *testing.T) {
 	}
 	if !bytes.Equal(restoredBytes, testPNG(t, 20, 20)) {
 		t.Error("the restored icon's bytes are not the bytes that were backed up")
+	}
+
+	// The background photograph, byte for byte, with its digest recomputed.
+	restoredBG, restoredBGData, ok, err := fresh.StatusBackgroundBytes(ctx)
+	if err != nil || !ok {
+		t.Fatalf("the status background did not come back: ok=%v err=%v", ok, err)
+	}
+	if !bytes.Equal(restoredBGData, testPNG(t, 80, 45)) {
+		t.Error("the restored background is not the image that was backed up")
+	}
+	if restoredBG.Digest != f.background.Digest || restoredBG.Width != 80 || restoredBG.Height != 45 {
+		t.Errorf("restored background = %+v, want the fixture's image", restoredBG)
 	}
 
 	// The group's settings, which the sensors restore with: the group itself is only
@@ -708,5 +727,61 @@ func TestRestoreReportsTheTokenEpoch(t *testing.T) {
 	}
 	if again.TokenEpochNotice {
 		t.Error("a restore that undoes nothing still reported a token epoch notice")
+	}
+}
+
+// TestTheBackgroundInABackupCanBeKeptOrRemoved covers the three meanings the
+// backgrounds key can have: absent, empty, and one row.
+func TestTheBackgroundInABackupCanBeKeptOrRemoved(t *testing.T) {
+	ctx := context.Background()
+	f := newBackupFixture(t)
+	file := f.export(t, ExportOptions{Scope: BackupScopeConfig})
+
+	// An older backup without the key leaves what is there alone.
+	var doc map[string]any
+	if err := json.Unmarshal(file, &doc); err != nil {
+		t.Fatalf("decode the export: %v", err)
+	}
+	delete(doc, "backgrounds")
+	withoutKey, _ := json.Marshal(doc)
+	fresh := newTestStore(t)
+	if err := fresh.SetStatusBackground(ctx, &model.StatusBackground{}, testPNG(t, 40, 30)); err != nil {
+		t.Fatalf("seed a background: %v", err)
+	}
+	if _, err := fresh.Restore(ctx, bytes.NewReader(withoutKey), RestoreOptions{SkipSafetyCopy: true}); err != nil {
+		t.Fatalf("restore without the key: %v", err)
+	}
+	if _, ok, _ := fresh.StatusBackground(ctx); !ok {
+		t.Error("a backup without a backgrounds key removed the current image")
+	}
+
+	// An empty list removes it.
+	doc["backgrounds"] = []any{}
+	empty, _ := json.Marshal(doc)
+	if _, err := fresh.Restore(ctx, bytes.NewReader(empty), RestoreOptions{SkipSafetyCopy: true}); err != nil {
+		t.Fatalf("restore with an empty list: %v", err)
+	}
+	if _, ok, _ := fresh.StatusBackground(ctx); ok {
+		t.Error("an empty backgrounds list left the image in place")
+	}
+
+	// Two rows are not a page.
+	doc["backgrounds"] = []any{
+		map[string]any{"media_type": "image/png", "width": 1, "height": 1, "data": ""},
+		map[string]any{"media_type": "image/png", "width": 1, "height": 1, "data": ""},
+	}
+	two, _ := json.Marshal(doc)
+	if _, err := fresh.Restore(ctx, bytes.NewReader(two), RestoreOptions{SkipSafetyCopy: true}); !errors.Is(err, ErrBadBackup) {
+		t.Errorf("two backgrounds: %v, want ErrBadBackup", err)
+	}
+
+	// A row whose bytes are not an image is refused too.
+	doc["backgrounds"] = []any{map[string]any{
+		"media_type": "image/png", "width": 1, "height": 1,
+		"data": base64.StdEncoding.EncodeToString([]byte("<html>not an image</html>")),
+	}}
+	bad, _ := json.Marshal(doc)
+	if _, err := fresh.Restore(ctx, bytes.NewReader(bad), RestoreOptions{SkipSafetyCopy: true}); !errors.Is(err, ErrBadBackup) {
+		t.Errorf("a background that is not an image: %v, want ErrBadBackup", err)
 	}
 }

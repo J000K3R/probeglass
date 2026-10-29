@@ -37,7 +37,7 @@ var brandNames = map[string]bool{
 	"grafana": true, "portainer": true, "jellyfin": true, "uptime-kuma": true,
 	"node-red": true, "mosquitto": true, "shelly": true, //nolint:misspell // the MQTT broker
 	"sonarr": true, "radarr": true, "lidarr": true, "prowlarr": true,
-	"bazarr": true, "overseerr": true, "jellyseerr": true, "paperless-ngx": true,
+	"bazarr": true, "seerr": true, "overseerr": true, "jellyseerr": true, "paperless-ngx": true,
 	"ubiquiti": true, "unifi-protect": true,
 	"audiobookshelf": true, "emby": true, "esphome": true, "frigate": true, "gitea": true, "homebridge": true, "immich": true, "influxdb": true, "kavita": true, "navidrome": true, "netdata": true, "nextcloud": true, "nginx-proxy-manager": true, "octoprint": true, "openmediavault": true, "plex": true, "prometheus": true, "qbittorrent": true, "sabnzbd": true, "syncthing": true, "tasmota": true, "tautulli": true, "traefik": true, "transmission": true, "unraid": true, "vaultwarden": true, "zigbee2mqtt": true,
 }

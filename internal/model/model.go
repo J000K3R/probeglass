@@ -574,6 +574,24 @@ func (o Options) StrMap(key string) map[string]string {
 	return out
 }
 
+// StatusBackground is the photograph behind the public status page, as the
+// database records it. The bytes are read separately: this is what the panel
+// needs to show a preview and what the page needs to version its URL.
+type StatusBackground struct {
+	MediaType string `json:"media_type"`
+	Width     int    `json:"width"`
+	Height    int    `json:"height"`
+	Size      int    `json:"size"`
+	// Digest is the SHA-256 of the stored bytes, lowercase hex. It is the ETag
+	// and the version in the page's URL, so that replacing the picture is visible
+	// at once even though the bytes themselves are cached for a day.
+	Digest    string    `json:"digest"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// Version is the string a cache and a URL may name this image by.
+func (b StatusBackground) Version() string { return b.Digest }
+
 // Certificate is the leaf certificate a sensor last saw, and the sensor it saw
 // it with.
 //

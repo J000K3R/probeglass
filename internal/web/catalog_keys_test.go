@@ -40,3 +40,19 @@ func TestEveryTemplateHasWords(t *testing.T) {
 		}
 	}
 }
+
+// TestRetiredTemplateKeysAreGone keeps the two merged request-manager entries
+// from leaving their words behind in the dictionaries.
+func TestRetiredTemplateKeysAreGone(t *testing.T) {
+	for _, file := range []string{"i18n.js", "i18n.de.js"} {
+		dict := shippedCatalogue(t, file)
+		for _, key := range []string{
+			"catalog.template.overseerr.name", "catalog.template.overseerr.description",
+			"catalog.template.jellyseerr.name", "catalog.template.jellyseerr.description",
+		} {
+			if _, ok := dict[key]; ok {
+				t.Errorf("%s still carries %q", file, key)
+			}
+		}
+	}
+}

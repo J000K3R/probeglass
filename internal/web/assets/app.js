@@ -6181,6 +6181,7 @@ function statusPanel() {
                    placeholder="https://…" autocomplete="off" spellcheck="false"></label>
         </div>
         ${statusDimChoice(cfg.background_dim ?? 60)}
+        ${statusBackgroundMarkup()}
         <p class="muted small">${esc(t('status.backgroundHint'))}</p>
       </fieldset>
 
@@ -6233,7 +6234,8 @@ function statusConfig() {
       title: 'Status', subtitle: '', theme: 'auto', accent: 'azure', layout: 'list',
       show_logos: true, show_uptime_24: true, show_uptime_7: true, show_uptime_30: true,
       show_last_check: true, show_heartbeat: true, show_incidents: true, show_causes: false,
-      incident_days: 30, sections: [],
+      incident_days: 30, logo: '', background_url: '', background_dim: 60,
+      notices: [], sections: [],
     };
   }
   if (!Array.isArray(cfg.sections)) cfg.sections = [];
@@ -6261,6 +6263,96 @@ function statusAccents(current) {
       <label class="chip chip-choice status-swatch"><input type="radio" name="status-accent" value="${accent}"
         data-status-accent${accent === current ? ' checked' : ''}><i class="swatch sw-${accent}" aria-hidden="true"></i><span>${esc(t(`status.colour.${accent}`))}</span></label>`).join('')}
     </div></div>`;
+}
+
+/** statusBackgroundLimits is what the server says the upload may be. */
+function statusBackgroundLimits() {
+  return state.statusPage?.limits || {
+    max_bytes: 12 << 20,
+    max_side: 4096,
+    media_types: ['image/png', 'image/jpeg', 'image/gif'],
+  };
+}
+
+/** statusBackgroundMarkup draws the upload, its preview and its removal. */
+function statusBackgroundMarkup() {
+  const bg = state.statusPage?.background || null;
+  const limits = statusBackgroundLimits();
+  const mib = Math.round(limits.max_bytes / (1 << 20));
+  return `
+    <div class="status-background" id="status-background-panel">
+      <div class="status-background-head">
+        <label class="btn btn-ghost status-upload">
+          <input type="file" data-status-bg-upload hidden
+                 accept="${esc((limits.media_types || []).join(','))}">
+          ${esc(t('status.backgroundUpload'))}
+        </label>
+        <span class="muted small">${esc(t('status.backgroundUploadHint', { side: limits.max_side, mib }))}</span>
+      </div>
+      ${bg ? `
+      <div class="status-background-current">
+        <img class="status-bg-preview" src="/api/status-background?v=${encodeURIComponent(bg.digest)}" alt="">
+        <div class="status-background-meta">
+          <span id="status-bg-meta">${esc(t('status.backgroundMeta', {
+            width: bg.width, height: bg.height, type: bg.media_type, size: C.fmtBytes(bg.size),
+          }))}</span>
+          <button type="button" class="btn btn-danger btn-small"
+                  data-action="status-background-remove">${esc(t('status.backgroundRemove'))}</button>
+        </div>
+      </div>` : ''}
+      <p class="form-error" id="status-background-error" role="alert"></p>
+    </div>`;
+}
+
+/** uploadStatusBackground sends one chosen file; the API validates it with the
+ *  larger background limits and stores it in the database. */
+async function uploadStatusBackground(file) {
+  const limits = statusBackgroundLimits();
+  const error = $('#status-background-error');
+  if (error) error.textContent = '';
+  if (file.size > limits.max_bytes) {
+    if (error) {
+      error.textContent = t('status.backgroundTooLarge', { mib: Math.round(limits.max_bytes / (1 << 20)) });
+    }
+    const input = $('[data-status-bg-upload]');
+    if (input) input.value = '';
+    return;
+  }
+  const panel = $('#status-background-panel');
+  if (panel) panel.classList.add('is-busy');
+  try {
+    const body = new FormData();
+    body.append('file', file, file.name);
+    const data = await api('/api/status-background', { method: 'POST', body, timeout: 120000 });
+    collectStatusIcons();
+    if (!state.statusPage) state.statusPage = { enabled: false, token: '', config: null };
+    state.statusPage.background = data;
+    await renderSettings();
+    toast(t('status.backgroundUploaded'));
+  } catch (err) {
+    if (error) error.textContent = err.message;
+    else toast(err.message, 'error');
+    const input = $('[data-status-bg-upload]');
+    if (input) input.value = '';
+  } finally {
+    if (panel) panel.classList.remove('is-busy');
+  }
+}
+
+/** removeStatusBackground falls back to the configured URL, or to no image. */
+async function removeStatusBackground() {
+  if (!confirmDialog(t('status.backgroundRemoveConfirm'))) return;
+  try {
+    await api('/api/status-background', { method: 'DELETE' });
+    collectStatusIcons();
+    if (state.statusPage) state.statusPage.background = null;
+    await renderSettings();
+    toast(t('status.backgroundRemoved'));
+  } catch (err) {
+    const error = $('#status-background-error');
+    if (error) error.textContent = err.message;
+    else toast(err.message, 'error');
+  }
 }
 
 /** statusDimChoice is the overlay strength over the background image. */
@@ -6415,6 +6507,8 @@ async function loadStatusPage() {
     enabled: !!data.enabled,
     token: data.token || '',
     config: data.config || null,
+    background: data.background_upload || null,
+    limits: data.background_limits || null,
   };
 }
 
@@ -6513,6 +6607,8 @@ async function saveStatusPage() {
       enabled: !!data.enabled,
       token: data.token || '',
       config: data.config || null,
+      background: data.background_upload || null,
+      limits: data.background_limits || state.statusPage?.limits || null,
     };
     await renderSettings();
     toast(t('status.saved'));
@@ -6529,6 +6625,8 @@ async function setStatusToken(method) {
     token: data.token || '',
     // Keep unsaved edits; the link is a separate decision from the page.
     config: state.statusPage?.config || data.config || null,
+    background: state.statusPage?.background || data.background_upload || null,
+    limits: state.statusPage?.limits || data.background_limits || null,
   };
   await renderSettings();
 }
@@ -7702,6 +7800,9 @@ settingsBody.addEventListener('change', (event) => {
     if ((cfg.notices || [])[index]) cfg.notices[index].colour = event.target.value;
   } else if (event.target.matches('[data-status-dim]')) {
     cfg.background_dim = Number(event.target.value);
+  } else if (event.target.matches('[data-status-bg-upload]')) {
+    const file = event.target.files && event.target.files[0];
+    if (file) void uploadStatusBackground(file);
   }
 });
 // Dragging is the mouse path; the number in the editor stays as the keyboard one.
@@ -8130,6 +8231,8 @@ async function onSettingsClick(event) {
       toast(t('status.disabled'));
     } else if (action === 'status-save') {
       await saveStatusPage();
+    } else if (action === 'status-background-remove') {
+      await removeStatusBackground();
     } else if (action === 'backup-file') {
       $('#restore-file').click();
     } else if (action === 'tour') {

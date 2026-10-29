@@ -165,6 +165,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /status/{token}", s.handlePublicStatus)
 	// The uploaded symbol of a published sensor, lent the page's token.
 	mux.HandleFunc("GET /status/{token}/icon/{id}", s.handleStatusIcon)
+	// The background photograph of the page, lent the same token.
+	mux.HandleFunc("GET /status/{token}/background", s.handleStatusBackground)
 	mux.HandleFunc("GET /api/version", s.handleVersion)
 	mux.HandleFunc("GET /api/session", s.handleSession)
 	mux.HandleFunc("POST /api/login", s.handleLogin)
@@ -268,6 +270,10 @@ func (s *Server) Handler() http.Handler {
 	// makes it reachable. Both are configuration, so both are administrator-only.
 	adm("GET /api/status-page", s.handleGetStatusPage)
 	adm("PUT /api/status-page", s.handleSaveStatusPage)
+	// The page's background photograph: read for the preview, upload, remove.
+	adm("GET /api/status-background", s.handleGetStatusBackground)
+	adm("POST /api/status-background", s.handleUploadStatusBackground)
+	adm("DELETE /api/status-background", s.handleDeleteStatusBackground)
 	adm("PUT /api/status-token", s.handleRotateStatusToken)
 	adm("DELETE /api/status-token", s.handleDeleteStatusToken)
 

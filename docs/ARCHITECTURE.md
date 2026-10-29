@@ -50,6 +50,7 @@ certificates      the last certificate each TLS-capable sensor saw: one row per
                   sensor, replaced on renewal, ON DELETE CASCADE
 status_sensors    the public page's selection from before it had sections; read
                   once to migrate it into the page configuration in settings
+status_background the page's uploaded photograph: one row, its bytes and digest
 users             one account per row: username, password hash, role, TOTP state,
                   token epoch, prefs (this account's interface settings)
 recovery_codes    one hashed one-time code per row, marked used rather than deleted
@@ -367,6 +368,12 @@ empty one are different things. A backup "without history" simply does not menti
 `incidents` or `results_*`, and a restore therefore leaves those exactly where they
 are — a configuration rollback must not wipe history. Inside a table, rows are
 replaced rather than merged, because restoring means putting back.
+
+**Uploaded images travel too.** The icons and the status page's background are the
+blobs in the schema, and both are in the configuration backup as base64 — a file
+that restored the sensors without the images they wear would be a file that does
+not restore the installation. The background's SHA-256 is recomputed on the way
+in and is what versions its public URL.
 
 **Secrets are written in the clear.** Masking them would produce a file that
 restores a channel whose token reads `__stored__`, which imports cleanly and cannot

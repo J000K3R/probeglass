@@ -23,9 +23,10 @@ type Config struct {
 	// Logo is the page's own mark at the top; empty draws none. It is an icon
 	// reference like everywhere else, so an upload is served through the page.
 	Logo string `json:"logo,omitempty"`
-	// BackgroundURL is an https image or a path on this server. It is not an
-	// upload because a background is a photograph, not a symbol, and the icon
-	// table is deliberately small. Empty keeps the plain surface colour.
+	// BackgroundURL is an https image or a path on this server. It is the fallback
+	// behind an uploaded photograph: while an upload exists the page uses that,
+	// and this remains what is shown after the upload is removed. Empty keeps the
+	// plain surface colour.
 	BackgroundURL string `json:"background_url,omitempty"`
 	// BackgroundDim is how much of the page colour is laid over the image, in
 	// percent: 0 leaves the photograph bare, 90 leaves a hint of it.

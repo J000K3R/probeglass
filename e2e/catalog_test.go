@@ -485,3 +485,42 @@ func TestNetworkScanDialogRefusesPublicRanges(t *testing.T) {
 		t.Errorf("a public range answered %q, want a message about private ranges", message)
 	}
 }
+
+// TestTheCatalogueHasSeerrAndNotItsPredecessors checks the merge where a person
+// sees it: one request-manager card, with the Seerr mark, and neither of the two
+// retired ids left behind.
+func TestTheCatalogueHasSeerrAndNotItsPredecessors(t *testing.T) {
+	browser := findBrowser(t)
+	base := startServer(t, buildBinary(t))
+	ctx, done := openBrowser(t, browser)
+	defer done()
+	dir := artifactsDir(t)
+
+	firstRun(t, ctx, base, dir)
+
+	if err := withTimeout(ctx, func(tctx context.Context) error {
+		return chromedp.Do(tctx,
+			chromedp.Click(`#new-sensor`),
+			chromedp.Poll[chromedp.Void](
+				`!!document.querySelector('#modal-catalog [data-template-id="seerr"]')`,
+				chromedp.WithPollingTimeout(15*time.Second)),
+		)
+	}); err != nil {
+		capture(t, ctx, dir, "catalogue-seerr")
+		t.Fatalf("the Seerr template is not in the catalogue: %v", err)
+	}
+
+	for _, retired := range []string{"overseerr", "jellyseerr"} {
+		if gone := read[bool](t, ctx,
+			`!document.querySelector('#modal-catalog [data-template-id="`+retired+`"]')`,
+			"look for the retired template"); !gone {
+			t.Errorf("the retired %q template is still in the catalogue", retired)
+		}
+	}
+	// The card wears the vendor's own mark, not a blank square.
+	if ok := read[bool](t, ctx,
+		`!!document.querySelector('#modal-catalog [data-template-id="seerr"] img[src*="brands/seerr.svg"]')`,
+		"look for the Seerr mark"); !ok {
+		t.Error("the Seerr card does not draw the Seerr brand")
+	}
+}

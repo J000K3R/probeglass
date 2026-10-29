@@ -786,6 +786,28 @@ CREATE TABLE IF NOT EXISTS status_sensors (
 );
 `,
 	},
+	{
+		version: 14,
+		name:    "status-background",
+		sql: `
+-- The photograph behind the public status page, one row at a time.
+--
+-- The bytes live here rather than on disk for the same reason the icons do: the
+-- one SQLite file is the whole installation, and a backup is a copy of it. The
+-- digest is the SHA-256 of the bytes: it is the ETag of the image and the
+-- version in the page's URL, so a replacement is seen at once although the
+-- image itself is cached for a day.
+CREATE TABLE IF NOT EXISTS status_background (
+    id         INTEGER PRIMARY KEY CHECK (id = 1),
+    media_type TEXT    NOT NULL,
+    width      INTEGER NOT NULL,
+    height     INTEGER NOT NULL,
+    digest     TEXT    NOT NULL,
+    bytes      BLOB    NOT NULL,
+    created_at TEXT    NOT NULL
+);
+`,
+	},
 }
 
 // rowExecer is the part of *sql.DB and *sql.Tx that the settings sweeps below use.

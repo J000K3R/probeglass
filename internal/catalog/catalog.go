@@ -520,23 +520,10 @@ func Templates() []Template {
 			},
 		},
 		{
-			ID: "overseerr", Vendor: "Overseerr", Product: "Request manager",
+			ID: "seerr", Vendor: "Seerr", Product: "Request manager",
 			System: "media", Tags: []string{"media", "web", "availability"},
-			Icon:    "brand:overseerr",
-			NameKey: "catalog.template.overseerr.name", DescriptionKey: "catalog.template.overseerr.description",
-			Credential: &Credential{Key: "api_key", LabelKey: "catalog.credential.apiKey", HelpKey: "catalog.credential.apiKeyHelp", Secret: true},
-			Checks: []Check{
-				{Key: "api", LabelKey: "catalog.check.api", Type: model.SensorHTTP,
-					Target: "http://{address}:5055/api/v1/status", Interval: 60,
-					Options: model.Options{"expected_status": "200", "api_key_header": "X-Api-Key"}},
-				{Key: "reachable", LabelKey: "catalog.check.reachable", Type: model.SensorPing, Target: "{host}", Interval: 60},
-			},
-		},
-		{
-			ID: "jellyseerr", Vendor: "Jellyseerr", Product: "Request manager",
-			System: "media", Tags: []string{"media", "web", "availability"},
-			Icon:    "brand:jellyseerr",
-			NameKey: "catalog.template.jellyseerr.name", DescriptionKey: "catalog.template.jellyseerr.description",
+			Icon:    "brand:seerr",
+			NameKey: "catalog.template.seerr.name", DescriptionKey: "catalog.template.seerr.description",
 			Credential: &Credential{Key: "api_key", LabelKey: "catalog.credential.apiKey", HelpKey: "catalog.credential.apiKeyHelp", Secret: true},
 			Checks: []Check{
 				{Key: "api", LabelKey: "catalog.check.api", Type: model.SensorHTTP,

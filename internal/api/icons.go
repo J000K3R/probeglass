@@ -626,9 +626,26 @@ func (s *Server) handleForgetTag(w http.ResponseWriter, r *http.Request) {
 // message is about an HTTP body, and the sentence a person gets should be about
 // their file.
 func parseErrText(err error) string {
+	return parseUploadErrText(err, icon.MaxBytes, "an icon")
+}
+
+// parseUploadErrText is the sentence for a multipart body over its cap. The noun
+// is the caller's: "an icon", "a background image".
+func parseUploadErrText(err error, maxBytes int, noun string) string {
 	var tooLarge *http.MaxBytesError
 	if errors.As(err, &tooLarge) {
-		return fmt.Sprintf("the file is larger than the %d KiB an icon may be", icon.MaxBytes/1024)
+		return fmt.Sprintf("the file is larger than the %s %s may be", uploadSizeLimit(maxBytes), noun)
 	}
 	return err.Error()
+}
+
+// uploadSizeLimit writes a byte cap the way a person says it.
+func uploadSizeLimit(n int) string {
+	if n%(1<<20) == 0 && n >= 1<<20 {
+		return fmt.Sprintf("%d MiB", n>>20)
+	}
+	if n%1024 == 0 && n >= 1024 {
+		return fmt.Sprintf("%d KiB", n/1024)
+	}
+	return fmt.Sprintf("%d bytes", n)
 }

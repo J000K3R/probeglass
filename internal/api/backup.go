@@ -224,6 +224,10 @@ func countAttrs(c store.Counts) []any {
 	return []any{
 		"settings", c.Settings,
 		"sites", c.Sites,
+		"groups", c.Groups,
+		"tags", c.Tags,
+		"icons", c.Icons,
+		"backgrounds", c.Backgrounds,
 		"channels", c.Channels,
 		"sensors", c.Sensors,
 		"users", c.Users,
