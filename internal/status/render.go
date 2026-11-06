@@ -255,7 +255,8 @@ func Render(w io.Writer, page Page, acceptLanguage string) error {
 				row.HistoryStart = l.dayShort(s.Days[0].Date)
 			}
 			for _, day := range s.Days {
-				class, title := "up", ""
+				class := "up"
+				var title string
 				switch {
 				case !day.HasData:
 					class, title = "nodata", l.dayShort(day.Date)+" · "+l.NoData
