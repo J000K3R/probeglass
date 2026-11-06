@@ -44,9 +44,12 @@ type DayPoint struct {
 	// Uptime is that day's availability among the counted probes. Known is false
 	// for a day before the sensor existed or while it was not probed at all.
 	Uptime Uptime
-	// LatencyMS is the day's average successful latency, drawn only when the day
-	// has data.
+	// LatencyMS is the day's average successful latency, and MinMS/MaxMS the
+	// spread behind it. The curve draws the mean; the band around it is the
+	// spread, so a day with one slow probe does not hide inside a calm average.
 	LatencyMS  float64
+	MinMS      float64
+	MaxMS      float64
 	HasData    bool
 	HasLatency bool
 	// Maintenance marks a day whose every probe fell inside a maintenance window.
@@ -266,6 +269,9 @@ func Build(ctx context.Context, st *store.Store, snaps map[int64]scheduler.Snaps
 	// The banner's figure is the whole page's, weighted by the probes behind it —
 	// the same rule a single service's figure follows.
 	var historyTotal, historyOK int
+	// Incidents name a sensor by the label the page gave it, not by the name in
+	// the dashboard: a published service may be called something else in public.
+	publicName := make(map[int64]string, len(ids))
 
 	for _, section := range cfg.Sections {
 		view := SectionView{Title: section.Title, Colour: section.Colour}
@@ -289,6 +295,7 @@ func Build(ctx context.Context, st *store.Store, snaps map[int64]scheduler.Snaps
 			if row.Name == "" {
 				row.Name = sensor.Name
 			}
+			publicName[entry.ID] = row.Name
 			icon := entry.Icon
 			if icon == "" {
 				icon = sensor.Icon
@@ -336,8 +343,12 @@ func Build(ctx context.Context, st *store.Store, snaps map[int64]scheduler.Snaps
 		if !published[inc.SensorID] {
 			continue
 		}
+		name := inc.SensorName
+		if public := publicName[inc.SensorID]; public != "" {
+			name = public
+		}
 		row := Incident{
-			Sensor:   inc.SensorName,
+			Sensor:   name,
 			Started:  inc.StartedAt,
 			Resolved: inc.ResolvedAt,
 			Ongoing:  inc.ResolvedAt == nil,
@@ -423,6 +434,8 @@ func dayPoints(points []model.SeriesPoint) []DayPoint {
 			Date:        p.TS,
 			Uptime:      Uptime{Percent: p.UptimePC, Known: p.Total > 0},
 			LatencyMS:   p.AvgMS,
+			MinMS:       p.MinMS,
+			MaxMS:       p.MaxMS,
 			HasData:     p.Total > 0 || p.Excused > 0,
 			HasLatency:  p.Total > 0 || p.Excused > 0,
 			Maintenance: p.Total == 0 && p.Excused > 0,

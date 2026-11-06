@@ -110,6 +110,13 @@ h2 {
 .banner.down { border-left-color: var(--crit); }
 .banner.warn { border-left-color: var(--warn); }
 .banner.unknown { border-left-color: var(--paused); }
+/* A tint of the state, not only a line, so the one sentence the page exists for
+   is the first thing the eye lands on. Seven percent keeps the text black on
+   white; the dark theme gets the same treatment from its own tokens. */
+.banner.up { background: color-mix(in srgb, var(--ok) 7%, var(--surface)); }
+.banner.warn { background: color-mix(in srgb, var(--warn) 9%, var(--surface)); }
+.banner.down { background: color-mix(in srgb, var(--crit) 9%, var(--surface)); }
+.banner.paused, .banner.unknown { background: color-mix(in srgb, var(--paused) 7%, var(--surface)); }
 .banner strong { font-size: 16px; }
 .counts { color: var(--dim); font-size: 13px; margin-left: auto; text-align: right; }
 /* The whole page's figure over the same window the strips use. It takes the
@@ -245,6 +252,7 @@ td.service .logo-drawn, .card-top .logo-drawn, .row .logo-drawn { color: var(--d
   font-variant-numeric: tabular-nums; white-space: nowrap;
 }
 .chart-last { margin-top: 8px; }
+.chart-empty { margin: 8px 0 0; }
 
 /* One bar per day. Flex rather than a fixed width: ninety bars have to fit a
    phone and a desktop without a script to measure either. */
@@ -268,7 +276,7 @@ td.service .logo-drawn, .card-top .logo-drawn, .row .logo-drawn { color: var(--d
 /* The curve is a stretched path; its numbers stay HTML so they do not stretch
    with it. Three labels on the left, one scale, no axes inside the drawing. */
 .lat-head {
-  display: flex; justify-content: space-between; gap: 8px;
+  display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 8px;
   margin: 12px 0 2px; color: var(--dim); font-size: 10.5px;
 }
 .lat-head span:first-child {
@@ -283,15 +291,53 @@ td.service .logo-drawn, .card-top .logo-drawn, .row .logo-drawn { color: var(--d
 .lat-canvas { height: 84px; }
 .lat-svg { display: block; width: 100%; height: 100%; }
 .lat-grid { stroke: var(--border); stroke-width: 1; }
-.lat-area { fill: var(--accent); opacity: 0.1; }
+/* The spread behind the mean: the day's fastest and slowest successful probe.
+   It is filled, not outlined, so it reads as a range and never as a second line. */
+.lat-band { fill: var(--accent); opacity: 0.13; }
 .lat-line { fill: none; stroke: var(--accent); stroke-width: 1.8; stroke-linejoin: round; stroke-linecap: round; }
 .lat-outage { stroke: var(--crit); stroke-width: 1.5; opacity: 0.35; }
 
-.incidents { list-style: none; margin: 0; padding: 0; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
-.incidents li { padding: 12px 16px; border-bottom: 1px solid var(--border); }
-.incidents li:last-child { border-bottom: 0; }
-.incidents .ongoing { border-left: 3px solid var(--crit); }
-.incidents p { margin: 4px 0 0; color: var(--dim); font-size: 13px; }
+/* Incidents are cards too, with the heading inside, so the bottom of the page
+   has the same shape as the sections above it. */
+.incident-box {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 0 16px;
+}
+.incident-box h2 { margin: 0; padding: 14px 0 11px; border-bottom: 1px solid var(--border); }
+.incident { padding: 12px 0; border-top: 1px solid var(--border); }
+.incident:first-child { border-top: 0; }
+.incident-top { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.incident-top b { font-size: 13.5px; font-weight: 600; }
+.incident-top .pill { margin-left: auto; }
+.incident-meta {
+  margin-top: 3px; color: var(--dim); font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.incident p { margin: 6px 0 0; color: var(--dim); font-size: 13px; }
+.incident-empty { margin: 0; padding: 14px 0 16px; }
+.pill.ongoing {
+  color: var(--crit);
+  background: color-mix(in srgb, var(--crit) 13%, transparent);
+  border-color: color-mix(in srgb, var(--crit) 34%, transparent);
+}
+.pill.resolved {
+  color: var(--ok);
+  background: color-mix(in srgb, var(--ok) 13%, transparent);
+  border-color: color-mix(in srgb, var(--ok) 32%, transparent);
+}
+
+/* What the five strip colours mean, in one small line under the banner. */
+.legend {
+  display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 14px;
+  margin: 10px 2px 0; color: var(--dim); font-size: 11px;
+}
+.legend span { display: inline-flex; align-items: center; gap: 5px; }
+.legend .key { display: block; width: 8px; height: 8px; border-radius: 2px; }
+.legend .ok { background: var(--ok); }
+.legend .warn { background: var(--warn); }
+.legend .down { background: var(--crit); }
+.legend .nodata { background: var(--excused); }
+.legend .excused { background: var(--accent); }
 /* Messages the operator writes, above the overall banner. Each carries its own
    colour on the edge and a tint of it behind, so a warning and a success do not
    read alike at a glance. */
@@ -335,6 +381,7 @@ td.service .logo-drawn, .card-top .logo-drawn, .row .logo-drawn { color: var(--d
   .uptime-strip { gap: 1px; }
   .uptime-strip i { border-radius: 1px; }
   .strip-axis { font-size: 9.5px; }
+  .legend { justify-content: flex-start; gap: 10px 14px; }
   .lat { grid-template-columns: 38px minmax(0, 1fr); }
   .lat-canvas { height: 72px; }
   .chart-uptime { font-size: 12px; }

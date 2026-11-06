@@ -27,6 +27,8 @@ type chartView struct {
 // It returns nil when the window holds no probe at all: an empty grid is not a
 // chart, and the grey strip above already says there is nothing to show.
 func buildChart(days []DayPoint, l labels) *chartView {
+	// The axis has to reach the band's top, not only the mean: a day whose one
+	// slow probe reached 800 ms must not be drawn against a 100 ms scale.
 	peak := 0.0
 	has := false
 	for _, d := range days {
@@ -34,8 +36,12 @@ func buildChart(days []DayPoint, l labels) *chartView {
 			continue
 		}
 		has = true
-		if d.LatencyMS > peak {
-			peak = d.LatencyMS
+		top := d.LatencyMS
+		if d.MaxMS > top {
+			top = d.MaxMS
+		}
+		if top > peak {
+			peak = top
 		}
 	}
 	if !has {
@@ -59,17 +65,25 @@ func buildChart(days []DayPoint, l labels) *chartView {
 
 	// A gap in the data breaks the curve rather than joining across it: a day the
 	// sensor was not probed is not a straight line to the next one.
-	var run []string
+	var run []int
 	flush := func() {
 		if len(run) < 2 {
 			run = run[:0]
 			return
 		}
-		line := "M" + strings.Join(run, " L")
-		area := "M" + firstPointX(run) + ",100 L" + strings.Join(run, " L") +
-			" L" + lastPointX(run) + ",100 Z"
-		fmt.Fprintf(&b, `<path class="lat-area" d="%s"/>`, area)
-		fmt.Fprintf(&b, `<path class="lat-line" d="%s" vector-effect="non-scaling-stroke"/>`, line)
+		mean := make([]string, len(run))
+		upper := make([]string, len(run))
+		lower := make([]string, len(run))
+		for j, i := range run {
+			d := days[i]
+			x := chartX(i, len(days))
+			mean[j] = x + "," + chartY(d.LatencyMS, max)
+			upper[j] = x + "," + chartY(dayMax(d), max)
+			lower[len(run)-1-j] = x + "," + chartY(dayMin(d), max)
+		}
+		band := "M" + strings.Join(upper, " L") + " L" + strings.Join(lower, " L") + " Z"
+		fmt.Fprintf(&b, `<path class="lat-band" d="%s"/>`, band)
+		fmt.Fprintf(&b, `<path class="lat-line" d="M%s" vector-effect="non-scaling-stroke"/>`, strings.Join(mean, " L"))
 		run = run[:0]
 	}
 	for i, d := range days {
@@ -77,7 +91,7 @@ func buildChart(days []DayPoint, l labels) *chartView {
 			flush()
 			continue
 		}
-		run = append(run, chartX(i, len(days))+","+chartY(d.LatencyMS, max))
+		run = append(run, i)
 	}
 	flush()
 	b.WriteString(`</svg>`)
@@ -112,12 +126,18 @@ func chartY(v, max float64) string {
 	return fmt.Sprintf("%.1f", y)
 }
 
-func firstPointX(run []string) string {
-	return strings.SplitN(run[0], ",", 2)[0]
+func dayMax(d DayPoint) float64 {
+	if d.MaxMS > 0 {
+		return d.MaxMS
+	}
+	return d.LatencyMS
 }
 
-func lastPointX(run []string) string {
-	return strings.SplitN(run[len(run)-1], ",", 2)[0]
+func dayMin(d DayPoint) float64 {
+	if d.MinMS > 0 {
+		return d.MinMS
+	}
+	return d.LatencyMS
 }
 
 // niceMax rounds a peak up to 1, 2 or 5 times a power of ten, so the axis has

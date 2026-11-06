@@ -135,6 +135,12 @@ here and what the release says are the same document.
   how many of its services are fine, and the banner carries the whole page's
   figure over the chosen window. The existing list, cards and compact layouts are
   unchanged and stay selectable.
+- **Incidents as cards, and a page that explains itself.** Each incident now
+  carries its state as a badge and how long it lasted, or has lasted; an empty
+  list says there were none instead of vanishing. A small legend names the
+  strip's five colours, the banner takes a tint of the page's state, the
+  response-time curve shows the day's min–max band around its mean, and a sensor
+  with no probes in the window says so.
 - **A status-page background you can upload.** PNG, JPEG or GIF up to
   4096×4096 pixels and 12 MiB, stored in the database and carried in the JSON
   backup. An upload is used instead of the background URL until it is removed;

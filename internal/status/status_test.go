@@ -111,13 +111,80 @@ func TestRenderDrawsTheHistory(t *testing.T) {
 	html := out.String()
 	for _, want := range []string{
 		"layout-charts", "uptime-strip", "chart-type", "chart-uptime",
-		"strip-axis", "lat-canvas", "lat-line", "lat-outage",
+		"strip-axis", "lat-canvas", "lat-line", "lat-band", "lat-outage",
 		"banner-uptime", "2 of 2 operational", "99.90% · 90 days",
+		`class="legend"`, "99.9% and up",
 		`class="nodata"`, `class="warn"`, `class="excused"`, `class="down"`,
 	} {
 		if !strings.Contains(html, want) {
 			t.Errorf("the page does not carry %q", want)
 		}
+	}
+}
+
+// TestRenderSaysWhenAWindowHasNoData keeps the grey strip from reading as a
+// hundred outages: a service that has never been probed says so in words.
+func TestRenderSaysWhenAWindowHasNoData(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Layout = "charts"
+	days := make([]DayPoint, cfg.HistoryDays)
+	page := Page{
+		Config:  cfg,
+		Updated: time.Date(2026, 10, 28, 17, 0, 0, 0, time.UTC),
+		Sections: []SectionView{{Title: "New", Sensors: []Sensor{{
+			Name: "Added today", Type: "HTTP", Status: model.StatusUnknown,
+			UptimeHistory: Uptime{}, Days: days,
+		}}}},
+		Sensors: []Sensor{{Status: model.StatusUnknown}},
+	}
+	var out bytes.Buffer
+	if err := Render(&out, page, "en"); err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	html := out.String()
+	if !strings.Contains(html, "No measurements in this window yet.") {
+		t.Error("the page did not explain an empty window")
+	}
+	if got := strings.Count(html, `class="nodata"`); got != cfg.HistoryDays {
+		t.Errorf("the empty strip has %d grey bars, want %d", got, cfg.HistoryDays)
+	}
+}
+
+// TestRenderIncidentsAsCards covers both ends of the incident list: a resolved
+// outage carries its duration, and an empty list says so instead of vanishing.
+func TestRenderIncidentsAsCards(t *testing.T) {
+	cfg := DefaultConfig()
+	started := time.Date(2026, 10, 28, 12, 4, 0, 0, time.UTC)
+	resolved := started.Add(15 * time.Minute)
+
+	page := Page{
+		Config:  cfg,
+		Updated: started.Add(time.Hour),
+		Incidents: []Incident{{
+			Sensor: "Grafana", Started: started, Resolved: &resolved,
+		}},
+	}
+	var out bytes.Buffer
+	if err := Render(&out, page, "en"); err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	html := out.String()
+	for _, want := range []string{
+		"incident-box", "<b>Grafana</b>", `pill resolved`, ">Resolved<",
+		"15 min", "incident-meta",
+	} {
+		if !strings.Contains(html, want) {
+			t.Errorf("the incident card does not carry %q", want)
+		}
+	}
+
+	empty := Page{Config: cfg, Updated: started}
+	out.Reset()
+	if err := Render(&out, empty, "en"); err != nil {
+		t.Fatalf("render empty: %v", err)
+	}
+	if !strings.Contains(out.String(), "No incidents in the last 30 days.") {
+		t.Error("an empty incident list did not say so")
 	}
 }
 

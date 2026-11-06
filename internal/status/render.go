@@ -32,12 +32,12 @@ type labels struct {
 	Ongoing    string
 	Resolved   string
 	Today      string
-	// ResponseTime and DailyAverage sit above the curve; NoData and Maintenance
-	// are what a bar says when it is not a percentage.
+	// ResponseTime sits above the curve; NoData and Maintenance are what a bar
+	// says when it is not a percentage.
 	ResponseTime string
-	DailyAverage string
 	NoData       string
 	Maintenance  string
+	NoHistory    string
 
 	up, down, warn, paused, unknown string
 }
@@ -48,10 +48,11 @@ var (
 		Status: "Status", Checks: "Checks", LastCheck: "Last checked",
 		Incidents: "Recent incidents", NoServices: "No services have been published yet.",
 		Updated: "Updated", Footer: "ProbeGlass", Edit: "Edit page",
-		Never: "never", Ongoing: "ongoing", Resolved: "resolved",
-		Today: "Today", ResponseTime: "Response time", DailyAverage: "Daily average",
+		Never: "never", Ongoing: "Ongoing", Resolved: "Resolved",
+		Today: "Today", ResponseTime: "Response time",
 		NoData: "no data", Maintenance: "maintenance",
-		up: "Operational", down: "Down", warn: "Degraded", paused: "Paused",
+		NoHistory: "No measurements in this window yet.",
+		up:        "Operational", down: "Down", warn: "Degraded", paused: "Paused",
 		unknown: "Unknown",
 	}
 	german = labels{
@@ -59,10 +60,11 @@ var (
 		Status: "Status", Checks: "Prüfungen", LastCheck: "Zuletzt geprüft",
 		Incidents: "Letzte Vorfälle", NoServices: "Es sind noch keine Dienste veröffentlicht.",
 		Updated: "Aktualisiert", Footer: "ProbeGlass", Edit: "Seite bearbeiten",
-		Never: "noch nie", Ongoing: "andauernd", Resolved: "behoben",
-		Today: "Heute", ResponseTime: "Antwortzeit", DailyAverage: "Tagesmittel",
+		Never: "noch nie", Ongoing: "Andauernd", Resolved: "Behoben",
+		Today: "Heute", ResponseTime: "Antwortzeit",
 		NoData: "keine Daten", Maintenance: "Wartung",
-		up: "Betriebsbereit", down: "Ausgefallen", warn: "Gestört",
+		NoHistory: "Noch keine Messwerte in diesem Zeitraum.",
+		up:        "Betriebsbereit", down: "Ausgefallen", warn: "Gestört",
 		paused: "Pausiert", unknown: "Unbekannt",
 	}
 )
@@ -89,25 +91,34 @@ func pickLabels(acceptLanguage string) labels {
 // template, so the template is only a shape and cannot disagree with the builder
 // about what a status means.
 type view struct {
-	CSS           template.CSS
-	Lang          string
-	Config        Config
-	Title         string
-	Subtitle      string
-	Logo          logoView
-	BackgroundURL string
-	BackgroundDim int
-	Updated       string
-	Overall       model.Status
-	OverallWord   string
-	Counts        string
-	OverallUptime string
-	HistoryWindow string
-	Labels        labels
-	Sections      []sectionView
-	Notices       []noticeView
-	Incidents     []incidentView
-	EditURL       string
+	CSS                template.CSS
+	Lang               string
+	Config             Config
+	Title              string
+	Subtitle           string
+	Logo               logoView
+	BackgroundURL      string
+	BackgroundDim      int
+	Updated            string
+	Overall            model.Status
+	OverallWord        string
+	Counts             string
+	OverallUptime      string
+	OverallUptimeClass string
+	HistoryWindow      string
+	IncidentWindow     string
+	NoIncidents        string
+	Labels             labels
+	Legend             []legendView
+	Sections           []sectionView
+	Notices            []noticeView
+	Incidents          []incidentView
+	EditURL            string
+}
+
+type legendView struct {
+	Class string
+	Text  string
 }
 
 type sectionView struct {
@@ -120,22 +131,24 @@ type sectionView struct {
 }
 
 type sensorView struct {
-	Name          string
-	Type          string
-	Status        model.Status
-	StatusWord    string
-	Uptime24      string
-	Uptime7       string
-	Uptime30      string
-	UptimeHistory string
-	LastCheck     string
-	IconURL       string
-	IconDrawn     bool
-	Beats         []beatView
-	Days          []dayView
-	StripLabel    string
-	HistoryStart  string
-	Chart         *chartView
+	Name           string
+	Type           string
+	Status         model.Status
+	StatusWord     string
+	Uptime24       string
+	Uptime7        string
+	Uptime30       string
+	UptimeHistory  string
+	LatencySummary string
+	NoHistory      bool
+	LastCheck      string
+	IconURL        string
+	IconDrawn      bool
+	Beats          []beatView
+	Days           []dayView
+	StripLabel     string
+	HistoryStart   string
+	Chart          *chartView
 }
 
 type beatView struct {
@@ -164,11 +177,13 @@ type noticeView struct {
 }
 
 type incidentView struct {
-	Sensor  string
-	When    string
-	State   string
-	Cause   string
-	Ongoing bool
+	Sensor     string
+	When       string
+	State      string
+	StateClass string
+	Duration   string
+	Cause      string
+	Ongoing    bool
 }
 
 // Render writes the page. The labels are chosen here rather than by the handler
@@ -219,8 +234,26 @@ func Render(w io.Writer, page Page, acceptLanguage string) error {
 	}
 	v.Counts = l.counts(up, down, paused)
 	v.HistoryWindow = l.window(cfg.HistoryDays)
+	v.IncidentWindow = l.window(cfg.IncidentDays)
+	v.NoIncidents = l.noIncidents(cfg.IncidentDays)
+	if cfg.Layout == "charts" && cfg.ShowUptimeStrip {
+		if l.Lang == "de" {
+			v.Legend = []legendView{
+				{"ok", "ab 99,9 %"}, {"warn", "ab 99 %"}, {"down", "unter 99 %"},
+				{"nodata", "keine Daten"}, {"excused", "Wartung"},
+			}
+		} else {
+			v.Legend = []legendView{
+				{"ok", "99.9% and up"}, {"warn", "99% and up"}, {"down", "below 99%"},
+				{"nodata", "no data"}, {"excused", "maintenance"},
+			}
+		}
+	}
 	if page.OverallUptime.Known {
 		v.OverallUptime = uptimeText(page.OverallUptime, l) + " · " + v.HistoryWindow
+		// The badge describes the figure, not the moment: a page can be having a
+		// bad afternoon and still have been up 99.99% of the quarter.
+		v.OverallUptimeClass = uptimeClass(page.OverallUptime.Percent)
 	}
 
 	for _, section := range page.Sections {
@@ -250,6 +283,7 @@ func Render(w io.Writer, page Page, acceptLanguage string) error {
 				IconURL:       s.IconURL,
 				IconDrawn:     s.IconDrawn,
 				StripLabel:    l.stripLabel(s.Name, cfg.HistoryDays),
+				NoHistory:     !s.UptimeHistory.Known,
 			}
 			if len(s.Days) > 0 {
 				row.HistoryStart = l.dayShort(s.Days[0].Date)
@@ -275,6 +309,7 @@ func Render(w io.Writer, page Page, acceptLanguage string) error {
 			}
 			if cfg.Layout == "charts" && cfg.ShowResponseTime {
 				row.Chart = buildChart(s.Days, l)
+				row.LatencySummary = latencySummary(s.Days, l)
 			}
 			for _, beat := range s.Heartbeat {
 				class := "down"
@@ -292,18 +327,21 @@ func Render(w io.Writer, page Page, acceptLanguage string) error {
 	}
 
 	for _, inc := range page.Incidents {
-		state := l.Resolved
+		state, class, duration := l.Resolved, "resolved", ""
 		if inc.Ongoing {
-			state = l.Ongoing
+			state, class = l.Ongoing, "ongoing"
+			duration = l.since(page.Updated.Sub(inc.Started))
 		} else if inc.Resolved != nil {
-			state = l.Resolved + " · " + durationText(inc.Resolved.Sub(inc.Started), l)
+			duration = durationText(inc.Resolved.Sub(inc.Started), l)
 		}
 		v.Incidents = append(v.Incidents, incidentView{
-			Sensor:  inc.Sensor,
-			When:    l.when(inc.Started),
-			State:   state,
-			Cause:   inc.Cause,
-			Ongoing: inc.Ongoing,
+			Sensor:     inc.Sensor,
+			When:       l.when(inc.Started),
+			State:      state,
+			StateClass: class,
+			Duration:   duration,
+			Cause:      inc.Cause,
+			Ongoing:    inc.Ongoing,
 		})
 	}
 	return pageTemplate.Execute(w, v)
@@ -361,6 +399,19 @@ func (l labels) countWord(en, de string) string {
 	return en
 }
 
+// uptimeClass colours a figure by the figure itself, on the same thresholds the
+// strip uses for a day.
+func uptimeClass(p float64) string {
+	switch {
+	case p >= 99.9:
+		return "up"
+	case p >= 99:
+		return "warn"
+	default:
+		return "down"
+	}
+}
+
 func uptimeText(u Uptime, l labels) string {
 	if !u.Known {
 		return "—"
@@ -410,6 +461,23 @@ func (l labels) sectionCount(up, total int) string {
 	return fmt.Sprintf("%d of %d operational", up, total)
 }
 
+// since is how long an ongoing incident has lasted, in the reader's words.
+func (l labels) since(d time.Duration) string {
+	if l.Lang == "de" {
+		return "seit " + durationText(d, l)
+	}
+	return "for " + durationText(d, l)
+}
+
+// noIncidents is the reassuring sentence a page shows when the incident list is
+// empty. An empty section would read as a section that failed to load.
+func (l labels) noIncidents(days int) string {
+	if l.Lang == "de" {
+		return fmt.Sprintf("Keine Vorfälle in den letzten %d Tagen.", days)
+	}
+	return fmt.Sprintf("No incidents in the last %d days.", days)
+}
+
 // stripLabel is the strip's accessible description. The bars carry their values
 // as titles, so a reader who cannot see the colours still gets the figures.
 func (l labels) stripLabel(name string, days int) string {
@@ -417,6 +485,30 @@ func (l labels) stripLabel(name string, days int) string {
 		return fmt.Sprintf("Verfügbarkeit von %s an den letzten %d Tagen", name, days)
 	}
 	return fmt.Sprintf("Uptime of %s over the last %d days", name, days)
+}
+
+// latencySummary is the mean and the worst single probe behind a curve, so the
+// drawing has a number beside it instead of only a shape.
+func latencySummary(days []DayPoint, l labels) string {
+	total, count, worst := 0.0, 0, 0.0
+	for _, d := range days {
+		if !d.HasLatency {
+			continue
+		}
+		total += d.LatencyMS
+		count++
+		if d.MaxMS > worst {
+			worst = d.MaxMS
+		}
+	}
+	if count == 0 {
+		return ""
+	}
+	mean := l.measure(total / float64(count))
+	if worst <= 0 || worst <= total/float64(count) {
+		return "Ø " + mean
+	}
+	return "Ø " + mean + " · max " + l.measure(worst)
 }
 
 // measure is a latency axis or figure. Below ten milliseconds one decimal says
@@ -470,12 +562,18 @@ func (l labels) unit(en, de string) string {
 //go:embed page.css
 var pageCSS string
 
+//nolint:misspell // "theme-color" and "prefers-color-scheme" are the HTML names
 var pageTemplate = template.Must(template.New("status").Parse(`<!doctype html>
 <html lang="{{.Lang}}" data-theme="{{.Config.Theme}}" data-accent="{{.Config.Accent}}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="{{if .Logo.IconURL}}{{.Logo.IconURL}}{{else}}/assets/favicon.svg{{end}}">
+{{if eq .Config.Theme "dark"}}<meta name="theme-color" content="#14171a">
+{{else if eq .Config.Theme "light"}}<meta name="theme-color" content="#f6f7f9">
+{{else}}<meta name="theme-color" content="#f6f7f9" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#14171a" media="(prefers-color-scheme: dark)">{{end}}
 <meta http-equiv="refresh" content="60">
 <title>{{.Title}}</title>
 <style>{{.CSS}}</style>
@@ -502,8 +600,9 @@ var pageTemplate = template.Must(template.New("status").Parse(`<!doctype html>
 <div class="banner {{.Overall}}">
   <strong>{{.OverallWord}}</strong>
   {{if .Counts}}<span class="counts">{{.Counts}}</span>{{end}}
-  {{if .OverallUptime}}<span class="banner-uptime {{.Overall}}">{{.OverallUptime}}</span>{{end}}
+  {{if .OverallUptime}}<span class="banner-uptime {{.OverallUptimeClass}}">{{.OverallUptime}}</span>{{end}}
 </div>
+{{if .Legend}}<div class="legend">{{range .Legend}}<span><span class="key {{.Class}}" aria-hidden="true"></span>{{.Text}}</span>{{end}}</div>{{end}}
 
 {{if .Sections}}
 {{range .Sections}}
@@ -565,8 +664,9 @@ var pageTemplate = template.Must(template.New("status").Parse(`<!doctype html>
         <span>{{.UptimeHistory}} · {{$.HistoryWindow}}</span>
         <span>{{$.Labels.Today}}</span>
       </div>
+      {{if .NoHistory}}<p class="small muted chart-empty">{{$.Labels.NoHistory}}</p>{{end}}
       {{if and $.Config.ShowResponseTime .Chart}}
-      <div class="lat-head"><span>{{$.Labels.ResponseTime}}</span><span>{{$.Labels.DailyAverage}}</span></div>
+      <div class="lat-head"><span>{{$.Labels.ResponseTime}}</span><span>{{.LatencySummary}}</span></div>
       <div class="lat">
         <div class="lat-scale"><span>{{.Chart.Max}}</span><span>{{.Chart.Mid}}</span><span>0</span></div>
         <div class="lat-canvas">{{.Chart.SVG}}</div>
@@ -611,15 +711,27 @@ var pageTemplate = template.Must(template.New("status").Parse(`<!doctype html>
 <p class="muted">{{.Labels.NoServices}}</p>
 {{end}}
 
-{{if and .Config.ShowIncidents .Incidents}}
+{{if .Config.ShowIncidents}}
 <section class="group">
-<h2>{{.Labels.Incidents}}</h2>
-<ul class="incidents">
-{{range .Incidents}}<li{{if .Ongoing}} class="ongoing"{{end}}>
-  <strong>{{.Sensor}}</strong> · <span class="muted">{{.When}} · {{.State}}</span>
-  {{if .Cause}}<p>{{.Cause}}</p>{{end}}
-</li>
-{{end}}</ul>
+<div class="incident-box">
+  <h2>{{.Labels.Incidents}}<span class="section-count">{{if .Incidents}}{{len .Incidents}} · {{end}}{{.IncidentWindow}}</span></h2>
+  {{if .Incidents}}
+  <div class="incidents">
+  {{range .Incidents}}
+  <article class="incident {{.StateClass}}">
+    <div class="incident-top">
+      <b>{{.Sensor}}</b>
+      <span class="pill {{.StateClass}}">{{.State}}</span>
+    </div>
+    <div class="incident-meta">{{.When}}{{if .Duration}} · {{.Duration}}{{end}}</div>
+    {{if .Cause}}<p>{{.Cause}}</p>{{end}}
+  </article>
+  {{end}}
+  </div>
+  {{else}}
+  <p class="incident-empty muted">{{.NoIncidents}}</p>
+  {{end}}
+</div>
 </section>
 {{end}}
 
