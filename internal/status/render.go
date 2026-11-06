@@ -31,6 +31,13 @@ type labels struct {
 	Never      string
 	Ongoing    string
 	Resolved   string
+	Today      string
+	// ResponseTime and DailyAverage sit above the curve; NoData and Maintenance
+	// are what a bar says when it is not a percentage.
+	ResponseTime string
+	DailyAverage string
+	NoData       string
+	Maintenance  string
 
 	up, down, warn, paused, unknown string
 }
@@ -42,6 +49,8 @@ var (
 		Incidents: "Recent incidents", NoServices: "No services have been published yet.",
 		Updated: "Updated", Footer: "ProbeGlass", Edit: "Edit page",
 		Never: "never", Ongoing: "ongoing", Resolved: "resolved",
+		Today: "Today", ResponseTime: "Response time", DailyAverage: "Daily average",
+		NoData: "no data", Maintenance: "maintenance",
 		up: "Operational", down: "Down", warn: "Degraded", paused: "Paused",
 		unknown: "Unknown",
 	}
@@ -51,6 +60,8 @@ var (
 		Incidents: "Letzte Vorfälle", NoServices: "Es sind noch keine Dienste veröffentlicht.",
 		Updated: "Aktualisiert", Footer: "ProbeGlass", Edit: "Seite bearbeiten",
 		Never: "noch nie", Ongoing: "andauernd", Resolved: "behoben",
+		Today: "Heute", ResponseTime: "Antwortzeit", DailyAverage: "Tagesmittel",
+		NoData: "keine Daten", Maintenance: "Wartung",
 		up: "Betriebsbereit", down: "Ausgefallen", warn: "Gestört",
 		paused: "Pausiert", unknown: "Unbekannt",
 	}
@@ -90,6 +101,8 @@ type view struct {
 	Overall       model.Status
 	OverallWord   string
 	Counts        string
+	OverallUptime string
+	HistoryWindow string
 	Labels        labels
 	Sections      []sectionView
 	Notices       []noticeView
@@ -102,23 +115,37 @@ type sectionView struct {
 	Colour    string
 	IconURL   string
 	IconDrawn bool
+	Count     string
 	Sensors   []sensorView
 }
 
 type sensorView struct {
-	Name       string
-	Status     model.Status
-	StatusWord string
-	Uptime24   string
-	Uptime7    string
-	Uptime30   string
-	LastCheck  string
-	IconURL    string
-	IconDrawn  bool
-	Beats      []beatView
+	Name          string
+	Type          string
+	Status        model.Status
+	StatusWord    string
+	Uptime24      string
+	Uptime7       string
+	Uptime30      string
+	UptimeHistory string
+	LastCheck     string
+	IconURL       string
+	IconDrawn     bool
+	Beats         []beatView
+	Days          []dayView
+	StripLabel    string
+	HistoryStart  string
+	Chart         *chartView
 }
 
 type beatView struct {
+	Class string
+	Title string
+}
+
+// dayView is one bar of the uptime strip. The title is what the browser shows on
+// hover, so it carries the date and the figure or the reason there is none.
+type dayView struct {
 	Class string
 	Title string
 }
@@ -191,23 +218,62 @@ func Render(w io.Writer, page Page, acceptLanguage string) error {
 		}
 	}
 	v.Counts = l.counts(up, down, paused)
+	v.HistoryWindow = l.window(cfg.HistoryDays)
+	if page.OverallUptime.Known {
+		v.OverallUptime = uptimeText(page.OverallUptime, l) + " · " + v.HistoryWindow
+	}
 
 	for _, section := range page.Sections {
 		sv := sectionView{
 			Title: section.Title, Colour: section.Colour,
 			IconURL: section.IconURL, IconDrawn: section.IconDrawn,
 		}
+		sectionUp := 0
+		for _, s := range section.Sensors {
+			if s.Status == model.StatusUp {
+				sectionUp++
+			}
+		}
+		sv.Count = l.sectionCount(sectionUp, len(section.Sensors))
+
 		for _, s := range section.Sensors {
 			row := sensorView{
-				Name:       s.Name,
-				Status:     s.Status,
-				StatusWord: l.word(s.Status),
-				Uptime24:   uptimeText(s.Uptime24, l),
-				Uptime7:    uptimeText(s.Uptime7, l),
-				Uptime30:   uptimeText(s.Uptime30, l),
-				LastCheck:  l.when(s.LastCheck),
-				IconURL:    s.IconURL,
-				IconDrawn:  s.IconDrawn,
+				Name:          s.Name,
+				Type:          s.Type,
+				Status:        s.Status,
+				StatusWord:    l.word(s.Status),
+				Uptime24:      uptimeText(s.Uptime24, l),
+				Uptime7:       uptimeText(s.Uptime7, l),
+				Uptime30:      uptimeText(s.Uptime30, l),
+				UptimeHistory: uptimeText(s.UptimeHistory, l),
+				LastCheck:     l.when(s.LastCheck),
+				IconURL:       s.IconURL,
+				IconDrawn:     s.IconDrawn,
+				StripLabel:    l.stripLabel(s.Name, cfg.HistoryDays),
+			}
+			if len(s.Days) > 0 {
+				row.HistoryStart = l.dayShort(s.Days[0].Date)
+			}
+			for _, day := range s.Days {
+				class, title := "up", ""
+				switch {
+				case !day.HasData:
+					class, title = "nodata", l.dayShort(day.Date)+" · "+l.NoData
+				case day.Maintenance:
+					class, title = "excused", l.dayShort(day.Date)+" · "+l.Maintenance
+				default:
+					title = l.dayShort(day.Date) + " · " + uptimeText(day.Uptime, l)
+					switch {
+					case day.Uptime.Percent < 99:
+						class = "down"
+					case day.Uptime.Percent < 99.9:
+						class = "warn"
+					}
+				}
+				row.Days = append(row.Days, dayView{Class: class, Title: title})
+			}
+			if cfg.Layout == "charts" && cfg.ShowResponseTime {
+				row.Chart = buildChart(s.Days, l)
 			}
 			for _, beat := range s.Heartbeat {
 				class := "down"
@@ -312,6 +378,59 @@ func uptimeText(u Uptime, l labels) string {
 	return fmt.Sprintf("%.2f%%", p)
 }
 
+// dayShort is the label under the strip and in a bar's tooltip. It is a day, not
+// a moment, so it carries no clock and no zone.
+func (l labels) dayShort(t time.Time) string {
+	u := t.UTC()
+	if l.Lang == "de" {
+		months := [...]string{"Jan.", "Feb.", "März", "Apr.", "Mai", "Juni",
+			"Juli", "Aug.", "Sept.", "Okt.", "Nov.", "Dez."}
+		return fmt.Sprintf("%d. %s", u.Day(), months[int(u.Month())-1])
+	}
+	return u.Format("2 Jan")
+}
+
+// window is the length of the history in words, for the figure above the strip.
+func (l labels) window(days int) string {
+	if l.Lang == "de" {
+		return fmt.Sprintf("%d Tage", days)
+	}
+	if days == 1 {
+		return "1 day"
+	}
+	return fmt.Sprintf("%d days", days)
+}
+
+// sectionCount is the small line beside a section heading.
+func (l labels) sectionCount(up, total int) string {
+	if l.Lang == "de" {
+		return fmt.Sprintf("%d von %d betriebsbereit", up, total)
+	}
+	return fmt.Sprintf("%d of %d operational", up, total)
+}
+
+// stripLabel is the strip's accessible description. The bars carry their values
+// as titles, so a reader who cannot see the colours still gets the figures.
+func (l labels) stripLabel(name string, days int) string {
+	if l.Lang == "de" {
+		return fmt.Sprintf("Verfügbarkeit von %s an den letzten %d Tagen", name, days)
+	}
+	return fmt.Sprintf("Uptime of %s over the last %d days", name, days)
+}
+
+// measure is a latency axis or figure. Below ten milliseconds one decimal says
+// something; above it, a whole number is noise enough.
+func (l labels) measure(v float64) string {
+	s := fmt.Sprintf("%.0f", v)
+	if v < 10 {
+		s = fmt.Sprintf("%.1f", v)
+	}
+	if l.Lang == "de" {
+		s = strings.Replace(s, ".", ",", 1)
+	}
+	return s + " ms"
+}
+
 func durationText(d time.Duration, l labels) string {
 	if d < 0 {
 		d = 0
@@ -382,12 +501,13 @@ var pageTemplate = template.Must(template.New("status").Parse(`<!doctype html>
 <div class="banner {{.Overall}}">
   <strong>{{.OverallWord}}</strong>
   {{if .Counts}}<span class="counts">{{.Counts}}</span>{{end}}
+  {{if .OverallUptime}}<span class="banner-uptime {{.Overall}}">{{.OverallUptime}}</span>{{end}}
 </div>
 
 {{if .Sections}}
 {{range .Sections}}
 <section class="group{{if .Colour}} c-{{.Colour}}{{end}}">
-  {{if .Title}}<h2>{{if .IconURL}}{{template "logo" .}}{{end}}{{.Title}}</h2>{{end}}
+  {{if ne $.Config.Layout "charts"}}{{if .Title}}<h2>{{if .IconURL}}{{template "logo" .}}{{end}}{{.Title}}{{if .Count}}<span class="section-count">{{.Count}}</span>{{end}}</h2>{{end}}{{end}}
 
   {{if eq $.Config.Layout "cards"}}
   <div class="cards">
@@ -421,6 +541,38 @@ var pageTemplate = template.Must(template.New("status").Parse(`<!doctype html>
       {{if $.Config.ShowUptime24}}<span class="num">{{.Uptime24}}</span>{{end}}
       {{if and $.Config.ShowHeartbeat .Beats}}{{template "beats" .}}{{end}}
     </div>
+    {{end}}
+  </div>
+
+  {{else if eq $.Config.Layout "charts"}}
+  <div class="charts">
+    {{if .Title}}<h2>{{if .IconURL}}{{template "logo" .}}{{end}}{{.Title}}{{if .Count}}<span class="section-count">{{.Count}}</span>{{end}}</h2>{{end}}
+    {{range .Sensors}}
+    <article class="chart-row {{.Status}}">
+      <div class="chart-head">
+        {{if $.Config.ShowLogos}}{{template "logo" .}}{{end}}
+        <b class="chart-name">{{.Name}}</b>
+        {{if .Type}}<span class="chart-type">{{.Type}}</span>{{end}}
+        <span class="chart-uptime">{{.UptimeHistory}}</span>
+        <span class="pill {{.Status}}">{{.StatusWord}}</span>
+      </div>
+      {{if $.Config.ShowUptimeStrip}}
+      <div class="uptime-strip" role="img" aria-label="{{.StripLabel}}">{{range .Days}}<i class="{{.Class}}" title="{{.Title}}"></i>{{end}}</div>
+      {{end}}
+      <div class="strip-axis">
+        <span>{{.HistoryStart}}</span>
+        <span>{{.UptimeHistory}} · {{$.HistoryWindow}}</span>
+        <span>{{$.Labels.Today}}</span>
+      </div>
+      {{if and $.Config.ShowResponseTime .Chart}}
+      <div class="lat-head"><span>{{$.Labels.ResponseTime}}</span><span>{{$.Labels.DailyAverage}}</span></div>
+      <div class="lat">
+        <div class="lat-scale"><span>{{.Chart.Max}}</span><span>{{.Chart.Mid}}</span><span>0</span></div>
+        <div class="lat-canvas">{{.Chart.SVG}}</div>
+      </div>
+      {{end}}
+      {{if $.Config.ShowLastCheck}}<div class="small muted chart-last">{{$.Labels.LastCheck}}: {{.LastCheck}}</div>{{end}}
+    </article>
     {{end}}
   </div>
 

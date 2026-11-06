@@ -32,7 +32,7 @@ type Config struct {
 	// percent: 0 leaves the photograph bare, 90 leaves a hint of it.
 	BackgroundDim int `json:"background_dim"`
 	// Theme is "auto", "light" or "dark"; Accent one of model.ACCENTS; Layout
-	// "list", "cards" or "compact".
+	// "list", "cards", "compact" or "charts".
 	Theme  string `json:"theme"`
 	Accent string `json:"accent"`
 	Layout string `json:"layout"`
@@ -45,6 +45,14 @@ type Config struct {
 	// ShowHeartbeat draws the last probes as a strip of ticks, the way a status
 	// page usually says "it has been fine for a while" without a chart.
 	ShowHeartbeat bool `json:"show_heartbeat"`
+	// ShowUptimeStrip draws one bar per day over HistoryDays, coloured by that
+	// day's availability. It is the long view the heartbeat cannot give.
+	ShowUptimeStrip bool `json:"show_uptime_strip"`
+	// ShowResponseTime draws the daily average response time over the same
+	// window, with the days that held a failure marked.
+	ShowResponseTime bool `json:"show_response_time"`
+	// HistoryDays is the window behind the strip and the curve: 30, 60 or 90.
+	HistoryDays   int  `json:"history_days"`
 	ShowIncidents bool `json:"show_incidents"`
 	// ShowCauses publishes the probe's own words on an incident. Off by default:
 	// that text is written for the operator.
@@ -92,28 +100,35 @@ type Entry struct {
 // Accents is the palette a page may use, shared with the dashboard's own.
 var Accents = []string{"azure", "violet", "emerald", "amber", "rose", "slate"}
 
-// Lays is the order the editor offers; the first is the default.
-var Layouts = []string{"list", "cards", "compact"}
+// Layouts is the order the editor offers; the first is the default.
+var Layouts = []string{"charts", "list", "cards", "compact"}
 
-// DefaultConfig is the page somebody gets before they change anything: a plain
-// list of the sensors they tick, with the same words in both languages.
+// DefaultConfig is the page somebody gets before they change anything: the
+// diagrams first, because the question a status page answers is "has it been
+// fine lately" and a window of days answers it better than one number.
+//
+// A stored page keeps its own layout. Only a page that never chose one — a fresh
+// installation, or the flat selection from before sections existed — starts here.
 func DefaultConfig() Config {
 	return Config{
-		Title:         "Status",
-		BackgroundDim: 60,
-		Theme:         "auto",
-		Accent:        "azure",
-		Layout:        "list",
-		ShowLogos:     true,
-		ShowUptime24:  true,
-		ShowUptime7:   true,
-		ShowUptime30:  true,
-		ShowLastCheck: true,
-		ShowHeartbeat: true,
-		ShowIncidents: true,
-		IncidentDays:  30,
-		Notices:       []Notice{},
-		Sections:      []Section{},
+		Title:            "Status",
+		BackgroundDim:    60,
+		Theme:            "auto",
+		Accent:           "azure",
+		Layout:           "charts",
+		ShowLogos:        true,
+		ShowUptime24:     true,
+		ShowUptime7:      true,
+		ShowUptime30:     true,
+		ShowLastCheck:    true,
+		ShowHeartbeat:    true,
+		ShowUptimeStrip:  true,
+		ShowResponseTime: true,
+		HistoryDays:      90,
+		ShowIncidents:    true,
+		IncidentDays:     30,
+		Notices:          []Notice{},
+		Sections:         []Section{},
 	}
 }
 
@@ -177,9 +192,12 @@ func Normalise(cfg *Config) {
 	}
 	cfg.Theme = oneOf(cfg.Theme, []string{"auto", "light", "dark"}, "auto")
 	cfg.Accent = oneOf(cfg.Accent, Accents, "azure")
-	cfg.Layout = oneOf(cfg.Layout, Layouts, "list")
+	cfg.Layout = oneOf(cfg.Layout, Layouts, "charts")
 	if cfg.IncidentDays != 7 && cfg.IncidentDays != 30 && cfg.IncidentDays != 90 {
 		cfg.IncidentDays = 30
+	}
+	if cfg.HistoryDays != 30 && cfg.HistoryDays != 60 && cfg.HistoryDays != 90 {
+		cfg.HistoryDays = 90
 	}
 
 	if len(cfg.Notices) > 10 {

@@ -11,7 +11,7 @@ here and what the release says are the same document.
 
 | Version | Released | In one line |
 | --- | --- | --- |
-| [Unreleased] | — | SNMP v3, device and application templates, a network scan, a certificate inventory, a configurable public status page, and Prometheus metrics |
+| [Unreleased] | — | SNMP v3, device and application templates, a network scan, a certificate inventory, a configurable public status page with uptime strips and response-time curves, and Prometheus metrics |
 | [0.2.3] | 2026-10-20 | Six more sensor types, a grouped sensor chooser with tag settings, escalation, a YAML export, Gotify as a seventh channel, and example pictures and maintenance windows on the first dashboard |
 | [0.2.2] | 2026-10-18 | A symbol on every sensor, place and group — ours, yours, or searched for online — and one set of measurements for the whole dashboard |
 | [0.2.1] | 2026-10-16 | A sensor under maintenance says so |
@@ -125,6 +125,16 @@ here and what the release says are the same document.
   and separate from the API key: a scraper gets the numbers and no write route.
   Rotating it closes the old one; removing it makes `/metrics` answer `404`.
 
+- **Uptime strips and response-time curves on the public status page.** A new
+  **Charts** layout draws one bar per day for 30, 60 or 90 days under every
+  service — green from 99.9 %, amber from 99 %, red below it, grey for a day
+  without probes and blue for maintenance — and a daily-average response-time
+  curve below it, with the days that held a failure marked. Both are server-
+  rendered HTML and SVG: no script, no new dependency, and one batched query for
+  every published service instead of one per service. The section heading carries
+  how many of its services are fine, and the banner carries the whole page's
+  figure over the chosen window. The existing list, cards and compact layouts are
+  unchanged and stay selectable.
 - **A status-page background you can upload.** PNG, JPEG or GIF up to
   4096×4096 pixels and 12 MiB, stored in the database and carried in the JSON
   backup. An upload is used instead of the background URL until it is removed;
@@ -134,6 +144,10 @@ here and what the release says are the same document.
 
 ### Changed
 
+- **The public status page starts in the Charts layout.** A page that never
+  chose a layout now opens with the day-by-day strip and the response-time
+  curve; a stored page keeps the layout it has, and list, cards and compact stay
+  one click away.
 - **One Seerr template.** Overseerr and Jellyseerr merged into Seerr in February
   2026; the catalogue now has one request-manager entry on port 5055, checking
   `/api/v1/status` with `X-Api-Key`. Existing sensors and their

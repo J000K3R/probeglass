@@ -37,14 +37,37 @@ type Beat struct {
 	When    time.Time
 }
 
+// DayPoint is one day of a published service's history: the figure the strip
+// colours and the average the curve plots.
+type DayPoint struct {
+	Date time.Time
+	// Uptime is that day's availability among the counted probes. Known is false
+	// for a day before the sensor existed or while it was not probed at all.
+	Uptime Uptime
+	// LatencyMS is the day's average successful latency, drawn only when the day
+	// has data.
+	LatencyMS  float64
+	HasData    bool
+	HasLatency bool
+	// Maintenance marks a day whose every probe fell inside a maintenance window.
+	// It is not an absence of data and must not be drawn as one.
+	Maintenance bool
+	// Outage marks a day that held at least one failed counted probe.
+	Outage bool
+}
+
 // Sensor is one published service, as the page draws it.
 type Sensor struct {
-	Name      string
-	Status    model.Status
-	Uptime24  Uptime
-	Uptime7   Uptime
-	Uptime30  Uptime
-	LastCheck time.Time
+	Name          string
+	Type          string
+	Status        model.Status
+	Uptime24      Uptime
+	Uptime7       Uptime
+	Uptime30      Uptime
+	UptimeHistory Uptime
+	LastCheck     time.Time
+	// Days is the history window, oldest first, exactly Config.HistoryDays long.
+	Days []DayPoint
 	// IconURL is where the symbol is fetched from, and IconDrawn says whether it
 	// is one of the monochrome drawings (drawn with a mask, so it follows the
 	// theme) rather than a colour logo (an image as it is).
@@ -59,6 +82,8 @@ type SectionView struct {
 	Colour    string
 	IconURL   string
 	IconDrawn bool
+	Up        int
+	Total     int
 	Sensors   []Sensor
 }
 
@@ -96,6 +121,7 @@ type Page struct {
 	Notices       []NoticeView
 	Sensors       []Sensor
 	Incidents     []Incident
+	OverallUptime Uptime
 	ShowCauses    bool
 	// EditURL is the dashboard's status panel, set only when the reader is a
 	// signed-in administrator. It is the one link that does not lead outward.
@@ -224,6 +250,23 @@ func Build(ctx context.Context, st *store.Store, snaps map[int64]scheduler.Snaps
 		}
 	}
 
+	// The history behind the strip, the curve and the headline figure. One query
+	// for every published sensor; the window ends with today so the last bar is
+	// the day the reader is looking at, not yesterday.
+	history := map[int64][]model.SeriesPoint{}
+	if len(ids) > 0 {
+		to := now.UTC().Truncate(24*time.Hour).AddDate(0, 0, 1)
+		from := to.AddDate(0, 0, -cfg.HistoryDays)
+		history, err = st.SeriesBySensor(ctx, ids, from, to, cfg.HistoryDays)
+		if err != nil {
+			return Page{}, err
+		}
+	}
+
+	// The banner's figure is the whole page's, weighted by the probes behind it —
+	// the same rule a single service's figure follows.
+	var historyTotal, historyOK int
+
 	for _, section := range cfg.Sections {
 		view := SectionView{Title: section.Title, Colour: section.Colour}
 		view.IconURL, view.IconDrawn = iconOf(section.Icon, iconBase)
@@ -232,12 +275,16 @@ func Build(ctx context.Context, st *store.Store, snaps map[int64]scheduler.Snaps
 			if !ok {
 				continue // deleted since the page was configured
 			}
+			points := history[entry.ID]
 			row := Sensor{
-				Name:      entry.Label,
-				Uptime24:  uptimeOf(uptimes[0][entry.ID]),
-				Uptime7:   uptimeOf(uptimes[1][entry.ID]),
-				Uptime30:  uptimeOf(uptimes[2][entry.ID]),
-				Heartbeat: heartbeats[entry.ID],
+				Name:          entry.Label,
+				Type:          typeLabel(sensor.Type),
+				Uptime24:      uptimeOf(uptimes[0][entry.ID]),
+				Uptime7:       uptimeOf(uptimes[1][entry.ID]),
+				Uptime30:      uptimeOf(uptimes[2][entry.ID]),
+				UptimeHistory: uptimeOfSeries(points),
+				Days:          dayPoints(points),
+				Heartbeat:     heartbeats[entry.ID],
 			}
 			if row.Name == "" {
 				row.Name = sensor.Name
@@ -250,11 +297,23 @@ func Build(ctx context.Context, st *store.Store, snaps map[int64]scheduler.Snaps
 			row.Status = snaps[entry.ID].Status
 			settleStatus(ctx, st, &row, sensor, snaps[entry.ID])
 			view.Sensors = append(view.Sensors, row)
+			view.Total++
+			if row.Status == model.StatusUp {
+				view.Up++
+			}
+			for _, p := range points {
+				historyTotal += p.Total
+				historyOK += p.OK
+			}
 			page.Sensors = append(page.Sensors, row)
 		}
 		if len(view.Sensors) > 0 {
 			page.Sections = append(page.Sections, view)
 		}
+	}
+	page.OverallUptime = Uptime{Known: historyTotal > 0}
+	if historyTotal > 0 {
+		page.OverallUptime.Percent = float64(historyOK) / float64(historyTotal) * 100
 	}
 
 	incidents, err := st.ListIncidentsWithNames(ctx, store.IncidentFilter{
@@ -340,6 +399,48 @@ func settleStatus(ctx context.Context, st *store.Store, row *Sensor, sensor mode
 
 func uptimeOf(s store.UptimeStats) Uptime {
 	return Uptime{Percent: s.Percent, Known: s.Total > 0}
+}
+
+// uptimeOfSeries is the figure for a window read off the same daily points the
+// strip draws, so the number above the strip and the strip itself agree.
+func uptimeOfSeries(points []model.SeriesPoint) Uptime {
+	total, ok := 0, 0
+	for _, p := range points {
+		total += p.Total
+		ok += p.OK
+	}
+	if total == 0 {
+		return Uptime{}
+	}
+	return Uptime{Percent: float64(ok) / float64(total) * 100, Known: true}
+}
+
+// dayPoints turns the store's series into the days the page draws.
+func dayPoints(points []model.SeriesPoint) []DayPoint {
+	out := make([]DayPoint, 0, len(points))
+	for _, p := range points {
+		day := DayPoint{
+			Date:        p.TS,
+			Uptime:      Uptime{Percent: p.UptimePC, Known: p.Total > 0},
+			LatencyMS:   p.AvgMS,
+			HasData:     p.Total > 0 || p.Excused > 0,
+			HasLatency:  p.Total > 0 || p.Excused > 0,
+			Maintenance: p.Total == 0 && p.Excused > 0,
+			Outage:      p.Total > 0 && p.OK < p.Total,
+		}
+		out = append(out, day)
+	}
+	return out
+}
+
+// typeLabel is the small protocol mark beside a service. It is the sensor's own
+// type, upper-cased, with ping called ICMP because that is the protocol a reader
+// of a status page recognises.
+func typeLabel(t model.SensorType) string {
+	if t == model.SensorPing {
+		return "ICMP"
+	}
+	return strings.ToUpper(string(t))
 }
 
 // iconOf turns a stored symbol reference into a URL the public page can fetch.

@@ -79,6 +79,73 @@ func TestRenderEscapesWhatASensorIsCalled(t *testing.T) {
 	}
 }
 
+// TestRenderDrawsTheHistory is the page's new shape: a strip per service, a
+// curve under it, the overall figure in the banner and the section's own count.
+func TestRenderDrawsTheHistory(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Layout = "charts"
+	cfg.HistoryDays = 90
+	cfg.Sections = []Section{{Title: "Web", Sensors: []Entry{{ID: 1}, {ID: 2}}}}
+
+	days := []DayPoint{
+		{Date: time.Date(2026, 8, 8, 0, 0, 0, 0, time.UTC), Uptime: Uptime{Percent: 100, Known: true}, HasData: true, HasLatency: true, LatencyMS: 20},
+		{Date: time.Date(2026, 8, 9, 0, 0, 0, 0, time.UTC), Uptime: Uptime{Percent: 99.5, Known: true}, HasData: true, HasLatency: true, LatencyMS: 40, Outage: true},
+		{Date: time.Date(2026, 8, 10, 0, 0, 0, 0, time.UTC), Maintenance: true, HasData: true, HasLatency: true, LatencyMS: 30},
+		{Date: time.Date(2026, 8, 11, 0, 0, 0, 0, time.UTC)},
+		{Date: time.Date(2026, 8, 12, 0, 0, 0, 0, time.UTC), Uptime: Uptime{Percent: 95, Known: true}, HasData: true, HasLatency: true, LatencyMS: 60, Outage: true},
+	}
+	page := Page{
+		Config:        cfg,
+		Updated:       time.Date(2026, 10, 28, 17, 0, 0, 0, time.UTC),
+		OverallUptime: Uptime{Percent: 99.9, Known: true},
+		Sections: []SectionView{{Title: "Web", Up: 2, Total: 2, Sensors: []Sensor{
+			{Name: "Web", Type: "HTTP", Status: model.StatusUp, UptimeHistory: Uptime{Percent: 99.9, Known: true}, Days: days},
+			{Name: "Database", Type: "TCP", Status: model.StatusUp, UptimeHistory: Uptime{Percent: 100, Known: true}, Days: days},
+		}}},
+		Sensors: []Sensor{{Status: model.StatusUp}, {Status: model.StatusUp}},
+	}
+	var out bytes.Buffer
+	if err := Render(&out, page, "en"); err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	html := out.String()
+	for _, want := range []string{
+		"layout-charts", "uptime-strip", "chart-type", "chart-uptime",
+		"strip-axis", "lat-canvas", "lat-line", "lat-outage",
+		"banner-uptime", "2 of 2 operational", "99.90% · 90 days",
+		`class="nodata"`, `class="warn"`, `class="excused"`, `class="down"`,
+	} {
+		if !strings.Contains(html, want) {
+			t.Errorf("the page does not carry %q", want)
+		}
+	}
+}
+
+// TestDayPointsKeepGapsAndMaintenanceApart guards the difference between "not
+// probed" and "inside a maintenance window". Both have no counted probes, and
+// only one of them is a gap.
+func TestDayPointsKeepGapsAndMaintenanceApart(t *testing.T) {
+	points := []model.SeriesPoint{
+		{},
+		{Excused: 5},
+		{Total: 10, OK: 8, UptimePC: 80, AvgMS: 42},
+		{Total: 10, OK: 10, UptimePC: 100, AvgMS: 21},
+	}
+	days := dayPoints(points)
+	if days[0].HasData || days[0].Maintenance || days[0].Outage {
+		t.Errorf("an empty day is not a gap: %+v", days[0])
+	}
+	if !days[1].HasData || !days[1].Maintenance || days[1].Uptime.Known {
+		t.Errorf("an excused day is maintenance, not data: %+v", days[1])
+	}
+	if !days[2].Outage || days[2].Uptime.Percent != 80 || days[2].LatencyMS != 42 {
+		t.Errorf("a day with a failed probe: %+v", days[2])
+	}
+	if days[3].Outage || days[3].Uptime.Percent != 100 {
+		t.Errorf("a clean day: %+v", days[3])
+	}
+}
+
 func TestNormaliseFillsAndDrops(t *testing.T) {
 	cfg := Config{
 		Title:         strings.Repeat("x", 200),
@@ -103,8 +170,11 @@ func TestNormaliseFillsAndDrops(t *testing.T) {
 	if len(cfg.Title) != 80 {
 		t.Errorf("title was not clamped: %d characters", len(cfg.Title))
 	}
-	if cfg.Theme != "auto" || cfg.Accent != "azure" || cfg.Layout != "list" || cfg.IncidentDays != 30 {
+	if cfg.Theme != "auto" || cfg.Accent != "azure" || cfg.Layout != "charts" || cfg.IncidentDays != 30 {
 		t.Errorf("defaults not applied: %+v", cfg)
+	}
+	if cfg.HistoryDays != 90 {
+		t.Errorf("history window was not defaulted: %d", cfg.HistoryDays)
 	}
 	if cfg.Logo != "builtin:server" {
 		t.Errorf("logo: %q", cfg.Logo)

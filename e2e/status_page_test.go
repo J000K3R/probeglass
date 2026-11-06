@@ -248,6 +248,40 @@ func TestTheStatusPagePanelAndThePageItShares(t *testing.T) {
 		t.Error("a German browser did not get the German page")
 	}
 
+	// The charts layout puts a strip of ninety days under every service, and the
+	// window is the operator's choice. Both are one save; the page must carry the
+	// layout and the shorter window.
+	err = withTimeout(ctx, func(tctx context.Context) error {
+		return chromedp.Do(tctx,
+			chromedp.Evaluate[chromedp.Void](`document.querySelector('#status-panel [data-status-layout][value="charts"]').click()`),
+			chromedp.Evaluate[chromedp.Void](`document.querySelector('#status-panel [data-status-history][value="30"]').click()`),
+			chromedp.Evaluate[chromedp.Void](`document.querySelector('#status-panel [data-action="status-save"]').click()`),
+			chromedp.Poll[chromedp.Void](`fetch('/api/status-page').then(r => r.json())
+				.then(s => s.config.layout === 'charts' && s.config.history_days === 30)`,
+				chromedp.WithPollingTimeout(10*time.Second)),
+		)
+	})
+	if err != nil {
+		capture(t, ctx, screenshotDir, "status-page-charts")
+		t.Fatalf("the charts layout was not saved: %v", err)
+	}
+	chartsHTML := readAsync[string](t, ctx, `fetch(`+jsQuote(publicURL)+`).then(r => r.text())`,
+		"read the page in the charts layout")
+	for _, want := range []string{"layout-charts", "uptime-strip", "chart-head", "section-count"} {
+		if !strings.Contains(chartsHTML, want) {
+			t.Errorf("the charts page does not carry %q", want)
+		}
+	}
+	// The browser's own language decides the wording, so accept both.
+	if !strings.Contains(chartsHTML, "30 days") && !strings.Contains(chartsHTML, "30 Tage") {
+		t.Error("the charts page does not name its 30-day window")
+	}
+	// One bar per day, whatever colour each day has. The charts layout draws no
+	// heartbeat, so every <i> on the page is a day.
+	if got := strings.Count(chartsHTML, `<i class="`); got != 30 {
+		t.Errorf("the strip has %d bars, want 30 for a 30-day window", got)
+	}
+
 	// Removing the upload falls back to the configured URL, and the old image is
 	// gone from the public route.
 	err = withTimeout(ctx, func(tctx context.Context) error {

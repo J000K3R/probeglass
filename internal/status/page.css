@@ -112,9 +112,39 @@ h2 {
 .banner.unknown { border-left-color: var(--paused); }
 .banner strong { font-size: 16px; }
 .counts { color: var(--dim); font-size: 13px; margin-left: auto; text-align: right; }
+/* The whole page's figure over the same window the strips use. It takes the
+   banner's own colour, so a green page does not wear an amber number. */
+.banner-uptime {
+  padding: 3px 9px; border-radius: 999px; font-size: 12px; font-weight: 600;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+  color: var(--ok);
+  background: color-mix(in srgb, var(--ok) 13%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ok) 32%, transparent);
+}
+.banner-uptime.warn {
+  color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 13%, transparent);
+  border-color: color-mix(in srgb, var(--warn) 34%, transparent);
+}
+.banner-uptime.down {
+  color: var(--crit);
+  background: color-mix(in srgb, var(--crit) 13%, transparent);
+  border-color: color-mix(in srgb, var(--crit) 34%, transparent);
+}
+.banner-uptime.paused, .banner-uptime.unknown {
+  color: var(--paused);
+  background: color-mix(in srgb, var(--paused) 12%, transparent);
+  border-color: color-mix(in srgb, var(--paused) 28%, transparent);
+}
 
 .group { margin-bottom: 8px; }
 .group h2 { display: flex; align-items: center; gap: 7px; }
+/* How much of a section is fine, in the heading's own line. It is sentence case
+   and not part of the heading's colour, because it is a figure, not a label. */
+.section-count {
+  margin-left: auto; color: var(--dim); font-size: 12px; font-weight: 500;
+  letter-spacing: 0; text-transform: none; white-space: nowrap;
+}
 .group.c-azure h2 { color: var(--azure); }
 .group.c-violet h2 { color: var(--violet); }
 .group.c-emerald h2 { color: var(--emerald); }
@@ -192,6 +222,71 @@ td.service .logo-drawn, .card-top .logo-drawn, .row .logo-drawn { color: var(--d
 .row .num { color: var(--dim); font-size: 13px; }
 .row .beats { margin-left: 6px; }
 
+/* charts layout: one block per service, its window and its curve. The section
+   itself is the card; the rows are separated by a hairline, the way a list is. */
+.charts {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 0 16px;
+}
+/* The section's own heading, inside the card. The rows below it are separated
+   by hairlines; the heading gets one too, so the first service does not look
+   like part of the title. */
+.charts h2 { margin: 0; padding: 14px 0 11px; border-bottom: 1px solid var(--border); }
+.chart-row { padding: 13px 0 15px; border-top: 1px solid var(--border); }
+.chart-row:first-child, .charts h2 + .chart-row { border-top: 0; }
+.chart-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-width: 0; }
+.chart-name { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.chart-type {
+  padding: 1px 5px; border: 1px solid var(--border); border-radius: 4px;
+  font-size: 9.5px; font-weight: 600; letter-spacing: 0.06em; color: var(--dim);
+}
+.chart-uptime {
+  margin-left: auto; font-size: 13px; font-weight: 600;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.chart-last { margin-top: 8px; }
+
+/* One bar per day. Flex rather than a fixed width: ninety bars have to fit a
+   phone and a desktop without a script to measure either. */
+.uptime-strip { display: flex; gap: 2px; height: 22px; margin-top: 10px; }
+.uptime-strip i {
+  flex: 1 1 0; min-width: 0; border-radius: 1.5px;
+  background: var(--ok);
+}
+.uptime-strip i.warn { background: var(--warn); }
+.uptime-strip i.down { background: var(--crit); }
+.uptime-strip i.nodata { background: var(--excused); opacity: 0.55; }
+.uptime-strip i.excused { background: var(--accent); opacity: 0.65; }
+
+.strip-axis {
+  display: flex; justify-content: space-between; gap: 10px;
+  margin-top: 5px; color: var(--dim); font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}
+.strip-axis span:nth-child(2) { color: var(--text); font-weight: 600; }
+
+/* The curve is a stretched path; its numbers stay HTML so they do not stretch
+   with it. Three labels on the left, one scale, no axes inside the drawing. */
+.lat-head {
+  display: flex; justify-content: space-between; gap: 8px;
+  margin: 12px 0 2px; color: var(--dim); font-size: 10.5px;
+}
+.lat-head span:first-child {
+  text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600;
+}
+.lat { display: grid; grid-template-columns: 46px minmax(0, 1fr); gap: 6px; }
+.lat-scale {
+  display: flex; flex-direction: column; justify-content: space-between;
+  text-align: right; color: var(--dim); font-size: 10px;
+  font-variant-numeric: tabular-nums; line-height: 1; padding: 1px 0;
+}
+.lat-canvas { height: 84px; }
+.lat-svg { display: block; width: 100%; height: 100%; }
+.lat-grid { stroke: var(--border); stroke-width: 1; }
+.lat-area { fill: var(--accent); opacity: 0.1; }
+.lat-line { fill: none; stroke: var(--accent); stroke-width: 1.8; stroke-linejoin: round; stroke-linecap: round; }
+.lat-outage { stroke: var(--crit); stroke-width: 1.5; opacity: 0.35; }
+
 .incidents { list-style: none; margin: 0; padding: 0; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
 .incidents li { padding: 12px 16px; border-bottom: 1px solid var(--border); }
 .incidents li:last-child { border-bottom: 0; }
@@ -237,4 +332,10 @@ td.service .logo-drawn, .card-top .logo-drawn, .row .logo-drawn { color: var(--d
   th.hide-sm, td.hide-sm { display: none; }
   th, td { padding: 9px 10px; }
   .row .num { display: none; }
+  .uptime-strip { gap: 1px; }
+  .uptime-strip i { border-radius: 1px; }
+  .strip-axis { font-size: 9.5px; }
+  .lat { grid-template-columns: 38px minmax(0, 1fr); }
+  .lat-canvas { height: 72px; }
+  .chart-uptime { font-size: 12px; }
 }

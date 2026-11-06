@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/j000k3r/probeglass/internal/model"
@@ -464,14 +465,8 @@ func parseBucket(s string) time.Time {
 // Series buckets a window into exactly n slots. Slots without data come back
 // with Total == 0 so the UI can render an explicit gap instead of a fake zero.
 func (s *Store) Series(ctx context.Context, sensorID int64, from, to time.Time, n int) ([]model.SeriesPoint, error) {
-	if n < 1 {
-		n = 1
-	}
-	if n > 2000 {
-		n = 2000
-	}
-	span := to.Sub(from)
-	if span <= 0 {
+	n = clampSeriesPoints(n)
+	if span := to.Sub(from); span <= 0 {
 		return nil, fmt.Errorf("invalid window: %s", span)
 	}
 
@@ -479,7 +474,107 @@ func (s *Store) Series(ctx context.Context, sensorID int64, from, to time.Time, 
 	if err != nil {
 		return nil, err
 	}
+	return bucketPoints(samples, from, to, n), nil
+}
 
+// SeriesBySensor answers the same question for many sensors in one pass.
+//
+// The public status page draws a window for every service it publishes, and
+// asking Series per service would turn one page view into one query per sensor.
+// The rows are read once, grouped in memory, and bucketed by the same code the
+// single-sensor query uses, so the two can never disagree about a bucket.
+func (s *Store) SeriesBySensor(ctx context.Context, sensorIDs []int64, from, to time.Time, n int) (map[int64][]model.SeriesPoint, error) {
+	n = clampSeriesPoints(n)
+	span := to.Sub(from)
+	if span <= 0 {
+		return nil, fmt.Errorf("invalid window: %s", span)
+	}
+	out := make(map[int64][]model.SeriesPoint, len(sensorIDs))
+	if len(sensorIDs) == 0 {
+		return out, nil
+	}
+
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(sensorIDs)), ",")
+	args := make([]any, 0, len(sensorIDs)+2)
+	for _, id := range sensorIDs {
+		args = append(args, id)
+	}
+	args = append(args, fmtTime(from), fmtTime(to))
+
+	g := s.granularityFor(span)
+	table, timeCol := g.table()
+	var query string
+	if g == granRaw {
+		query = `SELECT sensor_id, ts, ok, latency_ms, excused FROM results
+			WHERE sensor_id IN (` + placeholders + `) AND ts >= ? AND ts < ?
+			ORDER BY sensor_id, ts`
+	} else {
+		query = `SELECT sensor_id, ` + timeCol + `, samples, ok, latency_sum, latency_min,
+			latency_max, excused_samples, excused_ok FROM ` + table + `
+			WHERE sensor_id IN (` + placeholders + `) AND ` + timeCol + ` >= ? AND ` + timeCol + ` < ?
+			ORDER BY sensor_id, ` + timeCol
+	}
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	samples := make(map[int64][]model.Sample, len(sensorIDs))
+	for rows.Next() {
+		var (
+			id   int64
+			key  string
+			sm   model.Sample
+			lat  float64
+			code int
+		)
+		if g == granRaw {
+			if err := rows.Scan(&id, &key, &code, &lat, &sm.Excused); err != nil {
+				return nil, err
+			}
+			sm.TS = parseTime(key)
+			sm.OK = code
+			sm.Total = 1
+			sm.LatencyS = lat * float64(code)
+			sm.LatMin, sm.LatMax = lat, lat
+			sm.ExcusedOK = sm.Excused * code
+		} else {
+			if err := rows.Scan(&id, &key, &sm.Total, &sm.OK, &sm.LatencyS,
+				&sm.LatMin, &sm.LatMax, &sm.Excused, &sm.ExcusedOK); err != nil {
+				return nil, err
+			}
+			sm.TS = parseBucket(key)
+		}
+		samples[id] = append(samples[id], sm)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Every requested sensor gets a series, including one with no probes at all:
+	// the page wants its gaps, not a missing key.
+	for _, id := range sensorIDs {
+		out[id] = bucketPoints(samples[id], from, to, n)
+	}
+	return out, nil
+}
+
+func clampSeriesPoints(n int) int {
+	if n < 1 {
+		return 1
+	}
+	if n > 2000 {
+		return 2000
+	}
+	return n
+}
+
+// bucketPoints folds samples into exactly n uniform slots. A slot without data
+// comes back with Total == 0, so a gap is drawn as a gap rather than a zero.
+func bucketPoints(samples []model.Sample, from, to time.Time, n int) []model.SeriesPoint {
+	span := to.Sub(from)
 	type acc struct {
 		ok, total    int
 		excused, mOK int
@@ -538,7 +633,7 @@ func (s *Store) Series(ctx context.Context, sensorID int64, from, to time.Time, 
 		}
 		out[i] = p
 	}
-	return out, nil
+	return out
 }
 
 func maxInt(a, b int) int {

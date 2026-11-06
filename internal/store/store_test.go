@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"os"
 	"path/filepath"
 	"slices"
@@ -250,6 +251,70 @@ func TestSeriesKeepsGapsAsGaps(t *testing.T) {
 	}
 	if empty != 11 {
 		t.Errorf("%d empty buckets, want 11: a gap must not read as a probe", empty)
+	}
+}
+
+// TestSeriesBySensorMatchesSingleSensorSeries pins the batched query the public
+// status page uses to the single-sensor one it replaced. Both must fold the same
+// rows into the same buckets, or a diagram and the figure beside it disagree.
+func TestSeriesBySensorMatchesSingleSensorSeries(t *testing.T) {
+	ctx := context.Background()
+	st := newTestStore(t)
+	st.SetRetention(2*time.Hour, 48*time.Hour)
+
+	ids := make([]int64, 0, 3)
+	for i := 0; i < 3; i++ {
+		c := mustSensor(t, st, model.Sensor{Name: fmt.Sprintf("web-%d", i), Type: model.SensorHTTP, Target: "https://example.org"})
+		ids = append(ids, c.ID)
+	}
+	empty := mustSensor(t, st, model.Sensor{Name: "added-later", Type: model.SensorHTTP, Target: "https://example.org"})
+
+	now := time.Now().UTC().Truncate(time.Hour)
+	for i, id := range ids {
+		for j := 0; j < 120; j++ {
+			r := model.Result{
+				SensorID:  id,
+				TS:        now.Add(-4*time.Hour + time.Duration(j)*time.Minute),
+				Success:   j%(10+i) != 0,
+				LatencyMS: 10 + float64(i*20+j%7),
+			}
+			if err := st.InsertResult(ctx, &r); err != nil {
+				t.Fatalf("insert: %v", err)
+			}
+		}
+	}
+	if err := st.Maintain(ctx, now); err != nil {
+		t.Fatalf("maintain: %v", err)
+	}
+
+	from, to := now.Add(-6*time.Hour), now
+	batch, err := st.SeriesBySensor(ctx, append(ids, empty.ID), from, to, 20)
+	if err != nil {
+		t.Fatalf("series by sensor: %v", err)
+	}
+	if len(batch) != len(ids)+1 {
+		t.Fatalf("batched series has %d entries, want %d", len(batch), len(ids)+1)
+	}
+	if got := batch[empty.ID]; len(got) != 20 {
+		t.Fatalf("a sensor with no probes came back with %d buckets, want 20", len(got))
+	}
+	for _, id := range ids {
+		single, err := st.Series(ctx, id, from, to, 20)
+		if err != nil {
+			t.Fatalf("single series %d: %v", id, err)
+		}
+		got := batch[id]
+		if len(got) != len(single) {
+			t.Fatalf("sensor %d: batched %d buckets, single %d", id, len(got), len(single))
+		}
+		for i := range single {
+			if got[i].TS != single[i].TS || got[i].Total != single[i].Total ||
+				got[i].OK != single[i].OK || got[i].Excused != single[i].Excused ||
+				math.Abs(got[i].UptimePC-single[i].UptimePC) > 0.0001 ||
+				math.Abs(got[i].AvgMS-single[i].AvgMS) > 0.0001 {
+				t.Fatalf("sensor %d bucket %d: batched %+v, single %+v", id, i, got[i], single[i])
+			}
+		}
 	}
 }
 

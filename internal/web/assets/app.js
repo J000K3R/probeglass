@@ -6191,12 +6191,18 @@ function statusPanel() {
           ${statusToggle('show_uptime_24', cfg.show_uptime_24, t('status.showUptime24'))}
           ${statusToggle('show_uptime_7', cfg.show_uptime_7, t('status.showUptime7'))}
           ${statusToggle('show_uptime_30', cfg.show_uptime_30, t('status.showUptime30'))}
+          ${statusToggle('show_uptime_strip', cfg.show_uptime_strip, t('status.showUptimeStrip'))}
+          ${statusToggle('show_response_time', cfg.show_response_time, t('status.showResponseTime'))}
           ${statusToggle('show_last_check', cfg.show_last_check, t('status.showLastCheck'))}
           ${statusToggle('show_heartbeat', cfg.show_heartbeat, t('status.showHeartbeat'))}
           ${statusToggle('show_logos', cfg.show_logos, t('status.showLogos'))}
           ${statusToggle('show_incidents', cfg.show_incidents, t('status.showIncidents'))}
           ${statusToggle('show_causes', cfg.show_causes, t('status.showCauses'))}
         </div>
+        <div class="status-choice-row">
+          ${statusChoice('history', 'status.history', String(cfg.history_days), ['30', '60', '90'])}
+        </div>
+        <p class="muted small">${esc(t('status.chartsHint'))}</p>
       </fieldset>
 
       <fieldset class="field">
@@ -6224,15 +6230,16 @@ function statusPanel() {
 }
 
 // LAYOUTS is the layouts the page offers; the labels are status.layout.<name>.
-const STATUS_LAYOUTS = ['list', 'cards', 'compact'];
+const STATUS_LAYOUTS = ['charts', 'list', 'cards', 'compact'];
 
 /** statusConfig is the page being edited, with the server's defaults filled in. */
 function statusConfig() {
   const cfg = state.statusPage?.config;
   if (!cfg) {
     return {
-      title: 'Status', subtitle: '', theme: 'auto', accent: 'azure', layout: 'list',
+      title: 'Status', subtitle: '', theme: 'auto', accent: 'azure', layout: 'charts',
       show_logos: true, show_uptime_24: true, show_uptime_7: true, show_uptime_30: true,
+      show_uptime_strip: true, show_response_time: true, history_days: 90,
       show_last_check: true, show_heartbeat: true, show_incidents: true, show_causes: false,
       incident_days: 30, logo: '', background_url: '', background_dim: 60,
       notices: [], sections: [],
@@ -7792,6 +7799,8 @@ settingsBody.addEventListener('change', (event) => {
     cfg.accent = event.target.value;
   } else if (event.target.matches('[data-status-layout]')) {
     cfg.layout = event.target.value;
+  } else if (event.target.matches('[data-status-history]')) {
+    cfg.history_days = Number(event.target.value);
   } else if (event.target.matches('[data-section-colour]')) {
     const index = Number(event.target.dataset.sectionColour);
     if (cfg.sections[index]) cfg.sections[index].colour = event.target.value;
